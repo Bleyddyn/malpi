@@ -36,31 +36,42 @@ def log( message ):
         outf.write(datestr + ": " + message + "\n")
 
 def test1():
-    reg = 3.37091767808e-05
-    lr = 0.000182436504066
-    decay = 1.0
+    hp = {
+        'reg': 3.37091767808e-05,
+        'lr': 0.000182436504066,
+        'decay': 1.0
+    }
 
 #layers = ["conv-64", "Conv-64", "maxpool", "FC-1000", "fc-1000"]
 #layer_params = [{'stride':1, 'dropout':0.5}, {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2}, (), ()]
-    name = "SimpleTest2"
+    name = "SimpleTest1"
     layers = ["conv-32", "Conv-32", "maxpool", "FC-1000", "fc-10"]
     layer_params = [{'filter_size':3}, {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2}, (), {'relu':False}]
-    model = MalpiConvNet(layers, layer_params, reg=reg, dtype=np.float16)
+    model = MalpiConvNet(layers, layer_params, reg=hp['reg'], dtype=np.float16)
 
     data = getCIFAR10()
     solver = Solver(model, data,
                     num_epochs=1, batch_size=50,
-                    lr_decay=decay,
+                    lr_decay=hp['decay'],
                     update_rule='adam',
                     optim_config={
-                      'learning_rate': lr,
+                      'learning_rate': hp['lr'],
                     },
                     verbose=True, print_every=50)
+
+    t_start = time()
+
     solver.train()
 
     model.save(name+".pickle")
+    log( name + " train time (m): " + str(((time() - t_start) / 60.0)) )
+    log( name + " hyperparams: " + str(hp) )
 
-#model = load_malpi(filename)
+
+def classify(data):
+    model = load_malpi('SimpleTest1.pickle')
+    scores = model.loss(data)
+    print scores
 
 def testload():
     model = load_malpi('SimpleTest1.pickle')
