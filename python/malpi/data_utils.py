@@ -13,15 +13,20 @@ def load_CIFAR_batch(filename):
     Y = np.array(Y)
     return X, Y
 
-def load_CIFAR10(ROOT):
+def load_CIFAR10(ROOT, max_t=50000):
   """ load all of cifar """
   xs = []
   ys = []
+  count = 0
   for b in range(1,6):
     f = os.path.join(ROOT, 'data_batch_%d' % (b, ))
+    print f
     X, Y = load_CIFAR_batch(f)
     xs.append(X)
-    ys.append(Y)    
+    ys.append(Y)
+    count += X.shape[0]
+    if count >= max_t:
+        break
   Xtr = np.concatenate(xs)
   Ytr = np.concatenate(ys)
   del X, Y
@@ -37,7 +42,7 @@ def get_CIFAR10_data(num_training=49000, num_validation=1000, num_test=1000):
     """
     # Load the raw CIFAR-10 data
     cifar10_dir = 'malpi/datasets/cifar-10-batches-py'
-    X_train, y_train, X_test, y_test = load_CIFAR10(cifar10_dir)
+    X_train, y_train, X_test, y_test = load_CIFAR10(cifar10_dir, max_t=num_training+num_validation)
         
     # Subsample the data
     mask = range(num_training, num_training + num_validation)

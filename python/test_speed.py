@@ -2,6 +2,8 @@ from time import time
 import datetime
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy import ndimage
+from scipy import misc
 from malpi.cnn import *
 from malpi.data_utils import get_CIFAR10_data
 from malpi.solver import Solver
@@ -27,8 +29,8 @@ def getCIFAR10(verbose=True):
             print '%s: ' % k, v.shape
     return data
 
-def log( message, name='test' ):
-    logFileName = name + ".log"
+def log( message ):
+    logFileName = "test1.log"
     fmt = '%Y-%m-%d-%H-%M-%S'
     datestr = datetime.datetime.now().strftime(fmt)
 
@@ -67,61 +69,6 @@ def test1():
     log( name + " train time (m): " + str(((time() - t_start) / 60.0)) )
     log( name + " hyperparams: " + str(hp) )
 
-def hyperparameterGenerator():
-    variations = np.array([0.9,1.0,1.1])
-    reguls = np.array([3.37091767808e-05]) * variations
-    lrs = np.array([0.000182436504066]) * variations
-#    reguls = [3.37091767808e-05] * 3
-#    lrs = [0.000182436504066]
-    decays = [1.0]
-
-    for reg in reguls:
-        for lr in lrs:
-            for decay in decays:
-                hparams = { "reg": reg, "lr": lr, "lr_decay":decay, "epochs":1, "batch_size":50, "update":"adam" }
-                yield hparams
-
-def test2():
-    name = "FiveLayerTest1"
-    layers = ["conv-64", "maxpool", "conv-128", "maxpool", "conv-256", "conv-512", "fc-1000", "fc-10"]
-    layer_params = [{'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-        {'filter_size':3},
-        {'filter_size':3},
-        (), {'relu':False}]
-
-    log( "%s = %s" % (name, str(layers)), name )
-    data = getCIFAR10(verbose=False)
-
-    best_val_acc = 0.0
-    best_model = None
-    best_solver = None
-
-    for hparams in hyperparameterGenerator():
-        model = MalpiConvNet(layers, layer_params, reg=hparams['reg'], dtype=np.float16, verbose=False)
-        solver = Solver(model, data,
-                        num_epochs=hparams['epochs'], batch_size=hparams['batch_size'],
-                        lr_decay=hparams['lr_decay'],
-                        update_rule=hparams['update'],
-                        optim_config={
-                          'learning_rate': hparams['lr'],
-                        },
-                        verbose=True, print_every=50)
-
-        log( "Started training model: %s" % (name,), name=name )
-        log( "   Hyper-parameters: %s" % (str(hparams),), name=name )
-        solver.train()
-        log( "   Validation Accuracy: %f" % (solver.best_val_acc,) , name=name )
-        log( "Finished training", name=name )
-
-        if solver.best_val_acc > best_val_acc:
-            best_val_acc = solver.best_val_acc
-            best_model = model
-            best_solver = solver
-
-    log( "", name=name )
-# TODO: If the file already exists, load it, compare val acc with this one and only write the new one if it is better
-    best_model.save(name+".pickle")
 
 def classify(data):
     model = load_malpi('SimpleTest1.pickle')
@@ -198,6 +145,35 @@ def testDescribe():
     model = load_malpi('SimpleTest1.pickle')
     model.describe()
 
+imsize = 239
+
+def getOneImage():
+    image = ndimage.imread('test_data/image.jpeg')
+#image.shape (480, 720, 3)
+    image = image.transpose(2,1,0)
+    # shape = (3, 720, 480)
+    min = (720 - 480) / 2
+    image = image[:,min:min+480,:]
+    image = misc.imresize(image,(imsize,imsize))
+    # shape = (3, 480, 480)
+    image = image.reshape(1,3,imsize,imsize)
+    return image
+# input_dim: Tuple (C, H, W) giving size of input data.
+
+def speedTest():
+    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "fc-10"]
+    layer_params = [{'filter_size':3, 'stride':2, 'pad':1 }, {'pool_stride':4, 'pool_width':4, 'pool_height':4},
+        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
+        {'filter_size':3},
+        {'relu':False}]
+    image = getOneImage()
+    model = MalpiConvNet(layers, layer_params, input_dim=(3,imsize,imsize), reg=.005, dtype=np.float16, verbose=True)
+    model.describe()
+    t_start = time()
+    print model.loss(image)
+    print "elapsed time: %f" % ((time() - t_start),)
+
 #testload()
 #testDescribe()
-test2()
+#test1()
+speedTest()
