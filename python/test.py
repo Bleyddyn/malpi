@@ -27,8 +27,8 @@ def getCIFAR10(verbose=True):
             print '%s: ' % k, v.shape
     return data
 
-def log( message ):
-    logFileName = "test1.log"
+def log( message, name='test' ):
+    logFileName = name + ".log"
     fmt = '%Y-%m-%d-%H-%M-%S'
     datestr = datetime.datetime.now().strftime(fmt)
 
@@ -60,7 +60,61 @@ def test1():
 
     model.save(name+".pickle")
 
-#model = load_malpi(filename)
+def hyperparameterGenerator():
+    variations = np.array([0.9,1.0,1.1])
+    reguls = np.array([3.37091767808e-05]) * variations
+    lrs = np.array([0.000182436504066]) * variations
+#    reguls = [3.37091767808e-05] * 3
+#    lrs = [0.000182436504066]
+    decays = [1.0]
+
+    for reg in reguls:
+        for lr in lrs:
+            for decay in decays:
+                hparams = { "reg": reg, "lr": lr, "lr_decay":decay, "epochs":1, "batch_size":50, "update":"adam" }
+                yield hparams
+
+def test2():
+    name = "FiveLayerTest1"
+    layers = ["conv-64", "maxpool", "conv-128", "maxpool", "conv-256", "conv-512", "fc-1000", "fc-10"]
+    layer_params = [{'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
+        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
+        {'filter_size':3},
+        {'filter_size':3},
+        (), {'relu':False}]
+
+    log( "%s = %s" % (name, str(layers)), name )
+    data = getCIFAR10(verbose=False)
+
+    best_val_acc = 0.0
+    best_model = None
+    best_solver = None
+
+    for hparams in hyperparameterGenerator():
+        model = MalpiConvNet(layers, layer_params, reg=hparams['reg'], dtype=np.float16, verbose=False)
+        solver = Solver(model, data,
+                        num_epochs=hparams['epochs'], batch_size=hparams['batch_size'],
+                        lr_decay=hparams['lr_decay'],
+                        update_rule=hparams['update'],
+                        optim_config={
+                          'learning_rate': hparams['lr'],
+                        },
+                        verbose=True, print_every=50)
+
+        log( "Started training model: %s" % (name,), name=name )
+        log( "   Hyper-parameters: %s" % (str(hparams),), name=name )
+        solver.train()
+        log( "   Validation Accuracy: %f" % (solver.best_val_acc,) , name=name )
+        log( "Finished training", name=name )
+
+        if solver.best_val_acc > best_val_acc:
+            best_val_acc = solver.best_val_acc
+            best_model = model
+            best_solver = solver
+
+    log( "", name=name )
+# TODO: If the file already exists, load it, compare val acc with this one and only write the new one if it is better
+    best_model.save(name+".pickle")
 
 def testload():
     model = load_malpi('SimpleTest1.pickle')
@@ -134,4 +188,4 @@ def testDescribe():
 
 #testload()
 #testDescribe()
-test1()
+test2()

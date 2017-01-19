@@ -66,7 +66,7 @@ class MalpiConvNet(object):
             w, h = self.get_conv_filter_sizes(params)
             pad, stride = self.get_conv_stride(params, w, h, output_dim[-2], output_dim[-1])
             self.params['W'+layer_num_str] = wscale * np.random.randn(num_filters,output_dim[0],w,h)
-# Should be using: w = np.random.randn(n) * sqrt(2.0/n)
+# TODO: Should be using: w = np.random.randn(n) * sqrt(2.0/n)
 # for Relu neurons Where n is the number of inputs
             self.params['b'+layer_num_str] = np.zeros(num_filters)
             w = (output_dim[-2]-w+2*pad)/stride+1
@@ -94,9 +94,6 @@ class MalpiConvNet(object):
         if verbose:
             print "  params: ", params
             print "  outdim: ", output_dim
-
-    if verbose:
-        print self.params.keys()
 
     for k, v in self.params.iteritems():
       self.params[k] = v.astype(dtype)
