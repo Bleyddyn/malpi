@@ -21,7 +21,7 @@ def plot_solver(solver):
     plt.show()
 
 def getCIFAR10(verbose=True):
-    data = get_CIFAR10_data()
+    data = get_CIFAR10_data(num_training=9000)
     if verbose:
         for k, v in data.iteritems():
             print '%s: ' % k, v.shape
