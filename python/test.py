@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from malpi.cnn import *
 from malpi.data_utils import get_CIFAR10_data
 from malpi.solver import Solver
+from optparse import OptionParser
 
 def plot_solver(solver):
     plt.subplot(2, 1, 1)
@@ -21,7 +22,7 @@ def plot_solver(solver):
     plt.show()
 
 def getCIFAR10(verbose=True):
-    data = get_CIFAR10_data(num_training=9000)
+    data = get_CIFAR10_data(num_training=49000)
     if verbose:
         for k, v in data.iteritems():
             print '%s: ' % k, v.shape
@@ -35,70 +36,51 @@ def log( message, name='test' ):
     with open(logFileName,'a') as outf:
         outf.write(datestr + ": " + message + "\n")
 
-def test1():
-    hp = {
-        'reg': 3.37091767808e-05,
-        'lr': 0.000182436504066,
-        'decay': 1.0
-    }
-
-#layers = ["conv-64", "Conv-64", "maxpool", "FC-1000", "fc-1000"]
-#layer_params = [{'stride':1, 'dropout':0.5}, {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2}, (), ()]
-    name = "SimpleTest1"
-    layers = ["conv-32", "Conv-32", "maxpool", "FC-1000", "fc-10"]
-    layer_params = [{'filter_size':3}, {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2}, (), {'relu':False}]
-    model = MalpiConvNet(layers, layer_params, reg=hp['reg'], dtype=np.float16)
-
-    data = getCIFAR10()
-    solver = Solver(model, data,
-                    num_epochs=1, batch_size=50,
-                    lr_decay=hp['decay'],
-                    update_rule='adam',
-                    optim_config={
-                      'learning_rate': hp['lr'],
-                    },
-                    verbose=True, print_every=50)
-
-    t_start = time()
-
-    solver.train()
-
-    model.save(name+".pickle")
-    log( name + " train time (m): " + str(((time() - t_start) / 60.0)) )
-    log( name + " hyperparams: " + str(hp) )
-
-def hyperparameterGenerator():
+def hyperparameterGenerator( oneRun = False ):
     variations = np.array([0.9,1.0,1.1])
-    reguls = np.array([3.37091767808e-05]) * variations
-    lrs = np.array([0.000182436504066]) * variations
-#    reguls = [3.37091767808e-05] * 3
-#    lrs = [0.000182436504066]
+    if oneRun:
+        reguls = [3.37091767808e-05]
+        lrs = [0.0002006801544726]
+    else:
+        reguls = np.array([3.37091767808e-05]) * variations
+        lrs = np.array([0.000182436504066]) * variations
+#reguls = 10 ** np.random.uniform(-5, -4, 2) #[0.0001, 0.001, 0.01]
+#lrs = 10 ** np.random.uniform(-6, -3, 5) #[1e-4, 1e-3, 1e-2]
+#reguls = np.append([3.37091767808e-05],reguls)
+#lrs = np.append([0.000182436504066],lrs)
+
     decays = [1.0]
 
     for reg in reguls:
         for lr in lrs:
             for decay in decays:
-                hparams = { "reg": reg, "lr": lr, "lr_decay":decay, "epochs":1, "batch_size":50, "update":"adam" }
+                hparams = { "reg": reg, "lr": lr, "lr_decay":decay, "epochs":6, "batch_size":50, "update":"adam" }
                 yield hparams
 
-def test2():
-    name = "FiveLayerTest1"
-    layers = ["conv-64", "maxpool", "conv-128", "maxpool", "conv-256", "conv-512", "fc-1000", "fc-10"]
+def train():
+    name = "ThreeLayerTest1"
+    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "fc-10"]
     layer_params = [{'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
         {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
         {'filter_size':3},
-        {'filter_size':3},
-        (), {'relu':False}]
+        {'relu':False}]
 
     log( "%s = %s" % (name, str(layers)), name )
+    log( "   %s" % (str(layer_params,)), name )
     data = getCIFAR10(verbose=False)
 
-    best_val_acc = 0.0
-    best_model = None
-    best_solver = None
+    model_name = name + ".pickle"
 
-    for hparams in hyperparameterGenerator():
+    val_accs = []
+    best_solver = None
+    best_val_acc = 0.0
+    best_model = load_malpi( model_name, verbose=False)
+    if best_model:
+        best_val_acc = best_model.validation_accuracy
+
+    for hparams in hyperparameterGenerator(oneRun=True):
         model = MalpiConvNet(layers, layer_params, reg=hparams['reg'], dtype=np.float16, verbose=False)
+        model.hyper_parameters = hparams
         solver = Solver(model, data,
                         num_epochs=hparams['epochs'], batch_size=hparams['batch_size'],
                         lr_decay=hparams['lr_decay'],
@@ -114,14 +96,23 @@ def test2():
         log( "   Validation Accuracy: %f" % (solver.best_val_acc,) , name=name )
         log( "Finished training", name=name )
 
+        val_accs.append(solver.best_val_acc)
         if solver.best_val_acc > best_val_acc:
             best_val_acc = solver.best_val_acc
             best_model = model
             best_solver = solver
 
     log( "", name=name )
-# TODO: If the file already exists, load it, compare val acc with this one and only write the new one if it is better
-    best_model.save(name+".pickle")
+
+    best_model.name = name
+    best_model.validation_accuracy = best_val_acc
+    best_model.save(model_name)
+
+    #plot_solver(best_solver)
+    print val_accs
+#    print('\a') # Sound a bell
+#    print('\a')
+#    print('\a')
 
 def classify(data):
     model = load_malpi('SimpleTest1.pickle')
@@ -136,68 +127,25 @@ def testload():
     val_acc = solver.check_accuracy(data["X_val"], data["y_val"])
     print "train acc: %f; val_acc: %f" % (train_acc,val_acc)
 
-def hyperparameterSearch():
-    best_val_acc = 0.0
-    best_model = None
-    best_solver = None
+#Try: Conv-64, Conv-64, maxpool, conv-128, conv-128, maxpool, conv-256, conv-256, maxpool, conv-512, conv-512, maxpool, conv-512, conv-512, maxpool, FC-4096, FC-4096, FC-1000, softmax
 
-#reguls = 10 ** np.random.uniform(-5, -4, 2) #[0.0001, 0.001, 0.01]
-#lrs = 10 ** np.random.uniform(-6, -3, 5) #[1e-4, 1e-3, 1e-2]
-#reguls = np.append([3.37091767808e-05],reguls)
-#lrs = np.append([0.000182436504066],lrs)
-    variations = np.array([0.9,1.0,1.1])
-    reguls = np.array([3.37091767808e-05]) * variations
-    lrs = np.array([0.000182436504066]) * variations
-    features = [48] #[8, 16, 32, 48, 64]
-    decays = [1.0]
-    val_accs = []
-    hdims = 1000
-
-    """
-    Try: Conv-64, Conv-64, maxpool, conv-128, conv-128, maxpool, conv-256, conv-256, maxpool, conv-512, conv-512, maxpool, conv-512, conv-512, maxpool, FC-4096, FC-4096, FC-1000, softmax
-    Dropout?
-    """
-
-    for reg in reguls:
-        for lr in lrs:
-            for feat in features:
-                for decay in decays:
-                    model = MultiLayerConvNet(num_filters=feat, filter_size=3, weight_scale=0.001, hidden_dim=hdims, reg=reg, dropout=0.5)
-
-
-                    solver = Solver(model, data,
-                                    num_epochs=6, batch_size=50,
-                                    lr_decay=decay,
-                                    update_rule='adam',
-                                    optim_config={
-                                      'learning_rate': lr,
-                                    },
-                                    verbose=False, print_every=50)
-                    t_start = time()
-                    solver.train()
-                    val_accs.append(solver.best_val_acc)
-                    if solver.best_val_acc > best_val_acc:
-                        best_val_acc = solver.best_val_acc
-                        best_model = model
-                        best_solver = solver
-                    print 'acc\t#filts\thdims\treg\tlr\tTime:'
-                    print '%f\t%d\t%d\t%f\t%f\t%fm' % (solver.best_val_acc,feat,hdims,reg,lr,(time() - t_start)/60.0)
-                    #plot_solver(solver)
-    plot_solver(best_solver)
-#print('\a') # Sound a bell
-#print('\a')
-#print('\a')
-
-
-    print best_solver.best_val_acc
-    print best_model.reg
-    print best_solver.optim_config['learning_rate']
-    print val_accs
-
-def testDescribe():
-    model = load_malpi('SimpleTest1.pickle')
+def describeModel( name ):
+    model = load_malpi(name+'.pickle')
+#    if not hasattr(model, 'hyper_parameters'):
+#        model.hyper_parameters = {}
     model.describe()
+#    model.save(name+'.pickle')
 
-#testload()
-#testDescribe()
-test2()
+def getOptions():
+    parser = OptionParser()
+    parser.add_option("-d","--describe",dest="name",help="Describe a model saved in a pickle file: <name>.pickle");
+    (options, args) = parser.parse_args()
+    return (options, args)
+
+if __name__ == "__main__":
+    (options, args) = getOptions()
+
+    if options.name:
+        describeModel(options.name)
+    else:
+        train()

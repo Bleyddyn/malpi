@@ -20,7 +20,6 @@ def load_CIFAR10(ROOT, max_t=50000):
   count = 0
   for b in range(1,6):
     f = os.path.join(ROOT, 'data_batch_%d' % (b, ))
-    print f
     X, Y = load_CIFAR_batch(f)
     xs.append(X)
     ys.append(Y)

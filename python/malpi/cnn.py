@@ -44,7 +44,9 @@ class MalpiConvNet(object):
     self.reg = reg
     self.dtype = dtype
     self.use_dropout = dropout > 0
-    
+    self.name = ""
+    self.validation_accuracy = 0.0
+    self.hyper_parameters = {}
     self.dropout_param = {'mode': 'train', 'p': dropout}
 
     self.layers = layers
@@ -65,7 +67,7 @@ class MalpiConvNet(object):
             num_filters = int( layer.split("-",1)[1] )
             w, h = self.get_conv_filter_sizes(params)
             pad, stride = self.get_conv_stride(params, w, h, output_dim[-2], output_dim[-1])
-            self.params['W'+layer_num_str] = wscale * np.random.randn(num_filters,output_dim[0],w,h)
+            self.params['W'+layer_num_str] = np.sqrt( 2.0 / np.prod(output_dim)) * np.random.randn(num_filters,output_dim[0],w,h)
 # TODO: Should be using: w = np.random.randn(n) * sqrt(2.0/n)
 # for Relu neurons Where n is the number of inputs
             self.params['b'+layer_num_str] = np.zeros(num_filters)
@@ -76,7 +78,11 @@ class MalpiConvNet(object):
                 print "Conv %d (%d/%d)" % (num_filters,w,h)
         elif layer.startswith(("fc-","FC-")):
             hidden = int( layer.split("-",1)[1] )
-            self.params['W'+layer_num_str] = wscale * np.random.randn(np.prod(output_dim),hidden)
+            if 'relu' in layer_params and not layer_params['relu']:
+                lwscale = wscale
+            else:
+                lwscale = np.sqrt( 2.0 / np.prod(output_dim) )
+            self.params['W'+layer_num_str] = lwscale * np.random.randn(np.prod(output_dim),hidden)
             self.params['b'+layer_num_str] = np.zeros(hidden)
             output_dim = np.array([hidden])
             if verbose:
@@ -230,11 +236,14 @@ class MalpiConvNet(object):
 
   def describe(self):
     """
-    Describe each layer
+    Describe the network
     """
     
     layer_num = 0
     total_num_param = 0
+    print self.name
+    print "Validation accuracy: %f" % self.validation_accuracy
+    print "Hyperparameters: %s" % str(self.hyper_parameters)
     for layer in self.layers:
         layer_num += 1
         layer_num_str = str(layer_num)
@@ -263,7 +272,12 @@ class MalpiConvNet(object):
             print "    " + str(params)
     print "Total # params: " + "{:,}".format(total_num_param)
 
-def load_malpi(filename):
-    with open(filename, 'rb') as f:
-        return pickle.load(f)
+def load_malpi(filename, verbose=True):
+    try:
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+    except IOError as err:
+        if verbose:
+            print("IO error: {0}".format(err))
+        return None
 
