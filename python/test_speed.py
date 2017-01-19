@@ -145,6 +145,8 @@ def testDescribe():
     model = load_malpi('SimpleTest1.pickle')
     model.describe()
 
+imsize = 239
+
 def getOneImage():
     image = ndimage.imread('test_data/image.jpeg')
 #image.shape (480, 720, 3)
@@ -152,20 +154,20 @@ def getOneImage():
     # shape = (3, 720, 480)
     min = (720 - 480) / 2
     image = image[:,min:min+480,:]
-    image = misc.imresize(image,(240,240))
+    image = misc.imresize(image,(imsize,imsize))
     # shape = (3, 480, 480)
-    image = image.reshape(1,3,240,240)
+    image = image.reshape(1,3,imsize,imsize)
     return image
 # input_dim: Tuple (C, H, W) giving size of input data.
 
 def speedTest():
-    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "maxpool", "fc-10"]
-    layer_params = [{'filter_size':3, 'stride':1 }, {'pool_stride':4, 'pool_width':4, 'pool_height':4},
+    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "fc-10"]
+    layer_params = [{'filter_size':3, 'stride':2, 'pad':1 }, {'pool_stride':4, 'pool_width':4, 'pool_height':4},
         {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
+        {'filter_size':3},
         {'relu':False}]
     image = getOneImage()
-    model = MalpiConvNet(layers, layer_params, input_dim=(3,240,240), reg=.005, dtype=np.float16, verbose=True)
+    model = MalpiConvNet(layers, layer_params, input_dim=(3,imsize,imsize), reg=.005, dtype=np.float16, verbose=True)
     model.describe()
     t_start = time()
     print model.loss(image)
