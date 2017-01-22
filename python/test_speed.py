@@ -147,9 +147,7 @@ def testDescribe():
     model = load_malpi('SimpleTest1.pickle')
     model.describe()
 
-imsize = 79
-
-def getOneImage():
+def getOneImage(imsize):
     image = ndimage.imread('test_data/image.jpeg')
 #image.shape (480, 720, 3)
     image = image.transpose(2,1,0)
@@ -170,13 +168,14 @@ def speedTest():
 #        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
 #        {'filter_size':3},
 #        {'relu':False}]
+    imsize = 79
     name = "MalpiThree_v1"
     layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32"]
     layer_params = [{'filter_size':3, 'stride':2, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
         {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
         {'filter_size':3}
         ]
-    image = getOneImage()
+    image = getOneImage(imsize)
     model = MalpiConvNet(layers, layer_params, input_dim=(3,imsize,imsize), reg=.005, dtype=np.float16, verbose=True)
     model.describe()
     t_start = time()
