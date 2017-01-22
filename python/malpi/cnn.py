@@ -46,6 +46,7 @@ class MalpiConvNet(object):
     self.use_dropout = dropout > 0
     self.name = ""
     self.validation_accuracy = 0.0
+    self.input_dim = input_dim
     self.hyper_parameters = {}
     self.dropout_param = {'mode': 'train', 'p': dropout}
 
@@ -244,6 +245,7 @@ class MalpiConvNet(object):
     print self.name
     print "Validation accuracy: %f" % self.validation_accuracy
     print "Hyperparameters: %s" % str(self.hyper_parameters)
+    print "Input dimensions: %s" % str(self.input_dim)
     for layer in self.layers:
         layer_num += 1
         layer_num_str = str(layer_num)

@@ -43,7 +43,7 @@ def hyperparameterGenerator( oneRun = False ):
         lrs = [0.0002006801544726]
     else:
         reguls = np.array([3.37091767808e-05]) * variations
-        lrs = np.array([0.000182436504066]) * variations
+        lrs = np.array([0.0002006801544726]) * variations
 #reguls = 10 ** np.random.uniform(-5, -4, 2) #[0.0001, 0.001, 0.01]
 #lrs = 10 ** np.random.uniform(-6, -3, 5) #[1e-4, 1e-3, 1e-2]
 #reguls = np.append([3.37091767808e-05],reguls)
@@ -58,9 +58,14 @@ def hyperparameterGenerator( oneRun = False ):
                 yield hparams
 
 def train():
-    name = "ThreeLayerTest1"
+    name = "ThreeLayerTest2"
+#    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "fc-10"]
+#    layer_params = [{'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
+#        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
+#        {'filter_size':3},
+#        {'relu':False}]
     layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "fc-10"]
-    layer_params = [{'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
+    layer_params = [{'filter_size':3, 'stride':1, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
         {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
         {'filter_size':3},
         {'relu':False}]
@@ -78,7 +83,7 @@ def train():
     if best_model:
         best_val_acc = best_model.validation_accuracy
 
-    for hparams in hyperparameterGenerator(oneRun=True):
+    for hparams in hyperparameterGenerator(oneRun=False):
         model = MalpiConvNet(layers, layer_params, reg=hparams['reg'], dtype=np.float16, verbose=False)
         model.hyper_parameters = hparams
         solver = Solver(model, data,
@@ -131,8 +136,8 @@ def testload():
 
 def describeModel( name ):
     model = load_malpi(name+'.pickle')
-#    if not hasattr(model, 'hyper_parameters'):
-#        model.hyper_parameters = {}
+#    if not hasattr(model, 'input_dim'):
+#        model.input_dim = {}
     model.describe()
 #    model.save(name+'.pickle')
 
