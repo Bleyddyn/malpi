@@ -125,6 +125,11 @@ class MalpiConvNet(object):
     #def conv_sbn_relu_forward(x, w, b, conv_param, sbn_param):
     #def conv_sbn_relu_backward(dout, cache):
 
+    if y is None:
+        mode = 'test'
+    else:
+        mode = 'train'
+
     layer_num = 0
     layer_caches = []
     inputs = X
@@ -137,7 +142,7 @@ class MalpiConvNet(object):
             W = self.params['W'+layer_num_str]
             b = self.params['b'+layer_num_str]
             layer_params = self.layer_params[layer_num-1]
-            inputs, cache = conv_relu_forward( inputs, W, b, layer_params )
+            inputs, cache = conv_relu_forward( inputs, W, b, layer_params, mode=mode )
             layer_caches.append(cache)
 
         elif layer.startswith(("fc-","FC-")):
@@ -152,7 +157,7 @@ class MalpiConvNet(object):
 
         elif layer.startswith(("maxpool","Maxpool")):
             layer_params = self.layer_params[layer_num-1]
-            inputs, pool_cache = max_pool_forward_fast( inputs, layer_params )
+            inputs, pool_cache = max_pool_forward_fast( inputs, layer_params, mode=mode )
             layer_caches.append(pool_cache)
 
     scores = inputs

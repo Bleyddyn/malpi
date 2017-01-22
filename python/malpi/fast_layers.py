@@ -39,7 +39,7 @@ def conv_forward_im2col(x, w, b, conv_param):
   return out, cache
 
 
-def conv_forward_strides(x, w, b, conv_param):
+def conv_forward_strides(x, w, b, conv_param, mode='train'):
   N, C, H, W = x.shape
   F, _, HH, WW = w.shape
   stride, pad = conv_param['stride'], conv_param['pad']
@@ -79,7 +79,10 @@ def conv_forward_strides(x, w, b, conv_param):
   # comparison we won't either
   out = np.ascontiguousarray(out)
 
-  cache = (x, w, b, conv_param, x_cols)
+  if 'train' == mode:
+      cache = (x, w, b, conv_param, x_cols)
+  else:
+      cache = ()
   return out, cache
   
 
@@ -127,9 +130,11 @@ def conv_backward_im2col(dout, cache):
 
 conv_forward_fast = conv_forward_strides
 conv_backward_fast = conv_backward_strides
+#conv_forward_fast = conv_forward_im2col
+#conv_backward_fast = conv_backward_im2col
 
 
-def max_pool_forward_fast(x, pool_param):
+def max_pool_forward_fast(x, pool_param, mode='train'):
   """
   A fast implementation of the forward pass for a max pooling layer.
 
@@ -149,10 +154,10 @@ def max_pool_forward_fast(x, pool_param):
   same_size = pool_height == pool_width == stride
   tiles = H % pool_height == 0 and W % pool_width == 0
   if same_size and tiles:
-    out, reshape_cache = max_pool_forward_reshape(x, pool_param)
+    out, reshape_cache = max_pool_forward_reshape(x, pool_param, mode=mode)
     cache = ('reshape', reshape_cache)
   else:
-    out, im2col_cache = max_pool_forward_im2col(x, pool_param)
+    out, im2col_cache = max_pool_forward_im2col(x, pool_param, mode=mode)
     cache = ('im2col', im2col_cache)
   return out, cache
 
@@ -173,7 +178,7 @@ def max_pool_backward_fast(dout, cache):
     raise ValueError('Unrecognized method "%s"' % method)
 
 
-def max_pool_forward_reshape(x, pool_param):
+def max_pool_forward_reshape(x, pool_param, mode='train'):
   """
   A fast implementation of the forward pass for the max pooling layer that uses
   some clever reshaping.
@@ -190,7 +195,10 @@ def max_pool_forward_reshape(x, pool_param):
                          W / pool_width, pool_width)
   out = x_reshaped.max(axis=3).max(axis=4)
 
-  cache = (x, x_reshaped, out)
+  if 'train' == mode:
+      cache = (x, x_reshaped, out)
+  else:
+      cache = ()
   return out, cache
 
 
@@ -225,7 +233,7 @@ def max_pool_backward_reshape(dout, cache):
   return dx
 
 
-def max_pool_forward_im2col(x, pool_param):
+def max_pool_forward_im2col(x, pool_param, mode='train'):
   """
   An implementation of the forward pass for max pooling based on im2col.
 
@@ -248,7 +256,10 @@ def max_pool_forward_im2col(x, pool_param):
   x_cols_max = x_cols[x_cols_argmax, np.arange(x_cols.shape[1])]
   out = x_cols_max.reshape(out_height, out_width, N, C).transpose(2, 3, 0, 1)
 
-  cache = (x, x_cols, x_cols_argmax, pool_param)
+  if 'train' == mode:
+      cache = (x, x_cols, x_cols_argmax, pool_param)
+  else:
+      cache = ()
   return out, cache
 
 

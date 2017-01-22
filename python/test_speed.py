@@ -1,9 +1,11 @@
 from time import time
 import datetime
+from optparse import OptionParser
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import ndimage
 from scipy import misc
+
 from malpi.cnn import *
 from malpi.data_utils import get_CIFAR10_data
 from malpi.solver import Solver
@@ -145,7 +147,7 @@ def testDescribe():
     model = load_malpi('SimpleTest1.pickle')
     model.describe()
 
-imsize = 239
+imsize = 79
 
 def getOneImage():
     image = ndimage.imread('test_data/image.jpeg')
@@ -161,19 +163,49 @@ def getOneImage():
 # input_dim: Tuple (C, H, W) giving size of input data.
 
 def speedTest():
-    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "fc-10"]
-    layer_params = [{'filter_size':3, 'stride':2, 'pad':1 }, {'pool_stride':4, 'pool_width':4, 'pool_height':4},
+# 0.5s for a single forward pass:
+#imsize = 239
+#    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "fc-10"]
+#    layer_params = [{'filter_size':3, 'stride':2, 'pad':1 }, {'pool_stride':4, 'pool_width':4, 'pool_height':4},
+#        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
+#        {'filter_size':3},
+#        {'relu':False}]
+    name = "MalpiThree_v1"
+    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32"]
+    layer_params = [{'filter_size':3, 'stride':2, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
         {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-        {'filter_size':3},
-        {'relu':False}]
+        {'filter_size':3}
+        ]
     image = getOneImage()
     model = MalpiConvNet(layers, layer_params, input_dim=(3,imsize,imsize), reg=.005, dtype=np.float16, verbose=True)
     model.describe()
     t_start = time()
-    print model.loss(image)
-    print "elapsed time: %f" % ((time() - t_start),)
+    count = 10
+    for x in range(count):
+        model.loss(image)
+    print "Avg elapsed time: %f" % ((time() - t_start)/count,)
+    model.save(name+'.pickle')
 
+def describeModel( name ):
+    model = load_malpi(name+'.pickle')
+#    if not hasattr(model, 'input_dim'):
+#        model.input_dim = (3,imsize,imsize)
+    model.describe()
+#    model.save(name+'.pickle')
+
+def getOptions():
+    parser = OptionParser()
+    parser.add_option("-d","--describe",dest="name",help="Describe a model saved in a pickle file: <name>.pickle");
+    (options, args) = parser.parse_args()
+    return (options, args)
+
+if __name__ == "__main__":
+    (options, args) = getOptions()
+
+    if options.name:
+        describeModel(options.name)
+    else:
+        speedTest()
 #testload()
 #testDescribe()
 #test1()
-speedTest()

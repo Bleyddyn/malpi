@@ -29,7 +29,7 @@ def affine_relu_backward(dout, cache):
   dx, dw, db = affine_backward(da, fc_cache)
   return dx, dw, db
 
-def conv_relu_forward(x, w, b, conv_param):
+def conv_relu_forward(x, w, b, conv_param, mode='train'):
   """
   A convenience layer that performs a convolution followed by a ReLU.
 
@@ -41,7 +41,7 @@ def conv_relu_forward(x, w, b, conv_param):
   - out: Output from the ReLU
   - cache: Object to give to the backward pass
   """
-  a, conv_cache = conv_forward_fast(x, w, b, conv_param)
+  a, conv_cache = conv_forward_fast(x, w, b, conv_param, mode=mode)
   out, relu_cache = relu_forward(a)
   cache = (conv_cache, relu_cache)
   return out, cache
