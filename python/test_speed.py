@@ -9,6 +9,7 @@ from scipy import misc
 from malpi.cnn import *
 from malpi.data_utils import get_CIFAR10_data
 from malpi.solver import Solver
+from malpi.rnn_layers import *
 
 def plot_solver(solver):
     plt.subplot(2, 1, 1)
@@ -160,7 +161,12 @@ def getOneImage(imsize):
     return image
 # input_dim: Tuple (C, H, W) giving size of input data.
 
-def speedTest():
+def softmax(x):
+  probs = np.exp(x - np.max(x))
+  probs /= np.sum(probs )
+  return probs
+
+def speedTest( load=False ):
 # 0.5s for a single forward pass:
 #imsize = 239
 #    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "fc-10"]
@@ -168,20 +174,41 @@ def speedTest():
 #        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
 #        {'filter_size':3},
 #        {'relu':False}]
-    imsize = 79
     name = "MalpiThree_v1"
-    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32"]
-    layer_params = [{'filter_size':3, 'stride':2, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-        {'filter_size':3}
-        ]
+    imsize = 79
     image = getOneImage(imsize)
-    model = MalpiConvNet(layers, layer_params, input_dim=(3,imsize,imsize), reg=.005, dtype=np.float16, verbose=True)
-    model.describe()
+    if load:
+        model = load_malpi(name+'.pickle')
+    else:
+        layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32"]
+        layer_params = [{'filter_size':3, 'stride':2, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
+            {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
+            {'filter_size':3} ]
+        model = MalpiConvNet(layers, layer_params, input_dim=(3,imsize,imsize), reg=.005, dtype=np.float16, verbose=True)
+        model.describe()
+
+    N = 1
+    D = 32*10*10
+    H = 500
+    nA = 5
+
+    lstm_x = np.random.randn(N,D)
+    lstm_prev_h = np.random.randn(N,H)
+    lstm_prev_c = np.random.randn(N,H)
+    lstm_Wx = np.random.randn(D, 4*H)
+    lstm_Wh = np.random.randn(H, 4*H)
+    lstm_b = np.random.randn(4*H)
+    lstm_to_actions = np.random.randn(H,nA)
+
     t_start = time()
     count = 10
     for x in range(count):
-        model.loss(image)
+        cnn_out = model.loss(image)
+        lstm_x = np.reshape( cnn_out, (1,D) )
+        lstm_prev_h, lstm_prev_c, _ = lstm_step_forward( lstm_x,  lstm_prev_h,  lstm_prev_c,  lstm_Wx,  lstm_Wh,  lstm_b)
+        actions = np.dot( lstm_prev_h, lstm_to_actions )
+        print softmax(actions)
+
     print "Avg elapsed time: %f" % ((time() - t_start)/count,)
     model.save(name+'.pickle')
 
@@ -204,7 +231,7 @@ if __name__ == "__main__":
     if options.name:
         describeModel(options.name)
     else:
-        speedTest()
+        speedTest( load=True )
 #testload()
 #testDescribe()
 #test1()
