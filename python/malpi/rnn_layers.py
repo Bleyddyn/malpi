@@ -284,7 +284,6 @@ def lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b):
   next_c = vf * prev_c + vi * vg
   next_h = vo * np.tanh(next_c)
 
-  cache = (next_h,x,prev_h,Wx,Wh)
   cache = (x, prev_h, prev_c, Wx, Wh, b, a, vi, vf, vo, vg, next_c, next_h)
   ##############################################################################
   #                               END OF YOUR CODE                             #

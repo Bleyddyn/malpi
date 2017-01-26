@@ -75,9 +75,12 @@ def conv_relu_forward(x, w, b, conv_param, mode='train'):
   - out: Output from the ReLU
   - cache: Object to give to the backward pass
   """
-  a, conv_cache = conv_forward_fast(x, w, b, conv_param, mode=mode)
+  a, conv_cache = conv_forward_fast(x, w, b, conv_param)
   out, relu_cache = relu_forward(a)
-  cache = (conv_cache, relu_cache)
+  if 'train' == mode:
+      cache = (conv_cache, relu_cache)
+  else:
+      cache = ()
   return out, cache
 
 def conv_relu_backward(dout, cache):

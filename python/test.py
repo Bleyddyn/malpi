@@ -6,6 +6,7 @@ from malpi.cnn import *
 from malpi.data_utils import get_CIFAR10_data
 from malpi.solver import Solver
 from optparse import OptionParser
+from malpi.fast_layers import *
 
 def plot_solver(solver):
     plt.subplot(2, 1, 1)
@@ -132,6 +133,18 @@ def testload():
     val_acc = solver.check_accuracy(data["X_val"], data["y_val"])
     print "train acc: %f; val_acc: %f" % (train_acc,val_acc)
 
+def testIM2COL():
+    conv_param = {'filter_size':3, 'stride':1, 'pad':1 }
+    x = np.zeros((1,3,32,32))
+    w = np.zeros((8, 3, 3, 3))
+    b = np.zeros(8)
+
+    x = x.astype(np.float32)
+    w = w.astype(np.float32)
+    b = b.astype(np.float32)
+
+    conv_forward_im2col(x, w, b, conv_param)
+
 #Try: Conv-64, Conv-64, maxpool, conv-128, conv-128, maxpool, conv-256, conv-256, maxpool, conv-512, conv-512, maxpool, conv-512, conv-512, maxpool, FC-4096, FC-4096, FC-1000, softmax
 
 def describeModel( name ):
@@ -153,4 +166,5 @@ if __name__ == "__main__":
     if options.name:
         describeModel(options.name)
     else:
-        train()
+        #train()
+        testIM2COL()

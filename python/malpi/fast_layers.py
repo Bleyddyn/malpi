@@ -128,10 +128,10 @@ def conv_backward_im2col(dout, cache):
   return dx, dw, db
 
 
-conv_forward_fast = conv_forward_strides
-conv_backward_fast = conv_backward_strides
-#conv_forward_fast = conv_forward_im2col
-#conv_backward_fast = conv_backward_im2col
+#conv_forward_fast = conv_forward_strides
+#conv_backward_fast = conv_backward_strides
+conv_forward_fast = conv_forward_im2col
+conv_backward_fast = conv_backward_im2col
 
 
 def max_pool_forward_fast(x, pool_param, mode='train'):

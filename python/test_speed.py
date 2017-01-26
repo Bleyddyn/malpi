@@ -7,6 +7,7 @@ from scipy import ndimage
 from scipy import misc
 
 from malpi.cnn import *
+from malpi.lstm import *
 from malpi.data_utils import get_CIFAR10_data
 from malpi.solver import Solver
 from malpi.rnn_layers import *
@@ -177,6 +178,7 @@ def speedTest( load=False ):
     name = "MalpiThree_v1"
     imsize = 79
     image = getOneImage(imsize)
+    image = image.astype(np.float32)
     if load:
         model = load_malpi(name+'.pickle')
     else:
@@ -184,7 +186,7 @@ def speedTest( load=False ):
         layer_params = [{'filter_size':3, 'stride':2, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
             {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
             {'filter_size':3} ]
-        model = MalpiConvNet(layers, layer_params, input_dim=(3,imsize,imsize), reg=.005, dtype=np.float16, verbose=True)
+        model = MalpiConvNet(layers, layer_params, input_dim=(3,imsize,imsize), reg=.005, dtype=np.float32, verbose=True)
         model.describe()
 
     N = 1
@@ -192,22 +194,15 @@ def speedTest( load=False ):
     H = 500
     nA = 5
 
-    lstm_x = np.random.randn(N,D)
-    lstm_prev_h = np.random.randn(N,H)
-    lstm_prev_c = np.random.randn(N,H)
-    lstm_Wx = np.random.randn(D, 4*H)
-    lstm_Wh = np.random.randn(H, 4*H)
-    lstm_b = np.random.randn(4*H)
-    lstm_to_actions = np.random.randn(H,nA)
+    lstm_model = MalpiLSTM( D, H, nA, dtype=np.float32 )
 
     t_start = time()
     count = 10
     for x in range(count):
         cnn_out = model.loss(image)
         lstm_x = np.reshape( cnn_out, (1,D) )
-        lstm_prev_h, lstm_prev_c, _ = lstm_step_forward( lstm_x,  lstm_prev_h,  lstm_prev_c,  lstm_Wx,  lstm_Wh,  lstm_b)
-        actions = np.dot( lstm_prev_h, lstm_to_actions )
-        print softmax(actions)
+        actions = lstm_model.loss(lstm_x)
+        print actions
 
     print "Avg elapsed time: %f" % ((time() - t_start)/count,)
     model.save(name+'.pickle')
@@ -231,7 +226,7 @@ if __name__ == "__main__":
     if options.name:
         describeModel(options.name)
     else:
-        speedTest( load=True )
+        speedTest( load=False )
 #testload()
 #testDescribe()
 #test1()
