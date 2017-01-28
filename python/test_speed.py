@@ -202,7 +202,7 @@ def speedTest( load=False ):
         cnn_out = model.loss(image)
         lstm_x = np.reshape( cnn_out, (1,D) )
         actions = lstm_model.loss(lstm_x)
-        print actions
+        #print actions
 
     print "Avg elapsed time: %f" % ((time() - t_start)/count,)
     model.save(name+'.pickle')

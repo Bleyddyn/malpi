@@ -67,6 +67,8 @@ class MalpiLSTM(object):
     else:
         mode = 'train'
 
+    X = np.reshape( X, (1,self.input_dim) )
+
     self.prev_h, self.prev_c, cache = lstm_step_forward(X, self.prev_h, self.prev_c, self.params['Wx'], self.params['Wh'], self.params['b'])
     actions = np.dot( self.prev_h, self.params['Wo'] ) + self.params['bo']
     scores = self.softmax(actions)
@@ -113,16 +115,16 @@ class MalpiLSTM(object):
 
     cnt = np.prod(self.params['Wx'].shape)
     total_num_param += cnt
-    print "Wx: " + self.params['Wx'].shape + " #: " + cnt
+    print "Wx: " + str(self.params['Wx'].shape) + " #: " + str(cnt)
     cnt = np.prod(self.params['Wh'].shape)
     total_num_param += cnt
-    print "Wh: " + self.params['Wh'].shape + " #: " + cnt
+    print "Wh: " + str(self.params['Wh'].shape) + " #: " + str(cnt)
     cnt = np.prod(self.params['b'].shape)
     total_num_param += cnt
-    print "b: " + self.params['b'].shape + " #: " + cnt
+    print "b: " + str(self.params['b'].shape) + " #: " + str(cnt)
     cnt = np.prod(self.params['Wo'].shape)
     total_num_param += cnt
-    print "Wo: " + self.params['Wo'].shape + " #: " + cnt
+    print "Wo: " + str(self.params['Wo'].shape) + " #: " + str(cnt)
 
     print "Total # params: " + "{:,}".format(total_num_param)
 
