@@ -61,7 +61,6 @@ def log( message, name, directory ):
         outf.write(datestr + ": " + message + "\n")
 
 def getOneTestImage(imsize):
-    # Get one image (480x480) from the Camera Daemon
     image = ndimage.imread('test_data/image.jpeg')
 #image.shape (480, 720, 3)
     image = image.transpose(2,1,0)
@@ -73,7 +72,6 @@ def getOneTestImage(imsize):
     image = image.reshape(1,3,imsize,imsize)
     image = image.astype(np.float32)
     return image
-# input_dim: Tuple (C, H, W) giving size of input data.
 
 def preprocessOneImage(image, imsize):
 #image.shape (480, 720, 3)
@@ -86,29 +84,33 @@ def preprocessOneImage(image, imsize):
     image = image.reshape(1,3,imsize,imsize)
     image = image.astype(np.float32)
     return image
-# input_dim: Tuple (C, H, W) giving size of input data.
 
-def readOneJPEG():
+def sendCameraCommand(command):
     try:
-        command = 'image'
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         host ="127.0.0.1"
         port = 12346
         s.connect((host,port))
         s.sendall(command.encode()) 
         s.shutdown(socket.SHUT_WR)
-        sfile = s.makefile('r')
-        jpeg_byte_string = sfile.read() 
-        strobj = cStringIO.StringIO(jpeg_byte_string)
-        image = ndimage.imread(strobj)
-        sfile.close()
+        if command == 'image':
+            sfile = s.makefile('r')
+            jpeg_byte_string = sfile.read() 
+            strobj = cStringIO.StringIO(jpeg_byte_string)
+            image = ndimage.imread(strobj)
+            sfile.close()
+        else:
+            image = None
         s.close()
         return image
     except Exception as inst:
-        print "Error in readOneJPEG: %s" % str(inst)
+        print "Error in sendCameraCommand: %s" % str(inst)
         return None
 
     return None
+
+def readOneJPEG():
+    return sendCameraCommand('image')
 
 def readOneJPEG_local():
     camera = PiCamera()
@@ -117,9 +119,6 @@ def readOneJPEG_local():
     my_stream.seek(0)
     image = ndimage.imread(my_stream)
     return image
-
-def testOneImage():
-    jpeg = readOneJPEG()
 
 def softmax(x):
   probs = np.exp(x - np.max(x))
@@ -136,6 +135,7 @@ def runEpisode( model_name, episode_name ):
         os.makedirs(episode_name)
 
     # Tell the Camera Daemon to start recording video
+    sendCameraCommand('start_video '+episode_name+'.h245')
     log( "Start episode", model_name, episode_name )
     imsize = model.input_dim[1]
 
@@ -146,6 +146,7 @@ def runEpisode( model_name, episode_name ):
         image = readOneJPEG()
         t2 = time()
         image = preprocessOneImage(image, imsize)
+        log( "image", model_name, episode_name )
         t3 = time()
         cnn_out = model.loss(image)
         actions = lstm_model.loss(cnn_out)
@@ -158,6 +159,7 @@ def runEpisode( model_name, episode_name ):
 # 0.872346 - 0.133617 - 0.186266
 
     log( "Stop episode", model_name, episode_name )
+    sendCameraCommand('stop_video ')
     # Tell the Camera Daemon to stop recording video
 # Move the video file to the episode directory
     
@@ -172,7 +174,7 @@ def getOptions():
     if not options.name:
         n = datetime.datetime.now()
         options.name = n.strftime('%Y%m%d_%H%M%S') 
-    if len(args) == 0:
+    if len(args) != 1:
         print usage
         exit()
     return (options, args)
@@ -180,9 +182,13 @@ def getOptions():
 if __name__ == "__main__":
     (options, args) = getOptions()
 
+    model_name = args[0]
+    if model_name.endswith('.pickle'):
+        model_name = model_name[:-7]
+
     if options.initialize:
         print "options.init"
-        initializeModels( args[0] )
+        initializeModels( model_name )
         exit()
 
-    runEpisode( args[0], options.name )
+    runEpisode( model_name, options.name )
