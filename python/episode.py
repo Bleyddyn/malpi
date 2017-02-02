@@ -1,10 +1,12 @@
 import os
 from time import time
+from time import sleep
 import datetime
 from optparse import OptionParser
 import socket
 import cStringIO
 import io
+import shutil
 
 import numpy as np
 from scipy import ndimage
@@ -54,7 +56,7 @@ def loadModels( model_name, verbose=True ):
 
 def log( message, name, directory ):
     logFileName = os.path.join(directory, name) + ".log"
-    fmt = '%Y-%m-%d-%H-%M-%S'
+    fmt = '%Y%m%d-%H%M%S.%f'
     datestr = datetime.datetime.now().strftime(fmt)
 
     with open(logFileName,'a') as outf:
@@ -119,6 +121,20 @@ def readOneJPEG_local():
     my_stream.seek(0)
     image = ndimage.imread(my_stream)
     return image
+# This method might be faster:
+# Tested it and it's not much if any faster
+#import io
+#import time
+#import picamera
+#with picamera.PiCamera() as camera:
+#    stream = io.BytesIO()
+#    for foo in camera.capture_continuous(stream, format='jpeg'):
+#        # Truncate the stream to the current position (in case
+#        # prior iterations output a longer image)
+#        stream.truncate()
+#        stream.seek(0)
+#        if process(stream):
+#            break
 
 def softmax(x):
   probs = np.exp(x - np.max(x))
@@ -134,34 +150,32 @@ def runEpisode( model_name, episode_name ):
     if not os.path.exists(episode_name):
         os.makedirs(episode_name)
 
-    # Tell the Camera Daemon to start recording video
-    sendCameraCommand('start_video '+episode_name+'.h245')
+    sendCameraCommand('video_start '+episode_name) # Tell the Camera Daemon to start recording video
+    sleep(1) # seems to be necessary
     log( "Start episode", model_name, episode_name )
     imsize = model.input_dim[1]
+    #test_image = getOneTestImage(imsize)
 
     t_start = time()
     time_steps = 10
     for x in range(time_steps):
-        t1 = time()
-        image = readOneJPEG()
-        t2 = time()
+        image = sendCameraCommand('image')
         image = preprocessOneImage(image, imsize)
-        log( "image", model_name, episode_name )
-        t3 = time()
+        #image = test_image
         cnn_out = model.loss(image)
         actions = lstm_model.loss(cnn_out)
-        t4 = time()
         actions = actions[0]
         # Sample an action
         action = np.random.choice(np.arange(len(actions)), p=actions)
         log( "Action: " + str(action), model_name, episode_name )
-        print "%f - %f - %f" % ( (t2 - t1), (t3 - t2), (t4 - t3))
+        #print "%f - %f - %f" % ( (t2 - t1), (t3 - t2), (t4 - t3))
 # 0.872346 - 0.133617 - 0.186266
 
     log( "Stop episode", model_name, episode_name )
-    sendCameraCommand('stop_video ')
-    # Tell the Camera Daemon to stop recording video
+    sendCameraCommand('video_stop') # Tell the Camera Daemon to stop recording video
+    sleep(1)
 # Move the video file to the episode directory
+    shutil.move( "/var/ramdrive/"+episode_name+".h264", "./"+episode_name+"/"+episode_name+".h264" )
     
     print "Episode elapsed time: %f" % ((time() - t_start),)
 
