@@ -47,8 +47,6 @@ class MalpiLSTM(object):
     self.prev_h = np.zeros((1,hidden_dim))
     self.prev_c = np.zeros((1,hidden_dim))
 
-    self.params['bo'][0] += 1
-
     for k, v in self.params.iteritems():
       self.params[k] = v.astype(dtype)
      

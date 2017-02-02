@@ -20,15 +20,25 @@ from malpi.rnn_layers import *
 
 from picamera import PiCamera
 
-def initializeModels( name ):
+try:
+    import config
+except:
+    print "Failed to load config file config.py."
+    print "Try copying config_empty.py to config.py and re-running."
+    exit()
+
+def initializeModels( options ):
     imsize = 79
     layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32"]
     layer_params = [{'filter_size':3, 'stride':2, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
         {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
         {'filter_size':3} ]
     model = MalpiConvNet(layers, layer_params, input_dim=(3,imsize,imsize), reg=.005, dtype=np.float32, verbose=True)
-    model.name = name
+    model.name = options.model_name
+
+    print
     model.describe()
+    print
 
     N = 1
     D = 32*10*10
@@ -36,16 +46,19 @@ def initializeModels( name ):
     nA = 5
 
     lstm_model = MalpiLSTM( D, H, nA, dtype=np.float32 )
-    lstm_model.name = name
+    lstm_model.name = options.model_name
+
+    lstm_model.params['bo'][0] += 1 # Bias the output to move the robot forward
+
     lstm_model.describe()
 
-    filename = name + ".pickle"
+    filename = os.path.join( options.dir_model, options.model_name + ".pickle" )
     with open(filename, 'wb') as f:
         pickle.dump( (model,lstm_model), f, pickle.HIGHEST_PROTOCOL)
 
-def loadModels( model_name, verbose=True ):
+def loadModels( options, verbose=True ):
     """ Will return a tuple of (cnn_model, lstm_model), or (None,None) if the load failed.  """
-    filename = model_name+".pickle"
+    filename = os.path.join( options.dir_model, options.model_name + ".pickle" )
     try:
         with open(filename, 'rb') as f:
             return pickle.load(f)
@@ -54,8 +67,8 @@ def loadModels( model_name, verbose=True ):
             print("IO error: {0}".format(err))
         return (None,None)
 
-def log( message, name, directory ):
-    logFileName = os.path.join(directory, name) + ".log"
+def log( message, options ):
+    logFileName = os.path.join(options.dir_ep, options.episode) + ".log"
     fmt = '%Y%m%d-%H%M%S.%f'
     datestr = datetime.datetime.now().strftime(fmt)
 
@@ -111,9 +124,6 @@ def sendCameraCommand(command):
 
     return None
 
-def readOneJPEG():
-    return sendCameraCommand('image')
-
 def readOneJPEG_local():
     camera = PiCamera()
     my_stream = io.BytesIO()
@@ -121,88 +131,89 @@ def readOneJPEG_local():
     my_stream.seek(0)
     image = ndimage.imread(my_stream)
     return image
-# This method might be faster:
-# Tested it and it's not much if any faster
-#import io
-#import time
-#import picamera
-#with picamera.PiCamera() as camera:
-#    stream = io.BytesIO()
-#    for foo in camera.capture_continuous(stream, format='jpeg'):
-#        # Truncate the stream to the current position (in case
-#        # prior iterations output a longer image)
-#        stream.truncate()
-#        stream.seek(0)
-#        if process(stream):
-#            break
 
 def softmax(x):
   probs = np.exp(x - np.max(x))
   probs /= np.sum(probs )
   return probs
 
-def runEpisode( model_name, episode_name ):
-    (model, lstm_model) = loadModels( model_name, verbose=True )
+def runEpisode( options ):
+    (model, lstm_model) = loadModels( options, verbose=True )
     if not model or not lstm_model:
-        print "Error reading model: %s" % model_name
+        print "Error reading model: %s" % options.model_name
         return
 
-    if not os.path.exists(episode_name):
-        os.makedirs(episode_name)
+    if not os.path.exists(options.dir_ep):
+        os.makedirs(options.dir_ep)
 
-    sendCameraCommand('video_start '+episode_name) # Tell the Camera Daemon to start recording video
+    sendCameraCommand('video_start '+options.episode) # Tell the Camera Daemon to start recording video
     sleep(1) # seems to be necessary
-    log( "Start episode", model_name, episode_name )
+    log( "Start episode", options )
     imsize = model.input_dim[1]
-    #test_image = getOneTestImage(imsize)
+    test_image = getOneTestImage(imsize)
 
     t_start = time()
     time_steps = 10
     for x in range(time_steps):
-        image = sendCameraCommand('image')
-        image = preprocessOneImage(image, imsize)
-        #image = test_image
+        #image = sendCameraCommand('image')
+        #image = preprocessOneImage(image, imsize)
+        image = test_image
         cnn_out = model.loss(image)
         actions = lstm_model.loss(cnn_out)
         actions = actions[0]
         # Sample an action
         action = np.random.choice(np.arange(len(actions)), p=actions)
-        log( "Action: " + str(action), model_name, episode_name )
+        log( "Action: " + str(action), options )
         #print "%f - %f - %f" % ( (t2 - t1), (t3 - t2), (t4 - t3))
 # 0.872346 - 0.133617 - 0.186266
 
-    log( "Stop episode", model_name, episode_name )
+    log( "Stop episode", options )
     sendCameraCommand('video_stop') # Tell the Camera Daemon to stop recording video
     sleep(1)
+
 # Move the video file to the episode directory
-    shutil.move( "/var/ramdrive/"+episode_name+".h264", "./"+episode_name+"/"+episode_name+".h264" )
+    video_path = os.path.join(config.directories['video'],options.episode+".h264")
+    if os.path.exists(video_path):
+        shutil.move( video_path, os.path.join(options.dir_ep, options.episode+".h264") )
+    else:
+        print "Video file is missing: %s" % (video_path,)
     
     print "Episode elapsed time: %f" % ((time() - t_start),)
 
 def getOptions():
     usage = "Usage: python ./episode.py [--name=<ep name>] <model name>"
     parser = OptionParser()
-    parser.add_option("-n","--name",help="Session Name. Used for directory and log file names. Defaults to date/time.");
-    parser.add_option("-i","--initialize",action="store_true", default=False,help="Initialize cnn and lstm models, save them to <model name>.pickle, then exit.");
+    parser.add_option("-e","--episode", help="Episode Name. Used for episode related file names. Defaults to date/time.");
+    parser.add_option("-i","--initialize",action="store_true", default=False, help="Initialize cnn and lstm models, save them to <model name>.pickle, then exit.");
+    parser.add_option("--dir_ep", help="Directory for saving all episode related files. Defaults to episode name.");
+    parser.add_option("-d","--dir_model", default="", help="Directory for finding/initializing model files. Defaults to current directory.");
+
     (options, args) = parser.parse_args()
-    if not options.name:
-        n = datetime.datetime.now()
-        options.name = n.strftime('%Y%m%d_%H%M%S') 
+
     if len(args) != 1:
         print usage
         exit()
+
+    if not options.episode:
+        n = datetime.datetime.now()
+        options.episode = n.strftime('%Y%m%d_%H%M%S') 
+
+    if not options.dir_ep:
+        options.dir_ep = options.episode
+
+    if args[0].endswith('.pickle'):
+        args[0] = args[0][:-7]
+
+    options.model_name = args[0]
+
     return (options, args)
 
 if __name__ == "__main__":
     (options, args) = getOptions()
 
-    model_name = args[0]
-    if model_name.endswith('.pickle'):
-        model_name = model_name[:-7]
-
     if options.initialize:
-        print "options.init"
-        initializeModels( model_name )
+        print "Initializing cnn and lstm models..."
+        initializeModels( options )
         exit()
 
-    runEpisode( model_name, options.name )
+    runEpisode( options )
