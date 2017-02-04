@@ -100,6 +100,22 @@ def preprocessOneImage(image, imsize):
     image = image.astype(np.float32)
     return image
 
+def actionToCommand(action):
+    commands = ["forward","backward","left","right","stop"]
+    return commands[action]
+
+def sendMotorCommand(command):
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        host ="127.0.0.1"
+        port = 12345
+        s.connect((host,port))
+        s.sendall(command.encode()) 
+        s.shutdown(socket.SHUT_WR)
+        s.close()
+    except Exception as inst:
+        print "Error in sendMotorCommand: %s" % str(inst)
+
 def sendCameraCommand(command):
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -153,17 +169,19 @@ def runEpisode( options ):
     test_image = getOneTestImage(imsize)
 
     t_start = time()
-    time_steps = 10
+    time_steps = options.steps
     for x in range(time_steps):
-        #image = sendCameraCommand('image')
-        #image = preprocessOneImage(image, imsize)
-        image = test_image
+        image = sendCameraCommand('image')
+        image = preprocessOneImage(image, imsize)
+        #image = test_image
         cnn_out = model.loss(image)
         actions = lstm_model.loss(cnn_out)
         actions = actions[0]
         # Sample an action
         action = np.random.choice(np.arange(len(actions)), p=actions)
         log( "Action: " + str(action), options )
+        sendMotorCommand( actionToCommand(action) )
+        print "Action: %s" % (actionToCommand(action),)
         #print "%f - %f - %f" % ( (t2 - t1), (t3 - t2), (t4 - t3))
 # 0.872346 - 0.133617 - 0.186266
 
@@ -184,9 +202,11 @@ def getOptions():
     usage = "Usage: python ./episode.py [--name=<ep name>] <model name>"
     parser = OptionParser()
     parser.add_option("-e","--episode", help="Episode Name. Used for episode related file names. Defaults to date/time.");
-    parser.add_option("-i","--initialize",action="store_true", default=False, help="Initialize cnn and lstm models, save them to <model name>.pickle, then exit.");
+    parser.add_option("-i","--initialize", action="store_true", default=False, help="Initialize cnn and lstm models, save them to <model name>.pickle, then exit.");
     parser.add_option("--dir_ep", help="Directory for saving all episode related files. Defaults to episode name.");
     parser.add_option("-d","--dir_model", default="", help="Directory for finding/initializing model files. Defaults to current directory.");
+    parser.add_option("-s","--steps", type="int", default=30, help="Number of steps to run. Defaults to 30.");
+    parser.add_option("--test_only", action="store_true", default=False, help="Run tests, then exit.");
 
     (options, args) = parser.parse_args()
 
@@ -200,6 +220,11 @@ def getOptions():
 
     if not options.dir_ep:
         options.dir_ep = options.episode
+    else:
+        options.dir_ep = os.path.join( options.dir_ep, options.episode )
+
+    options.dir_ep = os.path.expanduser(options.dir_ep)
+    options.dir_model = os.path.expanduser(options.dir_model)
 
     if args[0].endswith('.pickle'):
         args[0] = args[0][:-7]
@@ -208,8 +233,17 @@ def getOptions():
 
     return (options, args)
 
+def test(options):
+    print options.dir_ep
+    print options.dir_model
+
+    exit()
+
 if __name__ == "__main__":
     (options, args) = getOptions()
+
+    if options.test_only:
+        test(options)
 
     if options.initialize:
         print "Initializing cnn and lstm models..."
