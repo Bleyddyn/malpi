@@ -91,8 +91,9 @@ def getOneTestImage(imsize):
 def preprocessOneImage(image, imsize):
 #image.shape (480, 720, 3)
     image = image.transpose(2,1,0)
+    width = image.shape[1]
     # shape = (3, 720, 480)
-    min = (720 - 480) / 2
+    min = (width - 480) / 2
     image = image[:,min:min+480,:]
     image = misc.imresize(image,(imsize,imsize))
     # shape = (3, 480, 480)
@@ -166,6 +167,8 @@ def runEpisode( options ):
     if not os.path.exists(options.dir_ep):
         os.makedirs(options.dir_ep)
 
+    images = []
+
     sendCameraCommand('video_start '+options.episode, options) # Tell the Camera Daemon to start recording video
     sleep(1) # seems to be necessary
     log( "Start episode", options )
@@ -177,6 +180,7 @@ def runEpisode( options ):
     for x in range(time_steps):
         image = sendCameraCommand('image', options)
         if image is not None:
+            images.append( image )
             image = preprocessOneImage(image, imsize)
             #image = test_image
             cnn_out = model.loss(image)
@@ -192,6 +196,8 @@ def runEpisode( options ):
 
     log( "Stop episode", options )
     sendCameraCommand('video_stop', options) # Tell the Camera Daemon to stop recording video
+    sendMotorCommand( "stop", options ) # always stop the motors before ending
+    print "Episode elapsed time: %f" % ((time() - t_start),)
     sleep(1)
 
 # Move the video file to the episode directory
@@ -200,10 +206,12 @@ def runEpisode( options ):
         shutil.move( video_path, os.path.join(options.dir_ep, options.episode+".h264") )
     else:
         print "Video file is missing: %s" % (video_path,)
-    
-    sendMotorCommand( "stop", options ) # always stop the motors before ending
 
-    print "Episode elapsed time: %f" % ((time() - t_start),)
+    print "Writing images"    
+    images_filename = os.path.join( options.dir_ep, options.episode + "_images.pickle" )
+    with open(images_filename, 'wb') as f:
+        pickle.dump( np.array(images), f, pickle.HIGHEST_PROTOCOL)
+
 
 def getOptions():
     usage = "Usage: python ./episode.py [--name=<ep name>] <model name>"
