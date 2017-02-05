@@ -104,7 +104,7 @@ def actionToCommand(action):
     commands = ["forward","backward","left","right","stop"]
     return commands[action]
 
-def sendMotorCommand(command):
+def sendMotorCommand(command, options):
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         host ="127.0.0.1"
@@ -114,9 +114,11 @@ def sendMotorCommand(command):
         s.shutdown(socket.SHUT_WR)
         s.close()
     except Exception as inst:
-        print "Error in sendMotorCommand: %s" % str(inst)
+        error_string = "Error in sendMotorCommand: %s" % str(inst)
+        print error_string
+        log( error_string, options )
 
-def sendCameraCommand(command):
+def sendCameraCommand(command, options):
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         host ="127.0.0.1"
@@ -135,7 +137,9 @@ def sendCameraCommand(command):
         s.close()
         return image
     except Exception as inst:
-        print "Error in sendCameraCommand: %s" % str(inst)
+        error_string = "Error in sendCameraCommand: %s" % str(inst)
+        print error_string
+        log( error_string, options )
         return None
 
     return None
@@ -162,7 +166,7 @@ def runEpisode( options ):
     if not os.path.exists(options.dir_ep):
         os.makedirs(options.dir_ep)
 
-    sendCameraCommand('video_start '+options.episode) # Tell the Camera Daemon to start recording video
+    sendCameraCommand('video_start '+options.episode, options) # Tell the Camera Daemon to start recording video
     sleep(1) # seems to be necessary
     log( "Start episode", options )
     imsize = model.input_dim[1]
@@ -171,22 +175,23 @@ def runEpisode( options ):
     t_start = time()
     time_steps = options.steps
     for x in range(time_steps):
-        image = sendCameraCommand('image')
-        image = preprocessOneImage(image, imsize)
-        #image = test_image
-        cnn_out = model.loss(image)
-        actions = lstm_model.loss(cnn_out)
-        actions = actions[0]
-        # Sample an action
-        action = np.random.choice(np.arange(len(actions)), p=actions)
-        log( "Action: " + str(action), options )
-        sendMotorCommand( actionToCommand(action) )
-        print "Action: %s" % (actionToCommand(action),)
-        #print "%f - %f - %f" % ( (t2 - t1), (t3 - t2), (t4 - t3))
+        image = sendCameraCommand('image', options)
+        if image is not None:
+            image = preprocessOneImage(image, imsize)
+            #image = test_image
+            cnn_out = model.loss(image)
+            actions = lstm_model.loss(cnn_out)
+            actions = actions[0]
+            # Sample an action
+            action = np.random.choice(np.arange(len(actions)), p=actions)
+            log( "Action: " + str(action), options )
+            sendMotorCommand( actionToCommand(action), options )
+            print "Action: %s" % (actionToCommand(action),)
+            #print "%f - %f - %f" % ( (t2 - t1), (t3 - t2), (t4 - t3))
 # 0.872346 - 0.133617 - 0.186266
 
     log( "Stop episode", options )
-    sendCameraCommand('video_stop') # Tell the Camera Daemon to stop recording video
+    sendCameraCommand('video_stop', options) # Tell the Camera Daemon to stop recording video
     sleep(1)
 
 # Move the video file to the episode directory
@@ -196,6 +201,8 @@ def runEpisode( options ):
     else:
         print "Video file is missing: %s" % (video_path,)
     
+    sendMotorCommand( "stop", options ) # always stop the motors before ending
+
     print "Episode elapsed time: %f" % ((time() - t_start),)
 
 def getOptions():
