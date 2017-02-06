@@ -169,6 +169,10 @@ def runEpisode( options ):
 
     images = []
 
+    motorSpeed = 230
+    sendMotorCommand( 'speed ' + str(motorSpeed), options ) # Make sure we're using a consistent motor speed
+    log( 'Motor Speed: ' + str(motorSpeed), options )
+
     sendCameraCommand('video_start '+options.episode, options) # Tell the Camera Daemon to start recording video
     sleep(1) # seems to be necessary
     log( "Start episode", options )
