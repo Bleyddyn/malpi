@@ -18,6 +18,8 @@ from malpi.data_utils import get_CIFAR10_data
 from malpi.solver import Solver
 from malpi.rnn_layers import *
 
+from PiVideoStream import PiVideoStream
+
 from picamera import PiCamera
 
 try:
@@ -93,13 +95,19 @@ def preprocessOneImage(image, imsize):
     image = image.transpose(2,1,0)
     width = image.shape[1]
     # shape = (3, 720, 480)
-    min = (width - 480) / 2
-    image = image[:,min:min+480,:]
+    if width > 480:
+        min = (width - 480) / 2
+        image = image[:,min:min+480,:]
     image = misc.imresize(image,(imsize,imsize))
-    # shape = (3, 480, 480)
+    # shape = (3, imsize, imsize)
     image = image.reshape(1,3,imsize,imsize)
     image = image.astype(np.float32)
     return image
+
+""" To save non-preprocessed images as jpeg:
+misc.imsave('frame2.jpeg', images[2,:,:,:])
+misc.imsave('frame5.jpeg', images[5,:,:,:])
+"""
 
 def actionToCommand(action):
     commands = ["forward","backward","left","right","stop"]
@@ -173,8 +181,11 @@ def runEpisode( options ):
     sendMotorCommand( 'speed ' + str(motorSpeed), options ) # Make sure we're using a consistent motor speed
     log( 'Motor Speed: ' + str(motorSpeed), options )
 
-    sendCameraCommand('video_start '+options.episode, options) # Tell the Camera Daemon to start recording video
+    #sendCameraCommand('video_start '+options.episode, options) # Tell the Camera Daemon to start recording video
+    vs = PiVideoStream( resolution=(480,480) )
+    vs.start()
     sleep(1) # seems to be necessary
+
     log( "Start episode", options )
     imsize = model.input_dim[1]
     test_image = getOneTestImage(imsize)
@@ -182,7 +193,8 @@ def runEpisode( options ):
     t_start = time()
     time_steps = options.steps
     for x in range(time_steps):
-        image = sendCameraCommand('image', options)
+        #image = sendCameraCommand('image', options)
+        image = vs.read()
         if image is not None:
             images.append( image )
             image = preprocessOneImage(image, imsize)
@@ -199,22 +211,23 @@ def runEpisode( options ):
 # 0.872346 - 0.133617 - 0.186266
 
     log( "Stop episode", options )
-    sendCameraCommand('video_stop', options) # Tell the Camera Daemon to stop recording video
+    #sendCameraCommand('video_stop', options) # Tell the Camera Daemon to stop recording video
     sendMotorCommand( "stop", options ) # always stop the motors before ending
     print "Episode elapsed time: %f" % ((time() - t_start),)
     sleep(1)
 
 # Move the video file to the episode directory
-    video_path = os.path.join(config.directories['video'],options.episode+".h264")
-    if os.path.exists(video_path):
-        shutil.move( video_path, os.path.join(options.dir_ep, options.episode+".h264") )
-    else:
-        print "Video file is missing: %s" % (video_path,)
+#    video_path = os.path.join(config.directories['video'],options.episode+".h264")
+#    if os.path.exists(video_path):
+#        shutil.move( video_path, os.path.join(options.dir_ep, options.episode+".h264") )
+#    else:
+#        print "Video file is missing: %s" % (video_path,)
 
     print "Writing images"    
     images_filename = os.path.join( options.dir_ep, options.episode + "_images.pickle" )
     with open(images_filename, 'wb') as f:
         pickle.dump( np.array(images), f, pickle.HIGHEST_PROTOCOL)
+    print "Finished Writing images"    
 
 
 def getOptions():
