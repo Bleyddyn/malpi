@@ -14,13 +14,9 @@ from scipy import misc
 
 from malpi.cnn import *
 from malpi.lstm import *
-from malpi.data_utils import get_CIFAR10_data
-from malpi.solver import Solver
 from malpi.rnn_layers import *
 
 from PiVideoStream import PiVideoStream
-
-from picamera import PiCamera
 
 try:
     import config
@@ -153,14 +149,6 @@ def sendCameraCommand(command, options):
 
     return None
 
-def readOneJPEG_local():
-    camera = PiCamera()
-    my_stream = io.BytesIO()
-    camera.capture(my_stream, 'jpeg')
-    my_stream.seek(0)
-    image = ndimage.imread(my_stream)
-    return image
-
 def softmax(x):
   probs = np.exp(x - np.max(x))
   probs /= np.sum(probs )
@@ -176,39 +164,41 @@ def runEpisode( options ):
         os.makedirs(options.dir_ep)
 
     images = []
+    actions = []
 
     motorSpeed = 230
     sendMotorCommand( 'speed ' + str(motorSpeed), options ) # Make sure we're using a consistent motor speed
     log( 'Motor Speed: ' + str(motorSpeed), options )
 
     #sendCameraCommand('video_start '+options.episode, options) # Tell the Camera Daemon to start recording video
-    vs = PiVideoStream( resolution=(480,480) )
-    vs.start()
-    sleep(1) # seems to be necessary
+    with PiVideoStream( resolution=(480,480) ) as vs:
+        vs.start()
+        sleep(1) # Let the camera warm up
 
-    log( "Start episode", options )
-    imsize = model.input_dim[1]
-    test_image = getOneTestImage(imsize)
+        log( "Start episode", options )
+        imsize = model.input_dim[1]
 
-    t_start = time()
-    time_steps = options.steps
-    for x in range(time_steps):
-        #image = sendCameraCommand('image', options)
-        image = vs.read()
-        if image is not None:
-            images.append( image )
-            image = preprocessOneImage(image, imsize)
-            #image = test_image
-            cnn_out = model.loss(image)
-            actions = lstm_model.loss(cnn_out)
-            actions = actions[0]
-            # Sample an action
-            action = np.random.choice(np.arange(len(actions)), p=actions)
-            log( "Action: " + str(action), options )
-            sendMotorCommand( actionToCommand(action), options )
-            print "Action: %s" % (actionToCommand(action),)
-            #print "%f - %f - %f" % ( (t2 - t1), (t3 - t2), (t4 - t3))
+        t_start = time()
+        time_steps = options.steps
+        for x in range(time_steps):
+            image = vs.read()
+            if image is not None:
+                images.append( image )
+                image = preprocessOneImage(image, imsize)
+                cnn_out = model.loss(image)
+                action_probs = lstm_model.loss(cnn_out)
+                action_probs = action_probs[0]
+                # Sample an action
+                action = np.random.choice(np.arange(len(action_probs)), p=action_probs)
+                actions.append(action)
+                log( "Action: " + str(action), options )
+                sendMotorCommand( actionToCommand(action), options )
+                print "Action: %s" % (actionToCommand(action),)
+                #print "%f - %f - %f" % ( (t2 - t1), (t3 - t2), (t4 - t3))
 # 0.872346 - 0.133617 - 0.186266
+
+    # Shouldn't be necessary anymore
+    #vs.stop()
 
     log( "Stop episode", options )
     #sendCameraCommand('video_stop', options) # Tell the Camera Daemon to stop recording video
@@ -223,12 +213,61 @@ def runEpisode( options ):
 #    else:
 #        print "Video file is missing: %s" % (video_path,)
 
-    print "Writing images"    
-    images_filename = os.path.join( options.dir_ep, options.episode + "_images.pickle" )
+    print "Writing Episode Data"    
+    pkg = packageImages( images, actions, options )
+    images_filename = os.path.join( options.dir_ep, options.episode + "_episode.pickle" )
     with open(images_filename, 'wb') as f:
-        pickle.dump( np.array(images), f, pickle.HIGHEST_PROTOCOL)
-    print "Finished Writing images"    
+        pickle.dump( pkg, f, pickle.HIGHEST_PROTOCOL)
+    print "Finished Writing Episode Data"    
 
+def packageImages( images, actions, options ):
+    image_pkg = { }
+    image_pkg["episode"] = options.episode
+    image_pkg["format"] = options.im_format
+    image_pkg["date"] = datetime.datetime.now()
+    image_pkg["model"] = options.model_name
+    image_pkg["actions"] = actions
+    if options.im_format == "numpy":
+        image_pkg["images"] = images
+    elif options.im_format == "jpeg":
+        jpegs = []
+        for image in images:
+            output = cStringIO.StringIO()
+            jpeg = misc.imsave(output, image, format='jpeg')
+            jpegs.append(jpeg)
+        image_pkg["images"] = jpegs
+    return image_pkg
+
+def testImages( options ):
+    with PiVideoStream( resolution=(480,480) ) as vs:
+    #vs = PiVideoStream( resolution=(480,480) )
+        vs.start()
+        sleep(1) # seems to be necessary
+
+        images = []
+        for x in range(options.steps):
+            image = vs.read()
+            if image is not None:
+                images.append( image )
+            #sleep(0.5)
+
+    #vs.stop()
+    print "Collected images"
+
+    if not os.path.exists(options.dir_ep):
+        os.makedirs(options.dir_ep)
+
+    options.im_format = "numpy"
+    t_start = time()
+    pkg = packageImages( images, [], options )
+    t1 = time()
+    print "Writing images"    
+    images_filename = os.path.join( options.dir_ep, options.episode + "_episode.pickle" )
+    with open(images_filename, 'wb') as f:
+        pickle.dump( pkg, f, pickle.HIGHEST_PROTOCOL)
+    t2 = time()
+    print "Finished Writing %d images" % (len(images),)
+    print "prepare: %f\n  write: %f" % (t1 - t_start, t2 - t1)
 
 def getOptions():
     usage = "Usage: python ./episode.py [--name=<ep name>] <model name>"
@@ -263,12 +302,15 @@ def getOptions():
 
     options.model_name = args[0]
 
+    # Hard code this for now
+    options.im_format = "numpy"
+
     return (options, args)
 
 def test(options):
-    print options.dir_ep
-    print options.dir_model
-
+    #print options.dir_ep
+    #print options.dir_model
+    testImages( options )
     exit()
 
 if __name__ == "__main__":
@@ -282,4 +324,9 @@ if __name__ == "__main__":
         initializeModels( options )
         exit()
 
-    runEpisode( options )
+    try:
+        runEpisode( options )
+    except (Exception, KeyboardInterrupt, SystemExit):
+        print "Stopping motors"
+        sendMotorCommand( "stop", options ) # always stop the motors before ending
+        raise

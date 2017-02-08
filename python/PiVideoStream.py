@@ -25,6 +25,13 @@ class PiVideoStream:
         self.frame = None
         self.stopped = False
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        # I'm not 100% sure this will result in everything being closed. Best to also call stop().
+        self.stopped = True
+
     def start(self):
         # start the thread to read frames from the video stream
         Thread(target=self.update, args=()).start()
@@ -41,6 +48,7 @@ class PiVideoStream:
             # if the thread indicator variable is set, stop the thread
             # and resource camera resources
             if self.stopped:
+                print "Stopping PiVideoStream"
                 self.stream.close()
                 self.rawCapture.close()
                 self.camera.close()
