@@ -4,6 +4,7 @@ import pickle
 from malpi.layers import *
 from malpi.fast_layers import *
 from malpi.layer_utils import *
+from malpi.rnn_layers import *
 
 
 class MalpiModel(object):
@@ -77,7 +78,7 @@ class MalpiModel(object):
             input_dim = output_dim
             hidden_dim = params["hidden"]
             #output_dim = params["output"]
-            self.params['Wx'+layer_num_str] = wscale * np.random.randn(input_dim, 4*hidden_dim)
+            self.params['Wx'+layer_num_str] = wscale * np.random.randn( np.prod(input_dim), 4*hidden_dim)
             self.params['Wh'+layer_num_str] = wscale * np.random.randn(hidden_dim, 4*hidden_dim)
             self.params['b'+layer_num_str] = np.zeros(4*hidden_dim)
             #self.params['Wo'+layer_num_str] = wscale * np.random.randn(hidden_dim,output_dim)
@@ -86,8 +87,9 @@ class MalpiModel(object):
             prev['prev_h'] = np.zeros((1,hidden_dim))
             prev['prev_c'] = np.zeros((1,hidden_dim))
             self.lstm_prev[layer_num] = prev
+            output_dim = [hidden_dim]
             if verbose:
-                print "LSTM %d -> %d" % (hidden_dim,output_dim)
+                print "LSTM %d -> %s" % (np.prod(input_dim),str(output_dim))
         elif layer.startswith(("fc-","FC-")):
             hidden = int( layer.split("-",1)[1] )
             if 'relu' in layer_params and not layer_params['relu']:
@@ -217,8 +219,6 @@ class MalpiModel(object):
             Wx = self.params['Wx'+layer_num_str]
             Wh = self.params['Wh'+layer_num_str]
             b = self.params['b'+layer_num_str]
-            Wo = self.params['Wo'+layer_num_str]
-            bo = self.params['bo'+layer_num_str]
             prev_h = self.lstm_prev[layer_num]['prev_h']
             prev_c = self.lstm_prev[layer_num]['prev_c']
             cache = layer_caches[layer_num-1]
@@ -311,6 +311,16 @@ class MalpiModel(object):
             print layer
             print "    " + str(params)
             print "    W: " + str(W.shape) + " b: " + str(b.shape) + " #: " + str(cnt)
+
+        elif layer.startswith(("lstm","LSTM")):
+            Wx = self.params['Wx'+layer_num_str]
+            Wh = self.params['Wh'+layer_num_str]
+            b = self.params['b'+layer_num_str]
+            cnt = np.prod( Wx.shape ) + np.prod(Wh.shape) + np.prod( b.shape )
+            total_num_param += cnt
+            print layer
+            print "    " + str(params)
+            print "    Wx: " + str(Wx.shape) + " Wh: " + str(Wh.shape) + " b: " + str(b.shape) + " #: " + str(cnt)
 
         elif layer.startswith(("fc-","FC-")):
             W = self.params['W'+layer_num_str]

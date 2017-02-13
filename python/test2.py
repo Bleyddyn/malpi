@@ -12,11 +12,7 @@ import numpy as np
 from scipy import ndimage
 from scipy import misc
 
-from malpi.cnn import *
-from malpi.lstm import *
-from malpi.rnn_layers import *
-
-from PiVideoStream import PiVideoStream
+from malpi.model import *
 
 try:
     import config
@@ -27,35 +23,25 @@ except:
 
 def initializeModels( options ):
     imsize = 79
-    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32"]
+    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "lstml", "FC-5"]
     layer_params = [{'filter_size':3, 'stride':2, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
         {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-        {'filter_size':3} ]
-    model = MalpiConvNet(layers, layer_params, input_dim=(3,imsize,imsize), reg=.005, dtype=np.float32, verbose=True)
+        {'filter_size':3}, {'hidden':500}, {} ]
+    model = MalpiModel(layers, layer_params, input_dim=(3,imsize,imsize), reg=.005, dtype=np.float32, verbose=True)
     model.name = options.model_name
 
     print
     model.describe()
     print
 
-    N = 1
-    D = 32*10*10
-    H = 500
-    nA = 5
-
-    lstm_model = MalpiLSTM( D, H, nA, dtype=np.float32 )
-    lstm_model.name = options.model_name
-
-    lstm_model.params['bo'][0] += 1 # Bias the output to move the robot forward
-
-    lstm_model.describe()
+    model.params['b7'][0] += 1 # Bias the output to move the robot forward
 
     filename = os.path.join( options.dir_model, options.model_name + ".pickle" )
     with open(filename, 'wb') as f:
-        pickle.dump( (model,lstm_model), f, pickle.HIGHEST_PROTOCOL)
+        pickle.dump( model, f, pickle.HIGHEST_PROTOCOL)
 
-def loadModels( options, verbose=True ):
-    """ Will return a tuple of (cnn_model, lstm_model), or (None,None) if the load failed.  """
+def loadModel( options, verbose=True ):
+    """ Will return a model from the pickle file, or None if the load failed.  """
     filename = os.path.join( options.dir_model, options.model_name + ".pickle" )
     try:
         with open(filename, 'rb') as f:
@@ -63,7 +49,7 @@ def loadModels( options, verbose=True ):
     except IOError as err:
         if verbose:
             print("IO error: {0}".format(err))
-        return (None,None)
+        return None
 
 def log( message, options ):
     logFileName = os.path.join(options.dir_ep, options.episode) + ".log"
@@ -161,8 +147,8 @@ def softmax(x):
   return probs
 
 def runEpisode( options ):
-    (model, lstm_model) = loadModels( options, verbose=True )
-    if not model or not lstm_model:
+    model = loadModel( options, verbose=True )
+    if not model:
         print "Error reading model: %s" % options.model_name
         return
 
@@ -173,51 +159,34 @@ def runEpisode( options ):
     actions = []
 
     motorSpeed = 230
-    sendMotorCommand( 'speed ' + str(motorSpeed), options ) # Make sure we're using a consistent motor speed
+    #sendMotorCommand( 'speed ' + str(motorSpeed), options ) # Make sure we're using a consistent motor speed
     log( 'Motor Speed: ' + str(motorSpeed), options )
 
-    #sendCameraCommand('video_start '+options.episode, options) # Tell the Camera Daemon to start recording video
-    with PiVideoStream( resolution=(480,480) ) as vs:
-        vs.start()
-        sleep(1) # Let the camera warm up
+    log( "Start episode", options )
+    imsize = model.input_dim[1]
+    image = getOneTestImage(imsize)
 
-        log( "Start episode", options )
-        imsize = model.input_dim[1]
-
-        t_start = time()
-        time_steps = options.steps
-        for x in range(time_steps):
-            image = vs.read()
-            if image is not None:
-                images.append( image )
-                image = preprocessOneImage(image, imsize)
-                cnn_out = model.loss(image)
-                action_probs = lstm_model.loss(cnn_out)
-                action_probs = action_probs[0]
-                # Sample an action
-                action = np.random.choice(np.arange(len(action_probs)), p=action_probs)
-                actions.append(action)
-                log( "Action: " + str(action), options )
-                sendMotorCommand( actionToCommand(action), options )
-                print "Action: %s" % (actionToCommand(action),)
-                #print "%f - %f - %f" % ( (t2 - t1), (t3 - t2), (t4 - t3))
+    t_start = time()
+    time_steps = options.steps
+    for x in range(time_steps):
+        images.append( image )
+        #image = preprocessOneImage(image, imsize)
+        action_probs = model.loss(image)
+        action_probs = action_probs[0]
+        # Sample an action
+        action = np.random.choice(np.arange(len(action_probs)), p=action_probs)
+        actions.append(action)
+        log( "Action: " + str(action), options )
+        #sendMotorCommand( actionToCommand(action), options )
+        print "Action: %s" % (actionToCommand(action),)
+        #print "%f - %f - %f" % ( (t2 - t1), (t3 - t2), (t4 - t3))
 # 0.872346 - 0.133617 - 0.186266
-
-    # Shouldn't be necessary anymore
-    #vs.stop()
 
     log( "Stop episode", options )
     #sendCameraCommand('video_stop', options) # Tell the Camera Daemon to stop recording video
-    sendMotorCommand( "stop", options ) # always stop the motors before ending
+    #sendMotorCommand( "stop", options ) # always stop the motors before ending
     print "Episode elapsed time: %f" % ((time() - t_start),)
     sleep(1)
-
-# Move the video file to the episode directory
-#    video_path = os.path.join(config.directories['video'],options.episode+".h264")
-#    if os.path.exists(video_path):
-#        shutil.move( video_path, os.path.join(options.dir_ep, options.episode+".h264") )
-#    else:
-#        print "Video file is missing: %s" % (video_path,)
 
     print "Writing Episode Data"    
     pkg = packageImages( images, actions, options )
@@ -243,37 +212,6 @@ def packageImages( images, actions, options ):
             jpegs.append(jpeg)
         image_pkg["images"] = jpegs
     return image_pkg
-
-def testImages( options ):
-    with PiVideoStream( resolution=(480,480) ) as vs:
-    #vs = PiVideoStream( resolution=(480,480) )
-        vs.start()
-        sleep(1) # seems to be necessary
-
-        images = []
-        for x in range(options.steps):
-            image = vs.read()
-            if image is not None:
-                images.append( image )
-            #sleep(0.5)
-
-    #vs.stop()
-    print "Collected images"
-
-    if not os.path.exists(options.dir_ep):
-        os.makedirs(options.dir_ep)
-
-    options.im_format = "numpy"
-    t_start = time()
-    pkg = packageImages( images, [], options )
-    t1 = time()
-    print "Writing images"    
-    images_filename = os.path.join( options.dir_ep, options.episode + "_episode.pickle" )
-    with open(images_filename, 'wb') as f:
-        pickle.dump( pkg, f, pickle.HIGHEST_PROTOCOL)
-    t2 = time()
-    print "Finished Writing %d images" % (len(images),)
-    print "prepare: %f\n  write: %f" % (t1 - t_start, t2 - t1)
 
 def getOptions():
     usage = "Usage: python ./episode.py [--name=<ep name>] <model name>"
@@ -334,5 +272,5 @@ if __name__ == "__main__":
         runEpisode( options )
     except (Exception, KeyboardInterrupt, SystemExit):
         print "Stopping motors"
-        sendMotorCommand( "stop", options ) # always stop the motors before ending
+        #sendMotorCommand( "stop", options ) # always stop the motors before ending
         raise
