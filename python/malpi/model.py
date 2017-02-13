@@ -6,9 +6,9 @@ from malpi.fast_layers import *
 from malpi.layer_utils import *
 
 
-class MalpiConvNet(object):
+class MalpiModel(object):
   """
-  A multi-layer convolutional network for experimenting with the architecture.
+  A multi-layer network for experimenting with the robots ML architecture.
 
   e.g.:  
   conv - relu - 2x2 max pool - affine - relu - affine - softmax
@@ -25,15 +25,12 @@ class MalpiConvNet(object):
     Initialize a new network.
     
     Inputs:
-    - layers: Array of strings describing network topology. e.g. ['conv-32','maxpool','fc-10']
+    - layers: Array of strings describing network topology. e.g. ['conv-32','maxpool','lstm', 'fc-10']
     - layer_params: Array of tuples giving parameters for each layer. Must be same length as layers.
     - input_dim: Tuple (C, H, W) giving size of input data.
     - weight_scale: Default scalar giving standard deviation for random initialization of weights.
     - reg: Scalar giving L2 regularization strength.
     - dtype: numpy datatype to use for computation.
-
-
-    Try: Conv-64, Conv-64, maxpool, conv-128, conv-128, maxpool, conv-256, conv-256, maxpool, conv-512, conv-512, maxpool, conv-512, conv-512, maxpool, FC-4096, FC-4096, FC-1000, softmax
     """
 
     if len(layers) != len(layer_params):
