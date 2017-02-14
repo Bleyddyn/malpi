@@ -12,11 +12,13 @@ import numpy as np
 from scipy import ndimage
 from scipy import misc
 
-from malpi.cnn import *
-from malpi.lstm import *
-from malpi.rnn_layers import *
+#from malpi.cnn import *
+#from malpi.lstm import *
+#from malpi.rnn_layers import *
+from malpi.model import *
 
 from PiVideoStream import PiVideoStream
+
 
 try:
     import config
@@ -25,37 +27,27 @@ except:
     print "Try copying config_empty.py to config.py and re-running."
     exit()
 
-def initializeModels( options ):
+def initializeModel( options ):
     imsize = 79
-    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32"]
+    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "lstml", "FC-5"]
     layer_params = [{'filter_size':3, 'stride':2, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
         {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-        {'filter_size':3} ]
-    model = MalpiConvNet(layers, layer_params, input_dim=(3,imsize,imsize), reg=.005, dtype=np.float32, verbose=True)
+        {'filter_size':3}, {'hidden':500}, {} ]
+    model = MalpiModel(layers, layer_params, input_dim=(3,imsize,imsize), reg=.005, dtype=np.float32, verbose=True)
     model.name = options.model_name
 
     print
     model.describe()
     print
 
-    N = 1
-    D = 32*10*10
-    H = 500
-    nA = 5
-
-    lstm_model = MalpiLSTM( D, H, nA, dtype=np.float32 )
-    lstm_model.name = options.model_name
-
-    lstm_model.params['bo'][0] += 1 # Bias the output to move the robot forward
-
-    lstm_model.describe()
+    model.params['b7'][0] += 1 # Bias the output of the final layer to move the robot forward
 
     filename = os.path.join( options.dir_model, options.model_name + ".pickle" )
     with open(filename, 'wb') as f:
-        pickle.dump( (model,lstm_model), f, pickle.HIGHEST_PROTOCOL)
+        pickle.dump( model, f, pickle.HIGHEST_PROTOCOL)
 
-def loadModels( options, verbose=True ):
-    """ Will return a tuple of (cnn_model, lstm_model), or (None,None) if the load failed.  """
+def loadModel( options, verbose=True ):
+    """ Will return a model from the pickle file, or None if the load failed.  """
     filename = os.path.join( options.dir_model, options.model_name + ".pickle" )
     try:
         with open(filename, 'rb') as f:
@@ -63,7 +55,7 @@ def loadModels( options, verbose=True ):
     except IOError as err:
         if verbose:
             print("IO error: {0}".format(err))
-        return (None,None)
+        return None
 
 def log( message, options ):
     logFileName = os.path.join(options.dir_ep, options.episode) + ".log"
@@ -161,8 +153,8 @@ def softmax(x):
   return probs
 
 def runEpisode( options ):
-    (model, lstm_model) = loadModels( options, verbose=True )
-    if not model or not lstm_model:
+    model = loadModel( options, verbose=True )
+    if not model:
         print "Error reading model: %s" % options.model_name
         return
 
@@ -191,9 +183,9 @@ def runEpisode( options ):
             if image is not None:
                 images.append( image )
                 image = preprocessOneImage(image, imsize)
-                cnn_out = model.loss(image)
-                action_probs = lstm_model.loss(cnn_out)
+                action_probs = model.loss(image)
                 action_probs = action_probs[0]
+                action_probs = softmax(action_probs)
                 # Sample an action
                 action = np.random.choice(np.arange(len(action_probs)), p=action_probs)
                 actions.append(action)
@@ -327,7 +319,7 @@ if __name__ == "__main__":
 
     if options.initialize:
         print "Initializing cnn and lstm models..."
-        initializeModels( options )
+        initializeModel( options )
         exit()
 
     try:

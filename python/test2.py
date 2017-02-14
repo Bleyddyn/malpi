@@ -173,6 +173,11 @@ def runEpisode( options ):
         #image = preprocessOneImage(image, imsize)
         action_probs = model.loss(image)
         action_probs = action_probs[0]
+        print action_probs
+        action_probs = softmax(action_probs)
+        print action_probs
+        action_probs = softmax(action_probs)
+        print action_probs
         # Sample an action
         action = np.random.choice(np.arange(len(action_probs)), p=action_probs)
         actions.append(action)
