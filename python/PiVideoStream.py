@@ -12,11 +12,13 @@ class PiVideoStream:
             # Short delay for the camera to warm up?
             frame = vs.read()
     """
-    def __init__(self, resolution=(320, 240), framerate=32):
+    def __init__(self, resolution=(320, 240), framerate=32, brightness=None):
         # initialize the camera and stream
         self.camera = PiCamera()
         self.camera.resolution = resolution
         self.camera.framerate = framerate
+        if brightness:
+            self.camera.brightness = brightness
         self.rawCapture = PiRGBArray(self.camera, size=resolution)
         self.stream = self.camera.capture_continuous(self.rawCapture, format="rgb", use_video_port=True)
 

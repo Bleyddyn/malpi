@@ -165,11 +165,15 @@ def runEpisode( options ):
     actions = []
 
     motorSpeed = 230
+    framerate = 32
+    brightness = 60
     sendMotorCommand( 'speed ' + str(motorSpeed), options ) # Make sure we're using a consistent motor speed
     log( 'Motor Speed: ' + str(motorSpeed), options )
+    log( 'Camera framerate: ' + str(framerate), options )
+    log( 'Camera brightness: ' + str(brightness), options )
 
     #sendCameraCommand('video_start '+options.episode, options) # Tell the Camera Daemon to start recording video
-    with PiVideoStream( resolution=(480,480) ) as vs:
+    with PiVideoStream( resolution=(480,480), framerate=framerate, brightness=brightness ) as vs:
         vs.start()
         sleep(1) # Let the camera warm up
 
@@ -191,7 +195,7 @@ def runEpisode( options ):
                 actions.append(action)
                 log( "Action: " + str(action), options )
                 sendMotorCommand( actionToCommand(action), options )
-                print "Action: %s" % (actionToCommand(action),)
+                print "Action %d: %s" % (x,actionToCommand(action))
                 #print "%f - %f - %f" % ( (t2 - t1), (t3 - t2), (t4 - t3))
 # 0.872346 - 0.133617 - 0.186266
 
