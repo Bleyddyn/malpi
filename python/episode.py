@@ -12,11 +12,8 @@ import numpy as np
 from scipy import ndimage
 from scipy import misc
 
-#from malpi.cnn import *
-#from malpi.lstm import *
-#from malpi.rnn_layers import *
 from malpi.model import *
-
+from accelerometer import accelerometer
 from PiVideoStream import PiVideoStream
 
 
@@ -311,8 +308,9 @@ def getOptions():
 
 def test(options):
     #print options.dir_ep
-    #print options.dir_model
-    testImages( options )
+    print options.dir_model
+    #testImages( options )
+    accel = accelerometer.Accelerometer()
     exit()
 
 if __name__ == "__main__":

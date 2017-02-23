@@ -209,8 +209,8 @@ for idx, yi in enumerate(y):
 crash = np.abs(x) + np.abs(y) + (np.abs(z) * 2)
 n = 3
 crash = moving_average(crash, n=n)
-np.append(crash,  [0] * n )
-labels[crash >= 1.0] = 0.3
+crash = np.append(crash,  [0] * (n-1) )
+labels[crash >= 1.1] = 0.3
 # expand crashes
 for i in range(2,len(labels)-2):
     if abs(labels[i+2] - 0.3) < 0.0001:
