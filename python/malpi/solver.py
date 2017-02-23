@@ -71,17 +71,13 @@ class Solver(object):
       names to gradients of the loss with respect to those parameters.
   """
 
-  def __init__(self, model, data, **kwargs):
+  def __init__(self, model, **kwargs):
     """
     Construct a new Solver instance.
     
     Required arguments:
-    - model: A model object conforming to the API described above
-    - data: A dictionary of training and validation data with the following:
-      'X_train': Array of shape (N_train, d_1, ..., d_k) giving training images
-      'X_val': Array of shape (N_val, d_1, ..., d_k) giving validation images
-      'y_train': Array of shape (N_train,) giving labels for training images
-      'y_val': Array of shape (N_val,) giving labels for validation images
+    - cnn_model: A convolutional model object conforming to the API described above
+    - lstm_model: An lstm model object conforming to the API described above
       
     Optional arguments:
     - update_rule: A string giving the name of an update rule in optim.py.
@@ -101,16 +97,12 @@ class Solver(object):
       training.
     """
     self.model = model
-    self.X_train = data['X_train']
-    self.y_train = data['y_train']
-    self.X_val = data['X_val']
-    self.y_val = data['y_val']
     
     # Unpack keyword arguments
     self.update_rule = kwargs.pop('update_rule', 'sgd')
     self.optim_config = kwargs.pop('optim_config', {})
     self.lr_decay = kwargs.pop('lr_decay', 1.0)
-    self.batch_size = kwargs.pop('batch_size', 100)
+    self.batch_size = kwargs.pop('batch_size', 10)
     self.num_epochs = kwargs.pop('num_epochs', 10)
 
     self.print_every = kwargs.pop('print_every', 10)
@@ -150,19 +142,14 @@ class Solver(object):
       self.optim_configs[p] = d
 
 
-  def _step(self):
+  def _step(self, state, action, reward):
     """
     Make a single gradient update. This is called by train() and should not
     be called manually.
     """
-    # Make a minibatch of training data
-    num_train = self.X_train.shape[0]
-    batch_mask = np.random.choice(num_train, self.batch_size)
-    X_batch = self.X_train[batch_mask]
-    y_batch = self.y_train[batch_mask]
-
     # Compute loss and gradient
     loss, grads = self.model.loss(X_batch, y_batch)
+    action_probs = action_probs[0]
     self.loss_history.append(loss)
 
     # Perform a parameter update
@@ -215,7 +202,7 @@ class Solver(object):
     return acc
 
 
-  def train(self):
+  def train(self, states, actions, rewards):
     """
     Run optimization to train the model.
     """
