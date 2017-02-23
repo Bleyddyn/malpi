@@ -136,10 +136,18 @@ def baseline( gen=False ):
     return base
 
 def moving_rms( times, x, y, z ):
-    with open('forward1.pickle', 'rb') as f:
+    with open('forward_avg.pickle', 'rb') as f:
         f1 = pickle.load( f )
 
     f1 = np.array(f1)
+    rms = np.zeros( (len(times)) )
+    for i in range( len(times) - len(f1) ):
+        samp = y[i:i+len(f1)]
+        rms[i] = rmse(samp,f1)
+    return rms
+
+def stopped_rms( times, x, y, z ):
+    f1 = np.zeros(5)
     rms = np.zeros( (len(times)) )
     for i in range( len(times) - len(f1) ):
         samp = y[i:i+len(f1)]
@@ -172,9 +180,51 @@ times, x, y, z = extract(data, do_norm=False)
 #y = y - np.mean(y)
 z = z - np.mean(z)
 
-#rms = moving_rms( times, x, y, z )
-#plt.plot(times, rms, 'ko', times, y, 'bs' )
-#plt.show()
+labels = np.zeros( (len(times)) )
+
+rms_f = moving_rms( times, x, y, z )
+rms_s = stopped_rms( times, x, y, z )
+
+labels[rms_s < 0.025] = 0.1
+
+state = 'stopped'
+prev = -100
+for idx, yi in enumerate(y):
+    if rms_f[idx] < 0.08 and state is 'stopped':
+        state = 'check'
+        prev = rms_f[idx]
+    elif state is 'check':
+        if rms_f[idx] > prev:
+            state = 'forward'
+            prev = -100
+            labels[idx] = 0.2
+        else:
+            prev = rms_f[idx]
+    elif state is 'forward':
+        if abs(labels[idx] - 0.1) < 0.0001:
+            state = 'stopped'
+        else:
+            labels[idx] = 0.2
+
+crash = np.abs(x) + np.abs(y) + (np.abs(z) * 2)
+n = 3
+crash = moving_average(crash, n=n)
+np.append(crash,  [0] * n )
+labels[crash >= 1.0] = 0.3
+# expand crashes
+for i in range(2,len(labels)-2):
+    if abs(labels[i+2] - 0.3) < 0.0001:
+        labels[i] = 0.3
+    elif abs(labels[i+1] - 0.3) < 0.0001:
+        labels[i] = 0.3
+for i in range(len(labels)-2,2,-1):
+    if abs(labels[i-1] - 0.3) < 0.0001:
+        labels[i] = 0.3
+    elif abs(labels[i-2] - 0.3) < 0.0001:
+        labels[i] = 0.3
+
+plt.plot(times, labels, 'ko', times, y, 'bs' )
+plt.show()
 
 #labels = label1( times, x, y, z )
 #plt.plot(times, labels, 'ko', times, x, 'r--', times, y, 'bs', times, z, 'g^')
@@ -184,11 +234,11 @@ z = z - np.mean(z)
 #y = np.cumsum(y)
 #z = np.cumsum(z)
 
-plt.plot(times, x, 'r--', times, y, 'bs', times, z, 'g^')
-plt.show()
+#plt.plot(times, x, 'r--', times, y, 'bs', times, z, 'g^')
+#plt.show()
 
-count = cropPeaks()
-plotPeaks(count)
+#count = cropPeaks()
+#plotPeaks(count)
 
 #convolve( times, x, y, z )
 
