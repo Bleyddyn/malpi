@@ -160,6 +160,7 @@ def runEpisode( options ):
 
     images = []
     actions = []
+    action_times = []
 
     motorSpeed = 230
     framerate = 32
@@ -169,9 +170,12 @@ def runEpisode( options ):
     log( 'Camera framerate: ' + str(framerate), options )
     log( 'Camera brightness: ' + str(brightness), options )
 
+    accel = accelerometer.Accelerometer()
+
     #sendCameraCommand('video_start '+options.episode, options) # Tell the Camera Daemon to start recording video
     with PiVideoStream( resolution=(480,480), framerate=framerate, brightness=brightness ) as vs:
         vs.start()
+        accel.start()
         sleep(1) # Let the camera warm up
 
         log( "Start episode", options )
@@ -190,6 +194,7 @@ def runEpisode( options ):
                 # Sample an action
                 action = np.random.choice(np.arange(len(action_probs)), p=action_probs)
                 actions.append(action)
+                action_times.append(time())
                 log( "Action: " + str(action), options )
                 sendMotorCommand( actionToCommand(action), options )
                 print "Action %d: %s" % (x,actionToCommand(action))
@@ -198,6 +203,7 @@ def runEpisode( options ):
 
     # Shouldn't be necessary anymore
     #vs.stop()
+    accel.stop()
 
     log( "Stop episode", options )
     #sendCameraCommand('video_stop', options) # Tell the Camera Daemon to stop recording video
@@ -213,19 +219,21 @@ def runEpisode( options ):
 #        print "Video file is missing: %s" % (video_path,)
 
     print "Writing Episode Data"    
-    pkg = packageImages( images, actions, options )
+    pkg = packageImages( images, actions, action_times, accel.read(), options )
     images_filename = os.path.join( options.dir_ep, options.episode + "_episode.pickle" )
     with open(images_filename, 'wb') as f:
         pickle.dump( pkg, f, pickle.HIGHEST_PROTOCOL)
     print "Finished Writing Episode Data"    
 
-def packageImages( images, actions, options ):
+def packageImages( images, actions, action_times, accel_data, options ):
     image_pkg = { }
     image_pkg["episode"] = options.episode
     image_pkg["format"] = options.im_format
     image_pkg["date"] = datetime.datetime.now()
     image_pkg["model"] = options.model_name
     image_pkg["actions"] = actions
+    image_pkg["action_times"] = action_times
+    image_pkg["accelerometer"] = accel_data
     if options.im_format == "numpy":
         image_pkg["images"] = images
     elif options.im_format == "jpeg":

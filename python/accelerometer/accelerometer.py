@@ -49,7 +49,7 @@ class Accelerometer:
             self.results.append( [time(),axes['x'], axes['y'], axes['z']] )
             self.count += 1
             self.elapsed = time() - self.t_start
-            sleep(0.0085)
+            sleep(0.0085) # With overhead, this works out to about 100 samples per second
             # if the thread indicator variable is set, stop the thread
             # and resource camera resources
             if self.stopped:
