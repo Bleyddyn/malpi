@@ -3,7 +3,6 @@ from time import time
 from time import sleep
 import datetime
 from optparse import OptionParser
-import socket
 import cStringIO
 import io
 import shutil
@@ -15,7 +14,7 @@ from scipy import misc
 from malpi.model import *
 from accelerometer import accelerometer
 from PiVideoStream import PiVideoStream
-
+from motors import Motors
 
 try:
     import config
@@ -84,12 +83,12 @@ def crop_center( img, cropx, cropy):
 def preprocessOneImage(image, imsize):
 #image.shape (480, 720, 3)
     image = image.transpose(2,1,0)
-    width = image.shape[1]
+#    width = image.shape[1]
     # shape = (3, 720, 480)
-    if width > 480:
-        min = (width - 480) / 2
-        image = image[:,min:min+480,:]
-    image = misc.imresize(image,(imsize,imsize))
+#    if width > 480:
+#        min = (width - 480) / 2
+#        image = image[:,min:min+480,:]
+#    image = misc.imresize(image,(imsize,imsize))
     # shape = (3, imsize, imsize)
     image = image.reshape(1,3,imsize,imsize)
     image = image.astype(np.float32)
@@ -100,49 +99,9 @@ misc.imsave('frame2.jpeg', images[2,:,:,:])
 misc.imsave('frame5.jpeg', images[5,:,:,:])
 """
 
+commands = ["forward","backward","left","right","stop"]
 def actionToCommand(action):
-    commands = ["forward","backward","left","right","stop"]
     return commands[action]
-
-def sendMotorCommand(command, options):
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        host ="127.0.0.1"
-        port = 12345
-        s.connect((host,port))
-        s.sendall(command.encode()) 
-        s.shutdown(socket.SHUT_WR)
-        s.close()
-    except Exception as inst:
-        error_string = "Error in sendMotorCommand: %s" % str(inst)
-        print error_string
-        log( error_string, options )
-
-def sendCameraCommand(command, options):
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        host ="127.0.0.1"
-        port = 12346
-        s.connect((host,port))
-        s.sendall(command.encode()) 
-        s.shutdown(socket.SHUT_WR)
-        if command == 'image':
-            sfile = s.makefile('r')
-            jpeg_byte_string = sfile.read() 
-            strobj = cStringIO.StringIO(jpeg_byte_string)
-            image = ndimage.imread(strobj)
-            sfile.close()
-        else:
-            image = None
-        s.close()
-        return image
-    except Exception as inst:
-        error_string = "Error in sendCameraCommand: %s" % str(inst)
-        print error_string
-        log( error_string, options )
-        return None
-
-    return None
 
 def softmax(x):
   probs = np.exp(x - np.max(x))
@@ -165,49 +124,43 @@ def runEpisode( options ):
     motorSpeed = 230
     framerate = 32
     brightness = 60
-    sendMotorCommand( 'speed ' + str(motorSpeed), options ) # Make sure we're using a consistent motor speed
+    imsize = model.input_dim[1]
     log( 'Motor Speed: ' + str(motorSpeed), options )
     log( 'Camera framerate: ' + str(framerate), options )
     log( 'Camera brightness: ' + str(brightness), options )
 
     accel = accelerometer.Accelerometer()
 
-    #sendCameraCommand('video_start '+options.episode, options) # Tell the Camera Daemon to start recording video
-    with PiVideoStream( resolution=(480,480), framerate=framerate, brightness=brightness ) as vs:
-        vs.start()
-        accel.start()
-        sleep(1) # Let the camera warm up
+    with Motors() as motors:
+        motors.setSpeed(motorSpeed)
+        with PiVideoStream( resolution=(480,480), imsize=imsize, framerate=framerate, brightness=brightness ) as vs:
+            vs.start()
+            accel.start()
+            sleep(1) # Let the camera warm up
 
-        log( "Start episode", options )
-        imsize = model.input_dim[1]
+            log( "Start episode", options )
 
-        t_start = time()
-        time_steps = options.steps
-        for x in range(time_steps):
-            image = vs.read()
-            if image is not None:
-                images.append( image )
-                image = preprocessOneImage(image, imsize)
-                action_probs = model.loss(image)
-                action_probs = action_probs[0]
-                action_probs = softmax(action_probs)
-                # Sample an action
-                action = np.random.choice(np.arange(len(action_probs)), p=action_probs)
-                actions.append(action)
-                action_times.append(time())
-                log( "Action: " + str(action), options )
-                sendMotorCommand( actionToCommand(action), options )
-                print "Action %d: %s" % (x,actionToCommand(action))
-                #print "%f - %f - %f" % ( (t2 - t1), (t3 - t2), (t4 - t3))
-# 0.872346 - 0.133617 - 0.186266
+            t_start = time()
+            time_steps = options.steps
+            for x in range(time_steps):
+                (full,image) = vs.read()
+                if full is not None:
+                    images.append( full )
+                    if image is None:
+                        image = preprocessOneImage(full, imsize)
+                    action_probs = model.loss(image)
+                    action_probs = action_probs[0]
+                    action_probs = softmax(action_probs)
+                    action = np.random.choice(np.arange(len(action_probs)), p=action_probs) # Sample an action
+                    actions.append(action)
+                    action_times.append(time())
+                    motors.command( actionToCommand(action) )
+                    print "Action %d: %s" % (x,actionToCommand(action))
+                    #print "%f - %f - %f" % ( (t2 - t1), (t3 - t2), (t4 - t3))
 
-    # Shouldn't be necessary anymore
-    #vs.stop()
     accel.stop()
 
     log( "Stop episode", options )
-    #sendCameraCommand('video_stop', options) # Tell the Camera Daemon to stop recording video
-    sendMotorCommand( "stop", options ) # always stop the motors before ending
     print "Episode elapsed time: %f" % ((time() - t_start),)
     sleep(1)
 
@@ -246,35 +199,35 @@ def packageImages( images, actions, action_times, accel_data, options ):
     return image_pkg
 
 def testImages( options ):
-    with PiVideoStream( resolution=(480,480) ) as vs:
-    #vs = PiVideoStream( resolution=(480,480) )
+    with PiVideoStream( resolution=(480,480), imsize=79 ) as vs:
         vs.start()
         sleep(1) # seems to be necessary
 
         images = []
         for x in range(options.steps):
-            image = vs.read()
+            (image, pre) = vs.read()
             if image is not None:
                 images.append( image )
-            #sleep(0.5)
+                print image.shape
+                print pre.shape
 
-    #vs.stop()
-    print "Collected images"
-
-    if not os.path.exists(options.dir_ep):
-        os.makedirs(options.dir_ep)
-
-    options.im_format = "numpy"
-    t_start = time()
-    pkg = packageImages( images, [], options )
-    t1 = time()
-    print "Writing images"    
-    images_filename = os.path.join( options.dir_ep, options.episode + "_episode.pickle" )
-    with open(images_filename, 'wb') as f:
-        pickle.dump( pkg, f, pickle.HIGHEST_PROTOCOL)
-    t2 = time()
-    print "Finished Writing %d images" % (len(images),)
-    print "prepare: %f\n  write: %f" % (t1 - t_start, t2 - t1)
+#    #vs.stop()
+#    print "Collected images"
+#
+#    if not os.path.exists(options.dir_ep):
+#        os.makedirs(options.dir_ep)
+#
+#    options.im_format = "numpy"
+#    t_start = time()
+#    pkg = packageImages( images, [], options )
+#    t1 = time()
+#    print "Writing images"    
+#    images_filename = os.path.join( options.dir_ep, options.episode + "_episode.pickle" )
+#    with open(images_filename, 'wb') as f:
+#        pickle.dump( pkg, f, pickle.HIGHEST_PROTOCOL)
+#    t2 = time()
+#    print "Finished Writing %d images" % (len(images),)
+#    print "prepare: %f\n  write: %f" % (t1 - t_start, t2 - t1)
 
 def getOptions():
     usage = "Usage: python ./episode.py [--name=<ep name>] <model name>"
@@ -317,8 +270,10 @@ def getOptions():
 def test(options):
     #print options.dir_ep
     print options.dir_model
-    #testImages( options )
+    testImages( options )
     accel = accelerometer.Accelerometer()
+    with Motors() as motor:
+        motor.stop()
     exit()
 
 if __name__ == "__main__":
@@ -332,9 +287,4 @@ if __name__ == "__main__":
         initializeModel( options )
         exit()
 
-    try:
-        runEpisode( options )
-    except (Exception, KeyboardInterrupt, SystemExit):
-        print "Stopping motors"
-        sendMotorCommand( "stop", options ) # always stop the motors before ending
-        raise
+    runEpisode( options )
