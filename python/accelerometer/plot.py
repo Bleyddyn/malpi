@@ -166,6 +166,10 @@ def label1( times, x, y, z ):
     labels[res >= 1.0] = 1.0
     return labels
 
+commands = ["forward","backward","left","right","stop"]
+def actionToCommand(action):
+    return commands[action]
+
 if len(args) != 1:
     print "Usage: plot.py <file.pickle>"
     exit()
@@ -184,9 +188,11 @@ if type(data) is not list:
 base = baseline(gen=False)
 t0 = data[0][0]
 act_times = act_times - t0
-actions = ((actions + 1) * -1.0) / 3.0
+print [actionToCommand(act) for act in actions[0:5]]
+#actions = ((actions + 1) * -1.0) / 5.0
+actions = ((actions / 25.0) * 1.0) + 0.4
 
-times, x, y, z = extract(data, do_norm=False)
+times, x, y, z = extract(data, do_mavg=True, do_norm=False)
 #x = x - np.mean(x)
 #y = y - np.mean(y)
 z = z - np.mean(z)
@@ -219,8 +225,8 @@ for idx, yi in enumerate(y):
 
 crash = np.abs(x) + np.abs(y) + (np.abs(z) * 2)
 n = 3
-crash = moving_average(crash, n=n)
-crash = np.append(crash,  [0] * (n-1) )
+#crash = moving_average(crash, n=n)
+#crash = np.append(crash,  [0] * (n-1) )
 labels[crash >= 1.1] = 0.3
 # expand crashes
 for i in range(2,len(labels)-2):
@@ -234,7 +240,14 @@ for i in range(len(labels)-2,2,-1):
     elif abs(labels[i-2] - 0.3) < 0.0001:
         labels[i] = 0.3
 
-plt.plot(times, labels, 'ko', times, y, 'bs', times, x, 'r--', times, z, 'yx', act_times, actions, 'gx' )
+fig = plt.figure()
+ax = fig.add_subplot(111)
+ax.plot(times, labels, 'ko', times, y, 'bs', times, x, 'r--', times, z, 'yx', act_times, actions, 'gx' )
+ax.text(0.03, 0.4, 'Forward', fontsize=10)
+ax.text(0.03, 0.44, 'Backward', fontsize=10)
+ax.text(0.03, 0.48, 'Left', fontsize=10)
+ax.text(0.03, 0.52, 'Right', fontsize=10)
+ax.text(0.03, 0.56, 'Stop', fontsize=10)
 plt.show()
 
 #labels = label1( times, x, y, z )
