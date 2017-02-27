@@ -173,7 +173,18 @@ if len(args) != 1:
 with open(args[0]) as f:
     data = pickle.load(f)
 
+if type(data) is dict:
+    actions = np.array(data['actions'])
+    act_times = np.array(data['action_times'])
+    data = data['accelerometer']
+
+if type(data) is not list:
+    print "Invalid data type in %s: %s" % (args[0],str(type(data)))
+
 base = baseline(gen=False)
+t0 = data[0][0]
+act_times = act_times - t0
+actions = ((actions + 1) * -1.0) / 3.0
 
 times, x, y, z = extract(data, do_norm=False)
 #x = x - np.mean(x)
@@ -223,7 +234,7 @@ for i in range(len(labels)-2,2,-1):
     elif abs(labels[i-2] - 0.3) < 0.0001:
         labels[i] = 0.3
 
-plt.plot(times, labels, 'ko', times, y, 'bs' )
+plt.plot(times, labels, 'ko', times, y, 'bs', times, x, 'r--', times, z, 'yx', act_times, actions, 'gx' )
 plt.show()
 
 #labels = label1( times, x, y, z )

@@ -192,18 +192,19 @@ def describe( options ):
 
     print
 
+    short_keys = ['images', 'actions', 'rewards', 'action_times', 'accelerometer']
     for key, val in episode.iteritems():
-        if key == 'images' or key == 'actions' or key == 'rewards':
+        if key in short_keys:
             print "%s: %d" % (key, len(val))
         else:
             print "%s: %s" % (key, val)
 
 def getOptions():
-    usage = "Usage: python ./train.py <model name> <episode name> [<episode2 name>...]"
-    parser = OptionParser()
+    usage = "Usage: python %prog <model name> <episode name> [<episode2 name>...]"
+    parser = OptionParser( usage=usage )
     parser.add_option("-l","--list", help="Text file with a list of episodes, one per line.");
     parser.add_option("-i","--initialize", action="store_true", default=False, help="Initialize cnn and lstm models, save them to <model name>.pickle, then exit.");
-    parser.add_option("--dir_ep", help="Directory for saving all episode related files. Defaults to episode name.");
+    parser.add_option("--dir_ep", default="", help="Directory for saving all episode related files. Defaults to episode name.");
     parser.add_option("-d","--dir_model", default="", help="Directory for finding/initializing model files. Defaults to current directory.");
     parser.add_option("-j","--jpeg", action="store_true", default=False, help="Convert all images to jpegs and write to <dir_ep>/jpegs/.");
     parser.add_option("-r","--reward", default=None, help="Text file with rewards to be added to the episode. One per line. Count must match number of images/actions in episode.");
@@ -215,9 +216,6 @@ def getOptions():
     if len(args) != 2:
         print usage
         exit()
-
-    options.dir_ep = os.path.expanduser(options.dir_ep)
-    options.dir_model = os.path.expanduser(options.dir_model)
 
     if args[0].endswith('.pickle'):
         args[0] = args[0][:-7]
@@ -232,6 +230,9 @@ def getOptions():
         options.dir_ep = options.episode
     else:
         options.dir_ep = os.path.join( options.dir_ep, options.episode )
+
+    options.dir_ep = os.path.expanduser(options.dir_ep)
+    options.dir_model = os.path.expanduser(options.dir_model)
 
     # Hard code this for now
     options.im_format = "numpy"
