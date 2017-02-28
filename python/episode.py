@@ -116,6 +116,7 @@ def runEpisode( options ):
 
     if not os.path.exists(options.dir_ep):
         os.makedirs(options.dir_ep)
+    video_path = os.path.join( config.directories['video'], options.episode+".h264" )
 
     images = []
     actions = []
@@ -139,6 +140,8 @@ def runEpisode( options ):
             sleep(1) # Let the camera warm up
 
             log( "Start episode", options )
+            if options.video:
+                vs.startVideo(video_path)
 
             t_start = time()
             time_steps = options.steps
@@ -154,7 +157,10 @@ def runEpisode( options ):
                     action = np.random.choice(np.arange(len(action_probs)), p=action_probs) # Sample an action
                     actions.append(action)
                     action_times.append(time())
-                    motors.command( actionToCommand(action) )
+                    command = actionToCommand(action)
+                    motors.command( command )
+                    if options.video:
+                        vs.camera.annotate_text = command
                     print "Action %d: %s" % (x,actionToCommand(action))
                     #print "%f - %f - %f" % ( (t2 - t1), (t3 - t2), (t4 - t3))
 
@@ -165,11 +171,11 @@ def runEpisode( options ):
     sleep(1)
 
 # Move the video file to the episode directory
-#    video_path = os.path.join(config.directories['video'],options.episode+".h264")
-#    if os.path.exists(video_path):
-#        shutil.move( video_path, os.path.join(options.dir_ep, options.episode+".h264") )
-#    else:
-#        print "Video file is missing: %s" % (video_path,)
+    if options.video:
+        if os.path.exists(video_path):
+            shutil.move( video_path, os.path.join(options.dir_ep, options.episode+".h264") )
+        else:
+            print "Video file is missing: %s" % (video_path,)
 
     print "Writing Episode Data"    
     pkg = packageImages( images, actions, action_times, accel.read(), options )
@@ -203,13 +209,26 @@ def testImages( options ):
         vs.start()
         sleep(1) # seems to be necessary
 
+#        vs.startVideo("")
+#        sleep(2)
+        vs.camera.annotate_text = "Text 1"
+
         images = []
         for x in range(options.steps):
             (image, pre) = vs.read()
             if image is not None:
                 images.append( image )
-                print image.shape
-                print pre.shape
+        print vs.camera.recording
+        print "Collected %d images" % (len(images),)
+#        sleep(2)
+#        vs.camera.annotate_text = "Text 2"
+#        sleep(6)
+#        vs.stopVideo("")
+
+        fnameFormat = "test/image_%d.jpeg"
+        for idx, image in enumerate(images):
+            fname = fnameFormat % (idx,)
+            jpeg = misc.imsave( fname, image, format='jpeg')
 
 #    #vs.stop()
 #    print "Collected images"
@@ -238,6 +257,7 @@ def getOptions():
     parser.add_option("-d","--dir_model", default="", help="Directory for finding/initializing model files. Defaults to current directory.");
     parser.add_option("-s","--steps", type="int", default=30, help="Number of steps to run. Defaults to 30.");
     parser.add_option("--test_only", action="store_true", default=False, help="Run tests, then exit.");
+    parser.add_option("--video", action="store_true", default=False, help="Record video during an episode.");
 
     (options, args) = parser.parse_args()
 
@@ -269,11 +289,15 @@ def getOptions():
 
 def test(options):
     #print options.dir_ep
-    print options.dir_model
-    testImages( options )
-    accel = accelerometer.Accelerometer()
-    with Motors() as motor:
-        motor.stop()
+    #print options.dir_model
+    if options.video:
+        print "Video"
+    else:
+        print "No video"
+    #testImages( options )
+    #accel = accelerometer.Accelerometer()
+    #with Motors() as motor:
+    #    motor.stop()
     exit()
 
 if __name__ == "__main__":

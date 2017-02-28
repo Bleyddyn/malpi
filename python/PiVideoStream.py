@@ -4,6 +4,7 @@ from picamera import PiCamera
 from threading import Thread, Lock
 from scipy import misc
 import numpy as np
+import os
 
 class PiVideoStream:
     """ Threaded reading from PiCamera directly into a numpy array
@@ -60,6 +61,8 @@ class PiVideoStream:
                 print "Stopping PiVideoStream"
                 self.stream.close()
                 self.rawCapture.close()
+                if self.camera.recording:
+                    self.camera.stop_recording()
                 self.camera.close()
                 return
 
@@ -79,3 +82,25 @@ class PiVideoStream:
         image = image.reshape(1,3,self.imsize,self.imsize)
         image = image.astype(np.float32)
         return image
+
+    def startVideo(self, filename):
+        if self.camera.recording:
+            self.camera.stop_recording()
+
+        filename = os.path.basename(filename)
+        if not filename:
+            filename = "malpi.h264"
+        if not filename.endswith(".h264"):
+            filename += ".h264"
+        filename = os.path.join("/var/ramdrive", filename)
+
+        #Other possible options
+        #camera.annotate_text = "Hello world!"
+        #camera.brightness = 50 #0-100
+        #camera.contrast = 50 #0-100
+
+        self.camera.start_recording(filename)
+
+    def stopVideo(self, filename):
+        if self.camera.recording:
+            self.camera.stop_recording()
