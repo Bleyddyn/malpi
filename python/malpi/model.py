@@ -119,7 +119,7 @@ class MalpiModel(object):
       self.params[k] = v.astype(dtype)
      
  
-  def loss(self, X, y=None):
+  def forward(self, X, mode='train'):
     """
     Evaluate loss and gradient for the three-layer convolutional network.
     
@@ -137,11 +137,6 @@ class MalpiModel(object):
     #def conv_relu_pool_backward(dout, cache):
     #def conv_sbn_relu_forward(x, w, b, conv_param, sbn_param):
     #def conv_sbn_relu_backward(dout, cache):
-
-    if y is None:
-        mode = 'test'
-    else:
-        mode = 'train'
 
     layer_num = 0
     layer_caches = []
@@ -188,12 +183,15 @@ class MalpiModel(object):
 
     scores = inputs
 
-    if y is None:
-      return scores
+    if mode == 'test':
+        return scores
+    else:
+        return scores, layer_caches
     
-    loss, grads = 0, {}
+  def backward(self, layer_caches, data_loss, dx ):
+    grads = {}
 
-    data_loss, dx = softmax_loss( scores, y )
+    #data_loss, dx = softmax_loss( scores, y )
 
     reg_loss = 0
 
