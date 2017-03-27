@@ -1,7 +1,7 @@
 # MaLPi
 Machine learning code for a Raspberry Pi based robot
 
-Blog: http://bleyddyn.github.io/MaLPi
+Blog: http://bleyddyn.github.io/malpi/
 
 ## Project Goals
 
