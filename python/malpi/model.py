@@ -183,10 +183,7 @@ class MalpiModel(object):
 
     scores = inputs
 
-    if mode == 'test':
-        return scores
-    else:
-        return scores, layer_caches
+    return scores, layer_caches
     
   def backward(self, layer_caches, data_loss, dx ):
     grads = {}
@@ -250,6 +247,18 @@ class MalpiModel(object):
 
     return loss, grads
   
+  def loss(self, X, y=None ):
+      mode = 'train'
+      if y is None:
+          mode = 'test'
+
+      scores, layer_caches = self.forward(X, mode=mode)
+
+      if y is None:
+          return scores
+      data_loss, dx = softmax_loss( scores, y )
+      loss, grads = self.backward( layer_caches, data_loss, dx )
+      return loss, grads
   
   def get_conv_filter_sizes(self, params, default=3):
     filter_width = default

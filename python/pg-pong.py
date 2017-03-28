@@ -106,7 +106,7 @@ def policy_backward(eph, epx, epdlogp):
 def train(model, options):
 # hyperparameters
     batch_size = 10 # every how many episodes to do a param update?
-    learning_rate = 1e-3 # was: 1e-4
+    learning_rate = 5e-4 # 1e-3 # was: 1e-4
     gamma = 0.99 # discount factor for reward
     decay_rate = 0.99 # decay factor for RMSProp leaky sum of grad^2
     render = options.render
@@ -121,7 +121,7 @@ def train(model, options):
     caches,dlogps,drs = [],[],[]
     running_reward = None
     reward_sum = 0
-    episode_number = 0
+    episode_number = 9651
     while True:
       if options.render: env.render()
 

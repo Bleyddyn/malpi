@@ -1,10 +1,11 @@
 from time import time
 import datetime
 import numpy as np
-import matplotlib.pyplot as plt
-from malpi.cnn import *
+#import matplotlib.pyplot as plt
+
+from malpi.model import *
 from malpi.data_utils import get_CIFAR10_data
-from malpi.solver import Solver
+from malpi.solver_sup import Solver
 from optparse import OptionParser
 from malpi.fast_layers import *
 
@@ -37,6 +38,16 @@ def log( message, name='test' ):
     with open(logFileName,'a') as outf:
         outf.write(datestr + ": " + message + "\n")
 
+def initializeModel( model_name ):
+    imsize = 79
+    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "FC-10"]
+    layer_params = [{'filter_size':3, 'stride':1, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
+        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
+        {'filter_size':3}, {'relu':False} ]
+    model = MalpiModel(layers, layer_params, input_dim=(3,imsize,imsize), reg=.005, dtype=np.float32, verbose=True)
+    model.name = model_name
+    return model
+
 def hyperparameterGenerator( oneRun = False ):
     variations = np.array([0.9,1.0,1.1])
     if oneRun:
@@ -60,16 +71,10 @@ def hyperparameterGenerator( oneRun = False ):
 
 def train():
     name = "ThreeLayerTest2"
-#    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "fc-10"]
-#    layer_params = [{'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-#        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-#        {'filter_size':3},
-#        {'relu':False}]
-    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "fc-10"]
+    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "FC-10"]
     layer_params = [{'filter_size':3, 'stride':1, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
         {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-        {'filter_size':3},
-        {'relu':False}]
+        {'filter_size':3}, {'relu':False} ]
 
     log( "%s = %s" % (name, str(layers)), name )
     log( "   %s" % (str(layer_params,)), name )
@@ -84,8 +89,9 @@ def train():
     if best_model:
         best_val_acc = best_model.validation_accuracy
 
-    for hparams in hyperparameterGenerator(oneRun=False):
-        model = MalpiConvNet(layers, layer_params, reg=hparams['reg'], dtype=np.float16, verbose=False)
+    for hparams in hyperparameterGenerator(oneRun=True):
+        model = MalpiModel(layers, layer_params, input_dim=(3, 32, 32), reg=hparams['reg'], dtype=np.float32, verbose=False)
+        model.name = model_name
         model.hyper_parameters = hparams
         solver = Solver(model, data,
                         num_epochs=hparams['epochs'], batch_size=hparams['batch_size'],
