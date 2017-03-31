@@ -121,7 +121,7 @@ def train(model, options):
     caches,dlogps,drs = [],[],[]
     running_reward = None
     reward_sum = 0
-    episode_number = 9651
+    episode_number = 1
     while True:
       if options.render: env.render()
 
@@ -132,7 +132,7 @@ def train(model, options):
 
       # forward the policy network and sample an action from the returned probability
       x = x.reshape(1,D)
-      aprob, cache = model.forward(x) #policy_forward(x)
+      aprob, cache = model.forward(x, mode='train') #policy_forward(x)
       aprob = sigmoid(aprob)
       action = 2 if np.random.uniform() < aprob else 3 # roll the dice!
 
@@ -157,7 +157,7 @@ def train(model, options):
         epdlogp *= discounted_epr # modulate the gradient with advantage (PG magic happens right here.)
 
         # This is way too slow and will have to be vectorized, somehow
-        for idx, cache in enumerate(caches):
+        for idx, cache in reversed(list(enumerate(caches))):
             loss, grad = model.backward(cache, 0, epdlogp[idx,:].reshape(1,1) )
             for k in model.params: grad_buffer[k] += grad[k] # accumulate grad over batch
 
@@ -176,7 +176,7 @@ def train(model, options):
         print 'resetting env. episode reward total was %f. running mean: %f' % (reward_sum, running_reward)
         if episode_number % 10 == 0:
             saveModel( model, options )
-            with open('save.txt', 'a+') as f:
+            with open( model.name + '.txt', 'a+') as f:
                 f.write( "%d,%f\n" % (episode_number,running_reward) )
         reward_sum = 0
         observation = env.reset() # reset env
@@ -202,6 +202,10 @@ if __name__ == "__main__":
         with open( os.path.join( options.dir_model, options.model_name+'.pickle'), 'rb') as f:
             model = pickle.load( f )
       
+    if options.desc:
+        model.describe()
+        exit()
+
     if options.test_only:
         test(options, model)
         exit()
