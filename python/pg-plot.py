@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 from scipy import stats
 
-img=mpimg.imread('karpathy.png')
+img=mpimg.imread('karpathy_full.png')
 
 plt.figure(1,figsize=(16, 18), dpi=80)
 ax1=plt.subplot(211)
@@ -29,7 +29,8 @@ imgplot=plt.imshow(img)
 
 if True:
     data = np.loadtxt(args[0],delimiter=',')
-#data = data[-200:,:]
+    #data = data[100:,:]
+    print "Mean/stdev: %f/%f" % (np.mean(data[:,1]),np.std(data[:,1]))
 #print data.shape
 
     slope, intercept, r_value, p_value, std_err = stats.linregress(data)

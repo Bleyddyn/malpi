@@ -13,29 +13,65 @@ from optparse import OptionParser
 
 from malpi.model import *
 
-def getOptions():
-    usage = "Usage: python pg-pong [options] <model name>"
-    parser = OptionParser( usage=usage )
-    parser.add_option("-i","--initialize", action="store_true", default=False, help="Initialize model, save to <model name>.pickle, then start training.");
-    parser.add_option("-d","--dir_model", default="", help="Directory for finding/initializing model files. Defaults to current directory.");
-    parser.add_option("-r","--render", action="store_true", default=False, help="Render gym environment while training. Will greatly reduce speed.");
-    parser.add_option("--test_only", action="store_true", default=False, help="Run tests, then exit.");
-    parser.add_option("--desc", action="store_true", default=False, help="Describe the model, then exit.");
+class Experience(object):
+    
+    def __init__( self, maxN, state_dim ):
+        self.N = maxN
+        sdim = (maxN,) + state_dim
+        self.states = np.zeros(sdim)
+        self.actions = np.zeros(maxN)
+        self.rewards = np.zeros(maxN)
+        self.next_states = np.zeros(sdim)
+        self.next_insert = 0
+        self.max_batch = 0
 
-    (options, args) = parser.parse_args()
+    def save( self, state, action, reward, next_state ):
+        self.states[self.next_insert,:] = state
+        self.actions[self.next_insert] = action
+        self.rewards[self.next_insert] = reward
+        self.next_states[self.next_insert,:] = next_state
+        self.next_insert += 1
+        self.max_batch = max(self.next_insert, self.max_batch)
+        if self.next_insert >= self.N:
+            self.next_insert = 0
 
-    if len(args) != 1:
-        print usage
-        exit()
+    def batch( self, batch_size ):
+        if batch_size >= self.max_batch:
+            return (None,None,None,None)
+        start = np.random.randint( 0, high=(1+self.max_batch - batch_size) )
+        end = start + batch_size
+        r_s = self.states[start:end,:]
+        r_a = self.actions[start:end]
+        r_r = self.rewards[start:end]
+        r_n = self.next_states[start:end,:]
+        return (r_s,r_a,r_r,r_n)
 
-    if args[0].endswith('.pickle'):
-        args[0] = args[0][:-7]
+    def clear( self ):
+        self.next_insert = 0
+        self.max_batch = 0
 
-    options.model_name = args[0]
-    options.dir_model = os.path.expanduser(options.dir_model)
-
-    return (options, args)
-
+    @staticmethod
+    def test():
+        e = Experience( 10, (20,20) )
+        s = np.zeros( (20,20) )
+        e.save( s, 1, -3, s )
+        e.save( s, 2, -4, s )
+        e.save( s, 3, -5, s )
+        e.save( s, 4, -6, s )
+        print e.max_batch # 4
+        s1, a, r, n = e.batch( 2 )
+        print s1.shape # (2, 20, 20)
+        print a # e.g. [ 1.  2.]
+        print r # e.g. [-3. -4.]
+        for _ in range(2):
+            e.save( s, 5, -7, s )
+            e.save( s, 6, -8, s )
+            e.save( s, 7, -9, s )
+            e.save( s, 8, -10, s )
+        print e.max_batch # 10
+        print e.actions[0:2]
+        print e.rewards[0:2]
+        
 def saveModel( model, options ):
     filename = os.path.join( options.dir_model, options.model_name + ".pickle" )
     with open(filename, 'wb') as f:
@@ -105,8 +141,10 @@ def policy_backward(eph, epx, epdlogp):
 
 def train(model, options):
 # hyperparameters
-    batch_size = 10 # every how many episodes to do a param update?
-    learning_rate = 5e-4 # 1e-3 # was: 1e-4
+    batch_size = 32 # every how many experience entries to backprop at once
+    update_rate = 10 # every how many episodes to do a param update?
+    learning_rate = 1e-3 # was: 1e-4
+    learning_rate_decay = 1.0 # 0.999
     gamma = 0.99 # discount factor for reward
     decay_rate = 0.99 # decay factor for RMSProp leaky sum of grad^2
     render = options.render
@@ -118,10 +156,15 @@ def train(model, options):
     env = gym.make("Pong-v0")
     observation = env.reset()
     prev_x = None # used in computing the difference frame
-    caches,dlogps,drs = [],[],[]
     running_reward = None
     reward_sum = 0
-    episode_number = 1
+    episode_number = options.starting_ep
+    steps = 0
+
+    test_ob = prepro(observation)
+    exp_history = Experience( 2000, test_ob.shape )
+    short_history = Experience( 50, test_ob.shape )
+
     while True:
       if options.render: env.render()
 
@@ -132,39 +175,37 @@ def train(model, options):
 
       # forward the policy network and sample an action from the returned probability
       x = x.reshape(1,D)
-      aprob, cache = model.forward(x, mode='train') #policy_forward(x)
+      aprob, cache = model.forward(x, mode='train')
       aprob = sigmoid(aprob)
       action = 2 if np.random.uniform() < aprob else 3 # roll the dice!
+      #print "action/aprob: %d/%f" % (action,aprob)
 
-      # record various intermediates (needed later for backprop)
-      caches.append(cache) # hidden state
       y = 1 if action == 2 else 0 # a "fake label"
-      dlogps.append(y - aprob) # grad that encourages the action that was taken to be taken (see http://cs231n.github.io/neural-networks-2/#losses if confused)
+      loss = y - aprob # grad that encourages the action that was taken to be taken (see http://cs231n.github.io/neural-networks-2/#losses if confused)
 
       # step the environment and get new measurements
       observation, reward, done, info = env.step(action)
       reward_sum += reward
+      steps += 1
 
-      drs.append(reward) # record reward (has to be done after we call step() to get reward for previous action)
+      exp_history.save( x, loss, reward, x )
+      short_history.save( x, loss, reward, x )
 
       if done: # an episode finished
         episode_number += 1
 
-        # stack together all inputs, hidden states, action gradients, and rewards for this episode
-        eph = np.vstack(caches)
-        epdlogp = np.vstack(dlogps)
-        discounted_epr = discount_rewards( np.vstack(drs), gamma ) # compute the normalized discounted reward backwards through time
-        epdlogp *= discounted_epr # modulate the gradient with advantage (PG magic happens right here.)
+        for _ in range(10):
+            states, losses, rewards, _ = exp_history.batch( batch_size )
+            if states is not None:
+                 _, cache = model.forward( states, mode='train' )
+                 rewards = discount_rewards( rewards, gamma, normalize=False ) # compute the normalized discounted reward backwards through time
+                 if np.count_nonzero(rewards) > 0:
+                     losses *= rewards
+                     _, grad = model.backward(cache, 0, losses.reshape(batch_size,1) ) # def backward(self, layer_caches, data_loss, dx ):
+                     for k in model.params: grad_buffer[k] += grad[k] # accumulate grad over batch
 
-        # This is way too slow and will have to be vectorized, somehow
-        for idx, cache in reversed(list(enumerate(caches))):
-            loss, grad = model.backward(cache, 0, epdlogp[idx,:].reshape(1,1) )
-            for k in model.params: grad_buffer[k] += grad[k] # accumulate grad over batch
-
-        caches,dlogps,drs = [],[],[] # reset array memory
-
-        # perform rmsprop parameter update every batch_size episodes
-        if episode_number % batch_size == 0:
+        # perform rmsprop parameter update every update_rate episodes
+        if episode_number % update_rate == 0:
           for k,v in model.params.iteritems():
             g = grad_buffer[k] # gradient
             rmsprop_cache[k] = decay_rate * rmsprop_cache[k] + (1 - decay_rate) * g**2
@@ -175,6 +216,9 @@ def train(model, options):
         running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
         print 'resetting env. episode reward total was %f. running mean: %f' % (reward_sum, running_reward)
         if episode_number % 10 == 0:
+            learning_rate *= learning_rate_decay
+            if learning_rate_decay < 1.0:
+                print "Learning rate: %f" % (learning_rate,)
             saveModel( model, options )
             with open( model.name + '.txt', 'a+') as f:
                 f.write( "%d,%f\n" % (episode_number,running_reward) )
@@ -183,11 +227,51 @@ def train(model, options):
         prev_x = None
 
       if reward != 0: # Pong has either +1 or -1 reward exactly when game ends.
-        print ('ep %d: game finished, reward: %f' % (episode_number, reward)) + ('' if reward == -1 else ' !!!!!!!!')
+        print ('ep %d, steps %d, reward: %f' % (episode_number, steps, reward)) + ('' if reward == -1 else ' !!!!!!!!')
+        steps = 0
+
+        bsize = 49
+        if short_history.max_batch < bsize:
+            bsize = short_history.max_batch
+        states, losses, rewards, _ = short_history.batch( bsize )
+        if states is not None:
+             _, cache = model.forward( states, mode='train' )
+             rewards = discount_rewards( rewards, gamma, normalize=False ) # compute the normalized discounted reward backwards through time
+             if np.count_nonzero(rewards) > 0:
+                 losses *= rewards
+                 _, grad = model.backward(cache, 0, losses.reshape(bsize,1) ) # def backward(self, layer_caches, data_loss, dx ):
+                 for k in model.params: grad_buffer[k] += grad[k] # accumulate grad over batch
+        short_history.clear()
+
+
+def getOptions():
+    usage = "Usage: python pg-pong [options] <model name>"
+    parser = OptionParser( usage=usage )
+    parser.add_option("-i","--initialize", action="store_true", default=False, help="Initialize model, save to <model name>.pickle, then start training.");
+    parser.add_option("-d","--dir_model", default="", help="Directory for finding/initializing model files. Defaults to current directory.");
+    parser.add_option("-r","--render", action="store_true", default=False, help="Render gym environment while training. Will greatly reduce speed.");
+    parser.add_option("-s","--starting_ep", type="int", default=0, help="Starting episode number (for record keeping).");
+    parser.add_option("--test_only", action="store_true", default=False, help="Run tests, then exit.");
+    parser.add_option("--desc", action="store_true", default=False, help="Describe the model, then exit.");
+
+    (options, args) = parser.parse_args()
+
+    if len(args) != 1:
+        print usage
+        exit()
+
+    if args[0].endswith('.pickle'):
+        args[0] = args[0][:-7]
+
+    options.model_name = args[0]
+    options.dir_model = os.path.expanduser(options.dir_model)
+
+    return (options, args)
 
 def test(options, model):
-    for k,v in model.params.iteritems():
-        print "%s: %d" % (k, len(v))
+    Experience.test()
+#    for k,v in model.params.iteritems():
+#        print "%s: %d" % (k, len(v))
     pass
 
 if __name__ == "__main__":
