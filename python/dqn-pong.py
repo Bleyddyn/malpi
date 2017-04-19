@@ -107,15 +107,15 @@ def saveModel( model, options ):
     with open(filename, 'wb') as f:
         pickle.dump( model, f, pickle.HIGHEST_PROTOCOL)
 
-def initializeModel( name, directory='.' ):
-    imsize = 80*80
-    layers = ["FC-200", "FC-1"]
-    layer_params = [{},{'relu':False}]
-#    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "lstml", "FC-5"]
-#    layer_params = [{'filter_size':3, 'stride':2, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-#        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-#        {'filter_size':3}, {'hidden':500}, {} ]
-    model = MalpiModel(layers, layer_params, input_dim=(imsize), reg=.005, dtype=np.float32, verbose=True)
+def initializeModel( name, number_actions ):
+    output = "FC-%d" % (number_actions,)
+# From the paper, mostly
+    layers = ["conv-32", "conv-64", "conv-64", "FC-512", output]
+    layer_params = [{'filter_size':8, 'stride':4, 'pad':4 },
+        {'filter_size':4, 'stride':2, 'pad':2},
+        {'filter_size':3, 'stride':1, 'pad':1},
+        {}, {'relu':False} ]
+    model = MalpiModel(layers, layer_params, input_dim=(4,80,80), reg=.005, dtype=np.float32, verbose=True)
     model.name = name
 
     print
@@ -161,36 +161,44 @@ def discount_rewards(r, gamma, normalize=True):
 
     return discounted_r
 
-def policy_forward(x):
-  h = np.dot(model['W1'], x)
-  h[h<0] = 0 # ReLU nonlinearity
-  logp = np.dot(model['W2'], h)
-  p = sigmoid(logp)
-  return p, h # return probability of taking action 2, and hidden state
+def make_epsilon_greedy_policy(estimator, epsilon, nA):
+    """
+    Creates an epsilon-greedy policy based on a given Q-function approximator and epsilon.
+    
+    Args:
+        estimator: An estimator that returns q values for a given state
+        epsilon: The probability to select a random action . float between 0 and 1.
+        nA: Number of actions in the environment.
+    
+    Returns:
+        A function that takes the observation as an argument and returns
+        the probabilities for each action in the form of a numpy array of length nA.
+    
+    """
+    def policy_fn(observation):
+        A = np.ones(nA, dtype=float) * epsilon / nA
+        q_values = estimator.predict(observation)
+        best_action = np.argmax(q_values)
+        A[best_action] += (1.0 - epsilon)
+        return A
+    return policy_fn
 
-def policy_backward(eph, epx, epdlogp):
-  """ backward pass. (eph is array of intermediate hidden states) """
-  dW2 = np.dot(eph.T, epdlogp).ravel()
-  dh = np.outer(epdlogp, model['W2'])
-  dh[eph <= 0] = 0 # backpro prelu
-  dW1 = np.dot(dh.T, epx)
-  return {'W1':dW1, 'W2':dW2}
-
-def train(model, options):
+def train(model, env, options):
     batch_size = 32 # every how many experience entries to backprop at once
     update_rate = 10 # every how many episodes to do a param update?
     learning_rate_decay = 1.0 # 0.999
     gamma = 0.99 # discount factor for reward
+    epsilon = 0.1
     render = options.render
 
     optim = Optimizer( "rmsprop", model, learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
     behavior = copy.deepcopy(model)
+    policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n):
 
     D = np.prod(model.input_dim)
 
     grad_buffer = { k : np.zeros_like(v) for k,v in model.params.iteritems() } # update buffers that add up gradients over a batch
 
-    env = gym.envs.make("Breakout-v0")
     observation = env.reset()
     prev_x = None # used in computing the difference frame
     running_reward = None
@@ -198,8 +206,8 @@ def train(model, options):
     episode_number = options.starting_ep
     steps = 0
 
-    # Atari Actions: 0 (noop), 1 (fire), 2 (left) and 3 (right) are valid actions
-    VALID_ACTIONS = [0, 1, 2, 3]
+    # Atari Breakout Actions: 0 (noop), 1 (fire), 2 (left) and 3 (right) are valid actions
+    VALID_ACTIONS = xrange(env.action_space.n) # [0, 1, 2, 3]
 
     test_ob = prepro(observation)
     exp_history = Experience( 2000, test_ob.shape )
@@ -212,28 +220,22 @@ def train(model, options):
       x = cur_x - prev_x if prev_x is not None else np.zeros(D)
       prev_x = cur_x
 
-      # forward the policy network and sample an action from the returned probability
-      x = x.reshape(1,D)
-      aprob, cache = behavior.forward(x, mode='train')
-      aprob = sigmoid(aprob)
-      action = 2 if np.random.uniform() < aprob else 3 # roll the dice!
-      #print "action/aprob: %d/%f" % (action,aprob)
-
-      y = 1 if action == 2 else 0 # a "fake label"
-      loss = y - aprob # grad that encourages the action that was taken to be taken (see http://cs231n.github.io/neural-networks-2/#losses if confused)
+      aprob = policy(state)
+      action = np.random.choice(VALID_ACTIONS, p=aprob)
 
       # step the environment and get new measurements
       observation, reward, done, info = env.step(action)
       reward_sum += reward
       steps += 1
 
-      exp_history.save( x, loss, reward, x )
+      exp_history.save( x, loss, reward, observation )
       if exp_history.size() > batch_size:
-          states, losses, rewards, _ = exp_history.batch( batch_size )
+          states, losses, rewards, new_states = exp_history.batch( batch_size )
           _, cache = model.forward( states, mode='train' )
           rewards = discount_rewards( rewards, gamma, normalize=False ) # compute the normalized discounted reward backwards through time
-          losses *= rewards
-          _, grad = model.backward(cache, 0, losses.reshape(batch_size,1) ) # def backward(self, layer_caches, data_loss, dx ):
+          q_target = reward + gamma * np.max(behavior.forward(new_states))
+          q_error = q_target - model.forward(states)
+          _, grad = model.backward(cache, 0, q_error.reshape(batch_size,1) ) # def backward(self, layer_caches, data_loss, dx ):
           for k in model.params: grad_buffer[k] += grad[k] # accumulate grad over batch
 
       if done: # an episode finished
@@ -274,6 +276,7 @@ def getOptions():
     parser.add_option("-s","--starting_ep", type="int", default=0, help="Starting episode number (for record keeping).");
     parser.add_option("--test_only", action="store_true", default=False, help="Run tests, then exit.");
     parser.add_option("--desc", action="store_true", default=False, help="Describe the model, then exit.");
+    parser.add_option("-g","--game", default="Breakout-v0", help="The game environment to use. Defaults to Breakout");
 
     (options, args) = parser.parse_args()
 
@@ -307,9 +310,11 @@ def test(options, model):
 if __name__ == "__main__":
     options, _ = getOptions()
 
+    env = gym.envs.make(options.game)
+
     if options.initialize:
         print "Initializing model..."
-        model = initializeModel( options.model_name, options.dir_model )
+        model = initializeModel( options.model_name, env.action_space.n )
         saveModel( model, options )
     else:
         print "Reading model..."
@@ -324,4 +329,4 @@ if __name__ == "__main__":
         test(options, model)
         exit()
 
-    train(model, options)
+    train(model, env, options)
