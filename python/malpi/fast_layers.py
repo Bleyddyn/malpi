@@ -20,6 +20,7 @@ def conv_forward_im2col(x, w, b, conv_param):
   stride, pad = conv_param['stride'], conv_param['pad']
 
   # Check dimensions
+  #print "W/pad/fw/str: %d/%d/%d/%d" % (W,pad,filter_width,stride)
   assert (W + 2 * pad - filter_width) % stride == 0, 'width does not work'
   assert (H + 2 * pad - filter_height) % stride == 0, 'height does not work'
 

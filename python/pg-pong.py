@@ -180,6 +180,10 @@ def train(model, options):
       action = 2 if np.random.uniform() < aprob else 3 # roll the dice!
       #print "action/aprob: %d/%f" % (action,aprob)
 
+      #y = np.zeros([self.action_size])
+      #y[action] = 1
+      #self.gradients.append(np.array(y).astype('float32') - prob)
+
       y = 1 if action == 2 else 0 # a "fake label"
       loss = y - aprob # grad that encourages the action that was taken to be taken (see http://cs231n.github.io/neural-networks-2/#losses if confused)
 

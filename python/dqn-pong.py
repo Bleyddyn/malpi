@@ -13,6 +13,7 @@ import itertools
 import random
 from collections import deque, namedtuple
 import copy
+from scipy.misc import imresize
 
 from malpi.model import *
 
@@ -115,7 +116,7 @@ def initializeModel( name, number_actions ):
         {'filter_size':4, 'stride':2, 'pad':2},
         {'filter_size':3, 'stride':1, 'pad':1},
         {}, {'relu':False} ]
-    model = MalpiModel(layers, layer_params, input_dim=(4,80,80), reg=.005, dtype=np.float32, verbose=True)
+    model = MalpiModel(layers, layer_params, input_dim=(4,84,84), reg=.005, dtype=np.float32, verbose=True)
     model.name = name
 
     print
@@ -128,7 +129,7 @@ def sigmoid(x):
   return 1.0 / (1.0 + np.exp(-x)) # sigmoid "squashing" function to interval [0,1]
 
 def prepro(I):
-  """ prepro 210x160x3 uint8 frame into 6400 (80x80) 1D float vector
+  """ prepro 210x160x3 uint8 frame into (84x84) float 
       Code from the Denny Britz DQN chapter:
       self.input_state = tf.placeholder(shape=[210, 160, 3], dtype=tf.uint8)
       self.output = tf.image.rgb_to_grayscale(self.input_state)
@@ -139,9 +140,10 @@ def prepro(I):
 
   rgb_weights = [0.2989, 0.5870, 0.1140]
   I = I[35:195] # crop
-  I = I[::2,::2,0] # downsample by factor of 2
-  I = np.sum( I * temp.rgb_weights, axis=2) # Convert to grayscale, shape = (80,80)
-  return I.astype(np.float).ravel()
+#  I = I[::2,::2,:] # downsample by factor of 2
+  I = imresize(I, (84,84), interp='nearest' )
+  I = np.sum( I * rgb_weights, axis=2) # Convert to grayscale, shape = (84,84)
+  return I.astype(np.float)
 
 def discount_rewards(r, gamma, normalize=True):
     """ take 1D float array of rewards and compute discounted reward.
@@ -177,7 +179,7 @@ def make_epsilon_greedy_policy(estimator, epsilon, nA):
     """
     def policy_fn(observation):
         A = np.ones(nA, dtype=float) * epsilon / nA
-        q_values = estimator.predict(observation)
+        q_values,_ = estimator.forward(observation, mode="test")
         best_action = np.argmax(q_values)
         A[best_action] += (1.0 - epsilon)
         return A
@@ -193,14 +195,12 @@ def train(model, env, options):
 
     optim = Optimizer( "rmsprop", model, learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
     behavior = copy.deepcopy(model)
-    policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n):
+    policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
 
     D = np.prod(model.input_dim)
 
     grad_buffer = { k : np.zeros_like(v) for k,v in model.params.iteritems() } # update buffers that add up gradients over a batch
 
-    observation = env.reset()
-    prev_x = None # used in computing the difference frame
     running_reward = None
     reward_sum = 0
     episode_number = options.starting_ep
@@ -209,33 +209,34 @@ def train(model, env, options):
     # Atari Breakout Actions: 0 (noop), 1 (fire), 2 (left) and 3 (right) are valid actions
     VALID_ACTIONS = xrange(env.action_space.n) # [0, 1, 2, 3]
 
-    test_ob = prepro(observation)
-    exp_history = Experience( 2000, test_ob.shape )
+    observation = env.reset()
+    state = prepro(observation)
+    state = np.stack([state] * 4, axis=0)
+
+    exp_history = Experience( 2000, state.shape )
 
     while True:
       if options.render: env.render()
 
-      # preprocess the observation, set input to network to be difference image
-      cur_x = prepro(observation)
-      x = cur_x - prev_x if prev_x is not None else np.zeros(D)
-      prev_x = cur_x
-
-      aprob = policy(state)
+      aprob = policy(state.reshape(1,4,84,84))
       action = np.random.choice(VALID_ACTIONS, p=aprob)
 
       # step the environment and get new measurements
       observation, reward, done, info = env.step(action)
+      observation = prepro(observation)
+      next_state = np.concatenate( [state[0:3,:,:], observation.reshape(1,84,84)], axis=0)
       reward_sum += reward
       steps += 1
 
-      exp_history.save( x, loss, reward, observation )
+      exp_history.save( state, action, reward, next_state )
       if exp_history.size() > batch_size:
-          states, losses, rewards, new_states = exp_history.batch( batch_size )
-          _, cache = model.forward( states, mode='train' )
-          rewards = discount_rewards( rewards, gamma, normalize=False ) # compute the normalized discounted reward backwards through time
-          q_target = reward + gamma * np.max(behavior.forward(new_states))
-          q_error = q_target - model.forward(states)
-          _, grad = model.backward(cache, 0, q_error.reshape(batch_size,1) ) # def backward(self, layer_caches, data_loss, dx ):
+          states, actions, rewards, new_states = exp_history.batch( batch_size )
+          values, cache = model.forward( states, mode='train' )
+          temp_values,_ = behavior.forward(new_states)
+          q_target = rewards + gamma * np.max(temp_values,axis=1)
+          q_target = q_target.reshape(batch_size,1)
+          q_error = q_target - values
+          _, grad = model.backward(cache, 0, q_error ) # def backward(self, layer_caches, data_loss, dx ):
           for k in model.params: grad_buffer[k] += grad[k] # accumulate grad over batch
 
       if done: # an episode finished
@@ -246,6 +247,9 @@ def train(model, env, options):
             optim.update( grad_buffer )
 
         # At some rate, copy model into behavior
+        if episode_number % update_rate == 0:
+            behavior = copy.deepcopy(model)
+            policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
 
         # boring book-keeping
         running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
@@ -260,11 +264,10 @@ def train(model, env, options):
 
         reward_sum = 0
         observation = env.reset() # reset env
-        prev_x = None
+        steps = 0
 
       if reward != 0: # Pong has either +1 or -1 reward exactly when game ends.
-        print ('ep %d, steps %d, reward: %f' % (episode_number, steps, reward)) + ('' if reward == -1 else ' !!!!!!!!')
-        steps = 0
+        print ('ep %d, steps %d, reward: %f' % (episode_number, steps, reward))
 
 
 def getOptions():
@@ -311,9 +314,10 @@ if __name__ == "__main__":
     options, _ = getOptions()
 
     env = gym.envs.make(options.game)
+    #env.get_action_meanings()
 
     if options.initialize:
-        print "Initializing model..."
+        print "Initializing model with %d actions..." % (env.action_space.n,)
         model = initializeModel( options.model_name, env.action_space.n )
         saveModel( model, options )
     else:
