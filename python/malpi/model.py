@@ -115,6 +115,8 @@ class MalpiModel(object):
             print "  params: ", params
             print "  outdim: ", output_dim
 
+    self.output_dim = output_dim
+
     for k, v in self.params.iteritems():
       self.params[k] = v.astype(dtype)
      

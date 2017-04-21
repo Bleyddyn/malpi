@@ -180,17 +180,17 @@ def make_epsilon_greedy_policy(estimator, epsilon, nA):
     def policy_fn(observation):
         A = np.ones(nA, dtype=float) * epsilon / nA
         q_values,_ = estimator.forward(observation, mode="test")
-        best_action = np.argmax(q_values)
+        best_action = np.argmax(q_values[0])
         A[best_action] += (1.0 - epsilon)
         return A
     return policy_fn
 
 def train(model, env, options):
     batch_size = 32 # every how many experience entries to backprop at once
-    update_rate = 10 # every how many episodes to do a param update?
+    update_rate = 2 # every how many episodes to do a param update?
     learning_rate_decay = 1.0 # 0.999
     gamma = 0.99 # discount factor for reward
-    epsilon = 0.1
+    epsilon = 0.5
     render = options.render
 
     optim = Optimizer( "rmsprop", model, learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
@@ -205,6 +205,7 @@ def train(model, env, options):
     reward_sum = 0
     episode_number = options.starting_ep
     steps = 0
+    saved_experience = False
 
     # Atari Breakout Actions: 0 (noop), 1 (fire), 2 (left) and 3 (right) are valid actions
     VALID_ACTIONS = xrange(env.action_space.n) # [0, 1, 2, 3]
@@ -224,11 +225,16 @@ def train(model, env, options):
       # step the environment and get new measurements
       observation, reward, done, info = env.step(action)
       observation = prepro(observation)
-      next_state = np.concatenate( [state[0:3,:,:], observation.reshape(1,84,84)], axis=0)
+      next_state = copy.deepcopy(state)
+      next_state[0,:,:] = next_state[1,:,:]
+      next_state[1,:,:] = next_state[2,:,:]
+      next_state[2,:,:] = next_state[3,:,:]
+      next_state[3,:,:] = observation
       reward_sum += reward
       steps += 1
 
       exp_history.save( state, action, reward, next_state )
+      state = next_state
       if exp_history.size() > batch_size:
           states, actions, rewards, new_states = exp_history.batch( batch_size )
           values, cache = model.forward( states, mode='train' )
@@ -238,13 +244,18 @@ def train(model, env, options):
           q_error = q_target - values
           _, grad = model.backward(cache, 0, q_error ) # def backward(self, layer_caches, data_loss, dx ):
           for k in model.params: grad_buffer[k] += grad[k] # accumulate grad over batch
+          optim.update( grad_buffer )
+          if not saved_experience:
+              saved_experience = True
+              with open('experience.pickle', 'wb') as f:
+                  pickle.dump( exp_history, f, pickle.HIGHEST_PROTOCOL)
 
       if done: # an episode finished
         episode_number += 1
 
         # PERFORM RMSPROP PARAMETER UPDATE EVERY UPDAte_rate episodes
-        if episode_number % update_rate == 0:
-            optim.update( grad_buffer )
+        #if episode_number % update_rate == 0:
+        #    optim.update( grad_buffer )
 
         # At some rate, copy model into behavior
         if episode_number % update_rate == 0:
@@ -263,11 +274,13 @@ def train(model, env, options):
                 f.write( "%d,%f\n" % (episode_number,running_reward) )
 
         reward_sum = 0
-        observation = env.reset() # reset env
-        steps = 0
+        observation = env.reset()
+        state = prepro(observation)
+        state = np.stack([state] * 4, axis=0)
 
       if reward != 0: # Pong has either +1 or -1 reward exactly when game ends.
         print ('ep %d, steps %d, reward: %f' % (episode_number, steps, reward))
+        steps = 0
 
 
 def getOptions():
@@ -319,11 +332,14 @@ if __name__ == "__main__":
     if options.initialize:
         print "Initializing model with %d actions..." % (env.action_space.n,)
         model = initializeModel( options.model_name, env.action_space.n )
+        model.env = options.game
         saveModel( model, options )
     else:
         print "Reading model..."
         with open( os.path.join( options.dir_model, options.model_name+'.pickle'), 'rb') as f:
             model = pickle.load( f )
+        if not hasattr(model, 'env'):
+            print "Warning, model may not work with the current environment."
       
     if options.desc:
         model.describe()
@@ -332,5 +348,10 @@ if __name__ == "__main__":
     if options.test_only:
         test(options, model)
         exit()
+
+    if hasattr(model, 'env'):
+        if model.env != options.game:
+            print "Model was not initialized for the current environment: %s vs %s" % (model.env,options.game)
+            exit()
 
     train(model, env, options)
