@@ -121,7 +121,7 @@ class MalpiModel(object):
       self.params[k] = v.astype(dtype)
      
  
-  def forward(self, X, mode='train'):
+  def forward(self, X, mode='train', verbose=False):
     """
     Evaluate loss and gradient for the three-layer convolutional network.
     
@@ -153,6 +153,8 @@ class MalpiModel(object):
             b = self.params['b'+layer_num_str]
             layer_params = self.layer_params[layer_num-1]
             inputs, cache = conv_relu_forward( inputs, W, b, layer_params, mode=mode )
+            if verbose:
+                self.stats(inputs,layer_num_str+" ")
             layer_caches.append(cache)
 
         elif layer.startswith(("lstm","LSTM")):
@@ -176,6 +178,8 @@ class MalpiModel(object):
                 inputs, cache = affine_forward( inputs, W, b )
             else:
                 inputs, cache = affine_relu_forward( inputs, W, b )
+            if verbose:
+                self.stats(inputs,layer_num_str+" ")
             layer_caches.append(cache)
 
         elif layer.startswith(("maxpool","Maxpool")):
@@ -296,6 +300,13 @@ class MalpiModel(object):
     with open(filename, 'wb') as f:
             pickle.dump(self, f, pickle.HIGHEST_PROTOCOL)
 
+  def stats(self,arr, msg):
+      mi = np.min(arr)
+      ma = np.max(arr)
+      av = np.mean(arr)
+      std = np.std(arr)
+      print "%sMin/Max/Mean/Stdev: %f/%f/%f/%f" % (msg,mi,ma,av,std)
+
   def describe(self):
     """
     Describe the network
@@ -306,6 +317,7 @@ class MalpiModel(object):
     print self.name
     print "Validation accuracy: %f" % self.validation_accuracy
     print "Hyperparameters: %s" % str(self.hyper_parameters)
+    print "Regularization: %f" % self.reg
     print "Input dimensions: %s" % str(self.input_dim)
     for layer in self.layers:
         layer_num += 1
@@ -320,6 +332,8 @@ class MalpiModel(object):
             print layer
             print "    " + str(params)
             print "    W: " + str(W.shape) + " b: " + str(b.shape) + " #: " + str(cnt)
+            self.stats(W,"     W: ")
+            self.stats(b,"     b: ")
 
         elif layer.startswith(("lstm","LSTM")):
             Wx = self.params['Wx'+layer_num_str]
@@ -339,6 +353,8 @@ class MalpiModel(object):
             print layer
             print "    " + str(params)
             print "    W: " + str(W.shape) + " b: " + str(b.shape) + " #: " + str(cnt)
+            self.stats(W,"     W: ")
+            self.stats(b,"     b: ")
 
         elif layer.startswith(("maxpool","Maxpool")):
             print layer

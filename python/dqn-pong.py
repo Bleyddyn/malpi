@@ -17,6 +17,8 @@ from scipy.misc import imresize
 
 from malpi.model import *
 
+np.seterr(all='raise')
+
 class Experience(object):
     
     def __init__( self, maxN, state_dim ):
@@ -78,30 +80,49 @@ class Experience(object):
         print e.max_batch # 10
         print e.actions[0:2]
         print e.rewards[0:2]
-        
+
+def stats(arr, msg=""):
+    mi = np.min(arr)
+    ma = np.max(arr)
+    av = np.mean(arr)
+    std = np.std(arr)
+    print "%sMin/Max/Mean/Stdev: %f/%f/%f/%f" % (msg,mi,ma,av,std)
+            
 class Optimizer(object):
     """ TODO: Add support for Adam: http://sebastianruder.com/optimizing-gradient-descent/index.html#rmsprop
     """
-    def __init__( self, optim_type, model, learning_rate = 0.001, decay_rate=0.9, epsilon=1e-5 ):
-        supported = ["rmsprop"]
+    def __init__( self, optim_type, model, learning_rate = 0.01, decay_rate=0.99, epsilon=1e-8 ):
+        supported = ["sgd","rmsprop"]
         if optim_type not in supported:
             print "Invalid optimizer type: " % (optim_type,)
             print "Supported types: %s" % (str(supported),)
             return
 
         self.model = model
+        self.optim_type = optim_type
         self.learning_rate = learning_rate
         self.decay_rate = decay_rate
         self.epsilon = epsilon
         self.cache = { k : np.zeros_like(v) for k,v in self.model.params.iteritems() }
 
     def update( self, grad_buffer ):
-        for k,v in self.model.params.iteritems():
-            g = grad_buffer[k] # gradient
-            self.cache[k] = self.decay_rate * self.cache[k] + (1 - self.decay_rate) * g**2
-            model.params[k] -= self.learning_rate * g / np.sqrt(self.cache[k] + self.epsilon)
-            grad_buffer[k] = np.zeros_like(v) # reset batch gradient buffer
-
+        if self.optim_type == "sgd":
+            for k,v in self.model.params.iteritems():
+                g = grad_buffer[k] # gradient
+                self.model.params[k] -= self.learning_rate * g
+        elif self.optim_type == "rmsprop":
+            for k,v in self.model.params.iteritems():
+                g = grad_buffer[k] # gradient
+                #stats(g, "grad["+k+"] " )
+                self.cache[k] = self.decay_rate * self.cache[k] + (1 - self.decay_rate) * g**2
+                #stats(self.cache[k],"cache["+k+"] " )
+                #stats(self.model.params[k],"params["+k+"] " )
+                #stats(change,"change["+k+"] " )
+                update_scale = np.linalg.norm( self.learning_rate * g / (np.sqrt(self.cache[k]) + self.epsilon) )
+                param_scale = np.linalg.norm(self.model.params[k].ravel())
+                if param_scale != 0.0:
+                    print "Update ratio for %s: %f" % ( k, update_scale / param_scale)
+                self.model.params[k] -= (self.learning_rate / (np.sqrt(self.cache[k]) + self.epsilon)) * g
 
 def saveModel( model, options ):
     filename = os.path.join( options.dir_model, options.model_name + ".pickle" )
@@ -116,7 +137,7 @@ def initializeModel( name, number_actions ):
         {'filter_size':4, 'stride':2, 'pad':2},
         {'filter_size':3, 'stride':1, 'pad':1},
         {}, {'relu':False} ]
-    model = MalpiModel(layers, layer_params, input_dim=(4,84,84), reg=.005, dtype=np.float32, verbose=True)
+    model = MalpiModel(layers, layer_params, input_dim=(4,84,84), reg=0.005, dtype=np.float32, verbose=True)
     model.name = name
 
     print
@@ -193,7 +214,9 @@ def train(model, env, options):
     epsilon = 0.5
     render = options.render
 
-    optim = Optimizer( "rmsprop", model, learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
+    model.reg = 0.005
+
+    optim = Optimizer( "sgd", model, learning_rate=0.0003) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
     behavior = copy.deepcopy(model)
     policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
 
@@ -205,8 +228,6 @@ def train(model, env, options):
     reward_sum = 0
     episode_number = options.starting_ep
     steps = 0
-    saved_experience = False
-
     # Atari Breakout Actions: 0 (noop), 1 (fire), 2 (left) and 3 (right) are valid actions
     VALID_ACTIONS = xrange(env.action_space.n) # [0, 1, 2, 3]
 
@@ -235,20 +256,31 @@ def train(model, env, options):
 
       exp_history.save( state, action, reward, next_state )
       state = next_state
+
+            # Calculate q values and targets (Double DQN)
+            # From the solution
+            #q_values_next = q_estimator.predict(sess, next_states_batch)
+            #best_actions = np.argmax(q_values_next, axis=1)
+            #q_values_next_target = target_estimator.predict(sess, next_states_batch)
+            #targets_batch = reward_batch + np.invert(done_batch).astype(np.float32) * discount_factor * q_values_next_target[np.arange(batch_size), best_actions]
+
       if exp_history.size() > batch_size:
           states, actions, rewards, new_states = exp_history.batch( batch_size )
-          values, cache = model.forward( states, mode='train' )
+          #stats(states,"states " )
+          values, cache = model.forward( states, mode='train', verbose=True )
           temp_values,_ = behavior.forward(new_states)
           q_target = rewards + gamma * np.max(temp_values,axis=1)
           q_target = q_target.reshape(batch_size,1)
           q_error = q_target - values
+          #stats(reward, "reward " )
+          #stats(values, "model " )
+          #model.describe()
+          #stats(temp_values, "behavior " )
+          #stats(q_target, "q_target " )
+          stats(q_error, "q_error " )
           _, grad = model.backward(cache, 0, q_error ) # def backward(self, layer_caches, data_loss, dx ):
-          for k in model.params: grad_buffer[k] += grad[k] # accumulate grad over batch
-          optim.update( grad_buffer )
-          if not saved_experience:
-              saved_experience = True
-              with open('experience.pickle', 'wb') as f:
-                  pickle.dump( exp_history, f, pickle.HIGHEST_PROTOCOL)
+          #for k in model.params: grad_buffer[k] += grad[k] # accumulate grad over batch
+          optim.update( grad )
 
       if done: # an episode finished
         episode_number += 1
@@ -258,9 +290,9 @@ def train(model, env, options):
         #    optim.update( grad_buffer )
 
         # At some rate, copy model into behavior
-        if episode_number % update_rate == 0:
-            behavior = copy.deepcopy(model)
-            policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
+        #if episode_number % update_rate == 0:
+        #    behavior = copy.deepcopy(model)
+        #    policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
 
         # boring book-keeping
         running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
