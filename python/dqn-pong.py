@@ -206,7 +206,7 @@ def make_epsilon_greedy_policy(estimator, epsilon, nA):
         return A
     return policy_fn
 
-def train(model, env, options):
+def train(target, env, options):
     batch_size = 32 # every how many experience entries to backprop at once
     update_rate = 2 # every how many episodes to do a param update?
     learning_rate_decay = 1.0 # 0.999
@@ -214,15 +214,15 @@ def train(model, env, options):
     epsilon = 0.5
     render = options.render
 
-    model.reg = 0.005
+    target.reg = 0.005
 
-    optim = Optimizer( "sgd", model, learning_rate=0.0003) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
-    behavior = copy.deepcopy(model)
+    behavior = copy.deepcopy(target)
+    optim = Optimizer( "rmsprop", behavior, learning_rate=0.0003) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
     policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
 
-    D = np.prod(model.input_dim)
+    D = np.prod(target.input_dim)
 
-    grad_buffer = { k : np.zeros_like(v) for k,v in model.params.iteritems() } # update buffers that add up gradients over a batch
+    grad_buffer = { k : np.zeros_like(v) for k,v in target.params.iteritems() } # update buffers that add up gradients over a batch
 
     running_reward = None
     reward_sum = 0
@@ -257,30 +257,41 @@ def train(model, env, options):
       exp_history.save( state, action, reward, next_state )
       state = next_state
 
-            # Calculate q values and targets (Double DQN)
-            # From the solution
-            #q_values_next = q_estimator.predict(sess, next_states_batch)
-            #best_actions = np.argmax(q_values_next, axis=1)
-            #q_values_next_target = target_estimator.predict(sess, next_states_batch)
-            #targets_batch = reward_batch + np.invert(done_batch).astype(np.float32) * discount_factor * q_values_next_target[np.arange(batch_size), best_actions]
+        # Calculate q values and targets (Double DQN)
+        # From the solution
+        #behavior_values = behavior.predict(sess, next_states_batch)
+        #best_actions = np.argmax(behavior_values, axis=1)
+        #target_values = target.predict(sess, next_states_batch)
+        #done_zero = np.invert(done_batch).astype(np.float32)
+        #targets_batch = reward_batch + done_zero * discount_factor * target_values[np.arange(batch_size), best_actions]
 
       if exp_history.size() > batch_size:
           states, actions, rewards, new_states = exp_history.batch( batch_size )
-          #stats(states,"states " )
-          values, cache = model.forward( states, mode='train', verbose=True )
-          temp_values,_ = behavior.forward(new_states)
-          q_target = rewards + gamma * np.max(temp_values,axis=1)
+
+          target_values, _ = target.forward( new_states, mode='train' )
+          behavior_values, _ = behavior.forward(new_states)
+
+          #best_actions = np.argmax(behavior_values, axis=1)
+          #q_target = rewards + gamma * target_values[np.arange(batch_size), best_actions]
+
+          q_target = rewards + gamma * np.max(target_values, axis=1)
           q_target = q_target.reshape(batch_size,1)
-          q_error = q_target - values
-          #stats(reward, "reward " )
-          #stats(values, "model " )
-          #model.describe()
-          #stats(temp_values, "behavior " )
-          #stats(q_target, "q_target " )
-          stats(q_error, "q_error " )
-          _, grad = model.backward(cache, 0, q_error ) # def backward(self, layer_caches, data_loss, dx ):
-          #for k in model.params: grad_buffer[k] += grad[k] # accumulate grad over batch
+
+          actions, cache = behavior.forward(states, verbose=True)
+          #q_error = np.square( q_target - actions )
+          q_error = q_target - actions
+          _, grad = behavior.backward(cache, 0, q_error ) # def backward(self, layer_caches, data_loss, dx ):
           optim.update( grad )
+
+          #stats(states,"states " )
+          #stats(reward, "reward " )
+          #stats(values, "target " )
+          #target.describe()
+          #stats(temp_values, "behavior " )
+          stats(q_target, "q_target " )
+          stats(actions, "actions " )
+          print q_error.shape
+          stats(q_error, "q_error " )
 
       if done: # an episode finished
         episode_number += 1
@@ -289,10 +300,9 @@ def train(model, env, options):
         #if episode_number % update_rate == 0:
         #    optim.update( grad_buffer )
 
-        # At some rate, copy model into behavior
+        # At some rate, copy behavior into target
         #if episode_number % update_rate == 0:
-        #    behavior = copy.deepcopy(model)
-        #    policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
+        #    target = copy.deepcopy(behavior)
 
         # boring book-keeping
         running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
@@ -301,8 +311,8 @@ def train(model, env, options):
             optim.learning_rate *= learning_rate_decay
             if learning_rate_decay < 1.0:
                 print "Learning rate: %f" % (optim.learning_rate,)
-            saveModel( model, options )
-            with open( model.name + '.txt', 'a+') as f:
+            saveModel( target, options )
+            with open( target.name + '.txt', 'a+') as f:
                 f.write( "%d,%f\n" % (episode_number,running_reward) )
 
         reward_sum = 0
