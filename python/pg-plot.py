@@ -17,14 +17,15 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 from scipy import stats
 
-img=mpimg.imread('karpathy_full.png')
-
 plt.figure(1,figsize=(16, 18), dpi=80)
 ax1=plt.subplot(211)
 plt.xlabel('Episodes')
 plt.ylabel('Running Reward')
-plt.subplot(212)
-imgplot=plt.imshow(img)
+
+if os.path.exists('karpathy_full.png'):
+    img = mpimg.imread('karpathy_full.png')
+    plt.subplot(212)
+    imgplot = plt.imshow(img)
 #plt.ion()
 
 if True:

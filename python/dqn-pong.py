@@ -1,4 +1,12 @@
 """ Trains an agent with Deep Q Learning or Double DQN on Breakout. Uses OpenAI Gym.
+
+TODO
+Clip updates
+Save done status with Experience
+Set future rewards to zero at end of episode
+Print more stats at end of episode:
+    describe model
+    Optimizer state
 """
 import sys
 import os
@@ -11,10 +19,12 @@ import gym
 from optparse import OptionParser
 import itertools
 import random
+import time
 from collections import deque, namedtuple
 import copy
 from scipy.misc import imresize
 
+from malpi.layers import *
 from malpi.model import *
 
 np.seterr(all='raise')
@@ -27,6 +37,7 @@ class Experience(object):
         self.states = np.zeros(sdim)
         self.actions = np.zeros(maxN)
         self.rewards = np.zeros(maxN)
+        self.done = np.ones(maxN).astype(np.float)
         self.next_states = np.zeros(sdim)
         self.next_insert = 0
         self.max_batch = 0
@@ -34,10 +45,12 @@ class Experience(object):
     def size( self ):
         return self.max_batch
 
-    def save( self, state, action, reward, next_state ):
+    def save( self, state, action, reward, done, next_state ):
         self.states[self.next_insert,:] = state
         self.actions[self.next_insert] = action
         self.rewards[self.next_insert] = reward
+        if done:
+            self.done[self.next_insert] = 0.0
         self.next_states[self.next_insert,:] = next_state
         self.next_insert += 1
         self.max_batch = max(self.next_insert, self.max_batch)
@@ -52,8 +65,9 @@ class Experience(object):
         r_s = self.states[start:end,:]
         r_a = self.actions[start:end]
         r_r = self.rewards[start:end]
+        r_d = self.done[start:end]
         r_n = self.next_states[start:end,:]
-        return (r_s,r_a,r_r,r_n)
+        return (r_s,r_a,r_r,r_d,r_n)
 
     def clear( self ):
         self.next_insert = 0
@@ -63,20 +77,20 @@ class Experience(object):
     def test():
         e = Experience( 10, (20,20) )
         s = np.zeros( (20,20) )
-        e.save( s, 1, -3, s )
-        e.save( s, 2, -4, s )
-        e.save( s, 3, -5, s )
-        e.save( s, 4, -6, s )
+        e.save( s, 1, -3, False, s )
+        e.save( s, 2, -4, False, s )
+        e.save( s, 3, -5, False, s )
+        e.save( s, 4, -6, False, s )
         print e.max_batch # 4
-        s1, a, r, n = e.batch( 2 )
+        s1, a, r, d, n = e.batch( 2 )
         print s1.shape # (2, 20, 20)
         print a # e.g. [ 1.  2.]
         print r # e.g. [-3. -4.]
         for _ in range(2):
-            e.save( s, 5, -7, s )
-            e.save( s, 6, -8, s )
-            e.save( s, 7, -9, s )
-            e.save( s, 8, -10, s )
+            e.save( s, 5, -7, False, s )
+            e.save( s, 6, -8, False, s )
+            e.save( s, 7, -9, True, s )
+            e.save( s, 8, -10, False, s )
         print e.max_batch # 10
         print e.actions[0:2]
         print e.rewards[0:2]
@@ -118,11 +132,11 @@ class Optimizer(object):
                 #stats(self.cache[k],"cache["+k+"] " )
                 #stats(self.model.params[k],"params["+k+"] " )
                 #stats(change,"change["+k+"] " )
-                update_scale = np.linalg.norm( self.learning_rate * g / (np.sqrt(self.cache[k]) + self.epsilon) )
-                param_scale = np.linalg.norm(self.model.params[k].ravel())
-                if param_scale != 0.0:
-                    print "Update ratio for %s: %f" % ( k, update_scale / param_scale)
-                self.model.params[k] -= (self.learning_rate / (np.sqrt(self.cache[k]) + self.epsilon)) * g
+                #update_scale = np.linalg.norm( self.learning_rate * g / (np.sqrt(self.cache[k]) + self.epsilon) )
+                #param_scale = np.linalg.norm(self.model.params[k].ravel())
+                #if param_scale != 0.0:
+                #    print "Update ratio for %s: %f" % ( k, update_scale / param_scale)
+                self.model.params[k] += (self.learning_rate / (np.sqrt(self.cache[k]) + self.epsilon)) * g
 
 def saveModel( model, options ):
     filename = os.path.join( options.dir_model, options.model_name + ".pickle" )
@@ -206,13 +220,20 @@ def make_epsilon_greedy_policy(estimator, epsilon, nA):
         return A
     return policy_fn
 
+def choose_epsilon_greedy( estimator, observation, epsilon, nA ):
+    if np.random.random() < epsilon:
+        return np.random.randint(nA)
+    else:
+        q_values,_ = estimator.forward(observation, mode="test")
+        return np.argmax(q_values[0])
+
 def train(target, env, options):
     batch_size = 32 # every how many experience entries to backprop at once
-    update_rate = 2 # every how many episodes to do a param update?
+    update_rate = 2 # every how many episodes to copy behavior model to target
     learning_rate_decay = 1.0 # 0.999
     gamma = 0.99 # discount factor for reward
-    epsilon = 0.5
-    render = options.render
+    epsilon = 1.0
+    ksteps = 4 # number of frames to skip before selecting a new action
 
     target.reg = 0.005
 
@@ -220,16 +241,15 @@ def train(target, env, options):
     optim = Optimizer( "rmsprop", behavior, learning_rate=0.0003) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
     policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
 
-    D = np.prod(target.input_dim)
-
     grad_buffer = { k : np.zeros_like(v) for k,v in target.params.iteritems() } # update buffers that add up gradients over a batch
 
     running_reward = None
     reward_sum = 0
     episode_number = options.starting_ep
     steps = 0
-    # Atari Breakout Actions: 0 (noop), 1 (fire), 2 (left) and 3 (right) are valid actions
-    VALID_ACTIONS = xrange(env.action_space.n) # [0, 1, 2, 3]
+
+    num_actions = env.action_space.n
+    VALID_ACTIONS = xrange(num_actions) # [0, 1, 2, 3]
 
     observation = env.reset()
     state = prepro(observation)
@@ -240,69 +260,70 @@ def train(target, env, options):
     while True:
       if options.render: env.render()
 
-      aprob = policy(state.reshape(1,4,84,84))
-      action = np.random.choice(VALID_ACTIONS, p=aprob)
+      #aprob = policy(state.reshape(1,4,84,84))
+      #action = np.random.choice(VALID_ACTIONS, p=aprob)
+      action = choose_epsilon_greedy( behavior, state.reshape(1,4,84,84), epsilon, num_actions )
+      if epsilon > 0.1:
+          epsilon -= 9e-07 # Decay to 0.1 over 1 million steps
 
       # step the environment and get new measurements
-      observation, reward, done, info = env.step(action)
-      observation = prepro(observation)
-      next_state = copy.deepcopy(state)
-      next_state[0,:,:] = next_state[1,:,:]
-      next_state[1,:,:] = next_state[2,:,:]
-      next_state[2,:,:] = next_state[3,:,:]
-      next_state[3,:,:] = observation
-      reward_sum += reward
-      steps += 1
+      if ksteps > 1:
+          reward = 0
+          done = False
+          next_state = copy.deepcopy(state) # 5.87693955e-05 seconds
+          for i in range(ksteps):
+              observation, r, d, info = env.step(action)
+              reward += r
+              if d: done = True
+              observation = prepro(observation) #  1.22250773e-03 seconds
+              next_state[i,:,:] = observation
+      else:
+          observation, reward, done, info = env.step(action)
+          observation = prepro(observation) #  1.22250773e-03 seconds
+          next_state = copy.deepcopy(state) # 5.87693955e-05 seconds
+          next_state[0,:,:] = next_state[1,:,:]
+          next_state[1,:,:] = next_state[2,:,:]
+          next_state[2,:,:] = next_state[3,:,:]
+          next_state[3,:,:] = observation # 2.22372381e-05 seconds for all four
 
-      exp_history.save( state, action, reward, next_state )
+      reward_sum += reward
+      steps += ksteps
+
+      exp_history.save( state, action, reward, done, next_state ) # 2.91559257e-04 seconds
       state = next_state
 
-        # Calculate q values and targets (Double DQN)
-        # From the solution
-        #behavior_values = behavior.predict(sess, next_states_batch)
-        #best_actions = np.argmax(behavior_values, axis=1)
-        #target_values = target.predict(sess, next_states_batch)
-        #done_zero = np.invert(done_batch).astype(np.float32)
-        #targets_batch = reward_batch + done_zero * discount_factor * target_values[np.arange(batch_size), best_actions]
-
       if exp_history.size() > batch_size:
-          states, actions, rewards, new_states = exp_history.batch( batch_size )
+          states, actions, rewards, batch_done, new_states = exp_history.batch( batch_size ) # 3.04588500e-05 seconds
 
-          target_values, _ = target.forward( new_states, mode='train' )
-          behavior_values, _ = behavior.forward(new_states)
+          target_values, _ = target.forward( new_states, mode='test' ) # 2.00298658e-01 seconds
+          behavior_values, _ = behavior.forward( new_states, mode='test' ) # 1.74144219e-01 seconds
 
-          #best_actions = np.argmax(behavior_values, axis=1)
-          #q_target = rewards + gamma * target_values[np.arange(batch_size), best_actions]
-
-          q_target = rewards + gamma * np.max(target_values, axis=1)
+          q_target = rewards + batch_done * gamma * np.max(target_values, axis=1)
           q_target = q_target.reshape(batch_size,1)
 
-          actions, cache = behavior.forward(states, verbose=True)
+          actions, cache = behavior.forward(states, mode='train', verbose=False)
           #q_error = np.square( q_target - actions )
           q_error = q_target - actions
-          _, grad = behavior.backward(cache, 0, q_error ) # def backward(self, layer_caches, data_loss, dx ):
-          optim.update( grad )
+          q_error /= batch_size
+          _, grad = behavior.backward(cache, 0, q_error ) # def backward(self, layer_caches, data_loss, dx ): # 2.37275421e-01 seconds
+          optim.update( grad ) # 1.85747565e-01 seconds
 
           #stats(states,"states " )
           #stats(reward, "reward " )
           #stats(values, "target " )
           #target.describe()
           #stats(temp_values, "behavior " )
-          stats(q_target, "q_target " )
-          stats(actions, "actions " )
-          print q_error.shape
-          stats(q_error, "q_error " )
+          #stats(q_target, "q_target " )
+          #stats(actions, "actions " )
+          #print q_error.shape
+          #stats(q_error, "q_error " )
 
       if done: # an episode finished
         episode_number += 1
 
-        # PERFORM RMSPROP PARAMETER UPDATE EVERY UPDAte_rate episodes
-        #if episode_number % update_rate == 0:
-        #    optim.update( grad_buffer )
-
-        # At some rate, copy behavior into target
-        #if episode_number % update_rate == 0:
-        #    target = copy.deepcopy(behavior)
+        #At some rate, copy behavior into target
+        if episode_number % update_rate == 0:
+            target = copy.deepcopy(behavior)
 
         # boring book-keeping
         running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
