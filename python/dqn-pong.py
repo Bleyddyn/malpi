@@ -1,12 +1,4 @@
 """ Trains an agent with Deep Q Learning or Double DQN on Breakout. Uses OpenAI Gym.
-
-TODO
-Clip updates
-Save done status with Experience
-Set future rewards to zero at end of episode
-Print more stats at end of episode:
-    describe model
-    Optimizer state
 """
 import sys
 import os
@@ -136,7 +128,19 @@ class Optimizer(object):
                 #param_scale = np.linalg.norm(self.model.params[k].ravel())
                 #if param_scale != 0.0:
                 #    print "Update ratio for %s: %f" % ( k, update_scale / param_scale)
-                self.model.params[k] += (self.learning_rate / (np.sqrt(self.cache[k]) + self.epsilon)) * g
+                self.model.params[k] -= (self.learning_rate / (np.sqrt(self.cache[k]) + self.epsilon)) * g
+
+    def _stats(self, arr, msg=""):
+        mi = np.min(arr)
+        ma = np.max(arr)
+        av = np.mean(arr)
+        std = np.std(arr)
+        print "%sMin/Max/Mean/Stdev: %f/%f/%f/%f" % (msg,mi,ma,av,std)
+
+    def describe(self):
+        print "Optimizer %s; lr=%f, dr=%f, ep=%e" % (self.optim_type, self.learning_rate, self.decay_rate, self.epsilon)
+        for k,v in self.model.params.iteritems():
+            self._stats( self.cache[k], msg=("   "+k+" cache ") )
 
 def saveModel( model, options ):
     filename = os.path.join( options.dir_model, options.model_name + ".pickle" )
@@ -145,7 +149,7 @@ def saveModel( model, options ):
 
 def initializeModel( name, number_actions ):
     output = "FC-%d" % (number_actions,)
-# From the paper, mostly
+# From the DQN paper, mostly
     layers = ["conv-32", "conv-64", "conv-64", "FC-512", output]
     layer_params = [{'filter_size':8, 'stride':4, 'pad':4 },
         {'filter_size':4, 'stride':2, 'pad':2},
@@ -165,17 +169,10 @@ def sigmoid(x):
 
 def prepro(I):
   """ prepro 210x160x3 uint8 frame into (84x84) float 
-      Code from the Denny Britz DQN chapter:
-      self.input_state = tf.placeholder(shape=[210, 160, 3], dtype=tf.uint8)
-      self.output = tf.image.rgb_to_grayscale(self.input_state)
-      self.output = tf.image.crop_to_bounding_box(self.output, 34, 0, 160, 160)
-      self.output = tf.image.resize_images( self.output, (84, 84), method=tf.image.ResizeMethod.NEAREST_NEIGHBOR )
-      self.output = tf.squeeze(self.output)
   """
 
   rgb_weights = [0.2989, 0.5870, 0.1140]
   I = I[35:195] # crop
-#  I = I[::2,::2,:] # downsample by factor of 2
   I = imresize(I, (84,84), interp='nearest' )
   I = np.sum( I * rgb_weights, axis=2) # Convert to grayscale, shape = (84,84)
   return I.astype(np.float)
@@ -228,20 +225,18 @@ def choose_epsilon_greedy( estimator, observation, epsilon, nA ):
         return np.argmax(q_values[0])
 
 def train(target, env, options):
-    batch_size = 32 # every how many experience entries to backprop at once
+    batch_size = 32 # backprop batch size
     update_rate = 2 # every how many episodes to copy behavior model to target
     learning_rate_decay = 1.0 # 0.999
     gamma = 0.99 # discount factor for reward
     epsilon = 1.0
-    ksteps = 4 # number of frames to skip before selecting a new action
+    ksteps = options.k_steps # number of frames to skip before selecting a new action
 
     target.reg = 0.005
 
     behavior = copy.deepcopy(target)
     optim = Optimizer( "rmsprop", behavior, learning_rate=0.0003) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
     policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
-
-    grad_buffer = { k : np.zeros_like(v) for k,v in target.params.iteritems() } # update buffers that add up gradients over a batch
 
     running_reward = None
     reward_sum = 0
@@ -257,16 +252,27 @@ def train(target, env, options):
 
     exp_history = Experience( 2000, state.shape )
 
+    with open( target.name + '_hparams.txt', 'a+') as f:
+        f.write( "%s = %s\n" % ('Start',time.strftime("%Y-%m-%d %H:%M:%S")) )
+        f.write( "%s = %d\n" % ('batch_size',batch_size) )
+        f.write( "%s = %d\n" % ('update_rate',update_rate) )
+        f.write( "%s = %f\n" % ('gamma',gamma) )
+        f.write( "%s = %f\n" % ('epsilon',epsilon) )
+        f.write( "%s = %d\n" % ('k-steps',ksteps) )
+        f.write( "Optimizer %s\n" % (optim.optim_type,) )
+        f.write( "   %s = %f\n" % ('learning rate',optim.learning_rate) )
+        f.write( "   %s = %f\n" % ('decay rate',optim.decay_rate) )
+        f.write( "   %s = %f\n" % ('epsilon',optim.epsilon) )
+        f.write( "\n" )
+
     while True:
       if options.render: env.render()
 
-      #aprob = policy(state.reshape(1,4,84,84))
-      #action = np.random.choice(VALID_ACTIONS, p=aprob)
       action = choose_epsilon_greedy( behavior, state.reshape(1,4,84,84), epsilon, num_actions )
       if epsilon > 0.1:
           epsilon -= 9e-07 # Decay to 0.1 over 1 million steps
 
-      # step the environment and get new measurements
+      # step the environment once, or ksteps times
       if ksteps > 1:
           reward = 0
           done = False
@@ -301,11 +307,23 @@ def train(target, env, options):
           q_target = rewards + batch_done * gamma * np.max(target_values, axis=1)
           q_target = q_target.reshape(batch_size,1)
 
-          actions, cache = behavior.forward(states, mode='train', verbose=False)
+          action_values, cache = behavior.forward(states, mode='train', verbose=False)
+          #action_values = action_values[ np.arange(batch_size), actions.astype(np.int) ] 
           #q_error = np.square( q_target - actions )
-          q_error = q_target - actions
+          q_error = np.sum( np.square( q_target - action_values[ np.arange(batch_size), actions.astype(np.int) ] ) )
+          #q_error = q_target - actions
           q_error /= batch_size
-          _, grad = behavior.backward(cache, 0, q_error ) # def backward(self, layer_caches, data_loss, dx ): # 2.37275421e-01 seconds
+
+          # q_error should be the loss, then what's dx?
+          av = np.zeros( action_values.shape )
+          av = action_values
+          dx = av * q_error
+          print q_error.shape
+          stats(q_error, "q_error " )
+          print "dx: %s" % (dx.shape,)
+          stats( dx, 'dx ' )
+
+          _, grad = behavior.backward(cache, q_error, dx ) # def backward(self, layer_caches, data_loss, dx ): # 2.37275421e-01 seconds
           optim.update( grad ) # 1.85747565e-01 seconds
 
           #stats(states,"states " )
@@ -321,13 +339,15 @@ def train(target, env, options):
       if done: # an episode finished
         episode_number += 1
 
-        #At some rate, copy behavior into target
+        #At update rate, copy behavior into target
         if episode_number % update_rate == 0:
             target = copy.deepcopy(behavior)
 
-        # boring book-keeping
         running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
         print 'resetting env. episode reward total was %f. running mean: %f' % (reward_sum, running_reward)
+        behavior.describe()
+        optim.describe()
+
         if episode_number % 10 == 0:
             optim.learning_rate *= learning_rate_decay
             if learning_rate_decay < 1.0:
@@ -353,6 +373,7 @@ def getOptions():
     parser.add_option("-d","--dir_model", default="", help="Directory for finding/initializing model files. Defaults to current directory.");
     parser.add_option("-r","--render", action="store_true", default=False, help="Render gym environment while training. Will greatly reduce speed.");
     parser.add_option("-s","--starting_ep", type="int", default=0, help="Starting episode number (for record keeping).");
+    parser.add_option("-k","--k_steps", type="int", default=4, help="How many game steps to take before the model chooses a new action.");
     parser.add_option("--test_only", action="store_true", default=False, help="Run tests, then exit.");
     parser.add_option("--desc", action="store_true", default=False, help="Describe the model, then exit.");
     parser.add_option("-g","--game", default="Breakout-v0", help="The game environment to use. Defaults to Breakout");
@@ -372,7 +393,7 @@ def getOptions():
     return (options, args)
 
 def test(options, model):
-    Experience.test()
+#    Experience.test()
 
 #    behavior = copy.deepcopy(model)
 #    print "%f == %f" % (model.params['W1'][0,0], behavior.params['W1'][0,0])
@@ -383,6 +404,9 @@ def test(options, model):
 
 #    for k,v in model.params.iteritems():
 #        print "%s: %d" % (k, len(v))
+
+    optim = Optimizer( "rmsprop", model, learning_rate=0.0003, decay_rate=0.99, epsilon=1e-7) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
+    optim.describe()
 
     pass
 
