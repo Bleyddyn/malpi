@@ -111,7 +111,7 @@ class Optimizer(object):
         self.epsilon = epsilon
         self.cache = { k : np.zeros_like(v) for k,v in self.model.params.iteritems() }
 
-    def update( self, grad_buffer ):
+    def update( self, grad_buffer, check_ratio = False ):
         if self.optim_type == "sgd":
             for k,v in self.model.params.iteritems():
                 g = grad_buffer[k] # gradient
@@ -121,14 +121,18 @@ class Optimizer(object):
                 g = grad_buffer[k] # gradient
                 #stats(g, "grad["+k+"] " )
                 self.cache[k] = self.decay_rate * self.cache[k] + (1 - self.decay_rate) * g**2
-                #stats(self.cache[k],"cache["+k+"] " )
-                #stats(self.model.params[k],"params["+k+"] " )
-                #stats(change,"change["+k+"] " )
-                #update_scale = np.linalg.norm( self.learning_rate * g / (np.sqrt(self.cache[k]) + self.epsilon) )
-                #param_scale = np.linalg.norm(self.model.params[k].ravel())
-                #if param_scale != 0.0:
-                #    print "Update ratio for %s: %f" % ( k, update_scale / param_scale)
-                self.model.params[k] -= (self.learning_rate / (np.sqrt(self.cache[k]) + self.epsilon)) * g
+                self._stats(self.cache[k],"cache["+k+"] " )
+                self._stats(self.model.params[k],"params["+k+"] " )
+                diff = (self.learning_rate * g) / (np.sqrt(self.cache[k]) + self.epsilon)
+                self._stats(diff, "diff["+k+"] " )
+                if check_ratio:
+                    update_scale = np.linalg.norm( self.learning_rate * g / (np.sqrt(self.cache[k]) + self.epsilon) )
+                    param_scale = np.linalg.norm(self.model.params[k].ravel())
+                    if param_scale != 0.0:
+                        ratio = update_scale / param_scale
+                        if abs(ratio - 1e-3) >  0.01:
+                            print "Update ratio for %s: %f" % ( k, ratio) # should be ~1e-3
+                self.model.params[k] -= (self.learning_rate * g) / (np.sqrt(self.cache[k]) + self.epsilon)
 
     def _stats(self, arr, msg=""):
         mi = np.min(arr)
@@ -235,7 +239,7 @@ def train(target, env, options):
     target.reg = 0.005
 
     behavior = copy.deepcopy(target)
-    optim = Optimizer( "rmsprop", behavior, learning_rate=0.0003) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
+    optim = Optimizer( "rmsprop", behavior, learning_rate=0.000003) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
     policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
 
     running_reward = None
@@ -300,41 +304,44 @@ def train(target, env, options):
 
       if exp_history.size() > batch_size:
           states, actions, rewards, batch_done, new_states = exp_history.batch( batch_size ) # 3.04588500e-05 seconds
+          actions = actions.astype(np.int)
 
           target_values, _ = target.forward( new_states, mode='test' ) # 2.00298658e-01 seconds
-          behavior_values, _ = behavior.forward( new_states, mode='test' ) # 1.74144219e-01 seconds
+          #behavior_values, _ = behavior.forward( new_states, mode='test' ) # 1.74144219e-01 seconds
 
           q_target = rewards + batch_done * gamma * np.max(target_values, axis=1)
-          q_target = q_target.reshape(batch_size,1)
 
           action_values, cache = behavior.forward(states, mode='train', verbose=False)
-          #action_values = action_values[ np.arange(batch_size), actions.astype(np.int) ] 
-          #q_error = np.square( q_target - actions )
-          q_error = np.sum( np.square( q_target - action_values[ np.arange(batch_size), actions.astype(np.int) ] ) )
-          #q_error = q_target - actions
-          q_error /= batch_size
 
-          # q_error should be the loss, then what's dx?
-          av = np.zeros( action_values.shape )
-          av = action_values
-          dx = av * q_error
-          print q_error.shape
-          stats(q_error, "q_error " )
-          print "dx: %s" % (dx.shape,)
-          stats( dx, 'dx ' )
+          q_error = np.zeros( action_values.shape )
+# Only update values for actions taken
+          q_error[ np.arange(batch_size), actions ] = q_target - action_values[ np.arange(batch_size), actions ]
+          #q_error /= batch_size
+          dx = q_error
+          print "actions: %s" % (actions[1:5],)
+          print "a_values: %s" % (action_values[1:5,:],)
+          print "t_values: %s" % (target_values[1:5,:],)
+          print "rewards : %s" % (rewards[1:5],)
+          print "batch_d : %s" % (batch_done[1:5],)
+          print "q_target: %s" % (q_target[1:5],)
+          print "q_error : %s" % (q_error[1:5,:],)
 
+          q_error = np.sum( np.square( q_error ) )
+
+          # dx needs to have shape(batch_size,num_actions), e.g. (32,6)
           _, grad = behavior.backward(cache, q_error, dx ) # def backward(self, layer_caches, data_loss, dx ): # 2.37275421e-01 seconds
-          optim.update( grad ) # 1.85747565e-01 seconds
+          optim.update( grad, check_ratio = True ) # 1.85747565e-01 seconds
 
           #stats(states,"states " )
           #stats(reward, "reward " )
           #stats(values, "target " )
           #target.describe()
           #stats(temp_values, "behavior " )
-          #stats(q_target, "q_target " )
+          stats(q_target, "q_target " )
           #stats(actions, "actions " )
           #print q_error.shape
-          #stats(q_error, "q_error " )
+          stats(dx, "dx " )
+          print "========"
 
       if done: # an episode finished
         episode_number += 1
