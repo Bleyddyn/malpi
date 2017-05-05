@@ -239,7 +239,7 @@ def train(target, env, options):
     target.reg = 0.005
 
     behavior = copy.deepcopy(target)
-    optim = Optimizer( "rmsprop", behavior, learning_rate=0.000003) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
+    optim = Optimizer( "rmsprop", behavior, learning_rate=0.001) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
     policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
 
     running_reward = None
@@ -306,6 +306,11 @@ def train(target, env, options):
           states, actions, rewards, batch_done, new_states = exp_history.batch( batch_size ) # 3.04588500e-05 seconds
           actions = actions.astype(np.int)
 
+          # Save one mini-batch for testing
+          #with open('one_experience.pickle', 'wb') as pf:
+          #    one = (states,actions,rewards,batch_done,new_states)
+          #    pickle.dump( one, pf, pickle.HIGHEST_PROTOCOL)
+
           target_values, _ = target.forward( new_states, mode='test' ) # 2.00298658e-01 seconds
           #behavior_values, _ = behavior.forward( new_states, mode='test' ) # 1.74144219e-01 seconds
 
@@ -316,7 +321,7 @@ def train(target, env, options):
           q_error = np.zeros( action_values.shape )
 # Only update values for actions taken
           q_error[ np.arange(batch_size), actions ] = q_target - action_values[ np.arange(batch_size), actions ]
-          #q_error /= batch_size
+          q_error /= batch_size
           dx = q_error
           print "actions: %s" % (actions[1:5],)
           print "a_values: %s" % (action_values[1:5,:],)
