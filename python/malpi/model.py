@@ -305,7 +305,10 @@ class MalpiModel(object):
       ma = np.max(arr)
       av = np.mean(arr)
       std = np.std(arr)
-      print "%sMin/Max/Mean/Stdev: %f/%f/%f/%f" % (msg,mi,ma,av,std)
+      abs_arr = np.abs(arr)
+      miabs = np.min(abs_arr)
+      maabs = np.max(abs_arr)
+      print "%sMin/Max/Mean/Stdev abs(Min/Max): %f/%f/%f/%f %f/%f" % (msg,mi,ma,av,std,miabs,maabs)
 
   def describe(self):
     """
@@ -319,6 +322,7 @@ class MalpiModel(object):
     print "Hyperparameters: %s" % str(self.hyper_parameters)
     print "Regularization: %f" % self.reg
     print "Input dimensions: %s" % str(self.input_dim)
+    output_dim = self.input_dim
     for layer in self.layers:
         layer_num += 1
         layer_num_str = str(layer_num)
@@ -334,6 +338,13 @@ class MalpiModel(object):
             print "    W: " + str(W.shape) + " b: " + str(b.shape) + " #: " + str(cnt)
             self.stats(W,"     W: ")
             self.stats(b,"     b: ")
+            num_filters = int( layer.split("-",1)[1] )
+            w, h = self.get_conv_filter_sizes(params)
+            pad, stride = self.get_conv_stride(params, w, h, output_dim[-2], output_dim[-1])
+            w = (output_dim[-2]-w+2*pad)/stride+1
+            h = (output_dim[-1]-h+2*pad)/stride+1
+            output_dim = np.array([num_filters,w,h])
+            print "   Dim: " + str(output_dim)
 
         elif layer.startswith(("lstm","LSTM")):
             Wx = self.params['Wx'+layer_num_str]
@@ -353,12 +364,24 @@ class MalpiModel(object):
             print layer
             print "    " + str(params)
             print "    W: " + str(W.shape) + " b: " + str(b.shape) + " #: " + str(cnt)
+            hidden = int( layer.split("-",1)[1] )
+            output_dim = np.array([hidden])
             self.stats(W,"     W: ")
             self.stats(b,"     b: ")
+            print "   Dim: " + str(output_dim)
 
         elif layer.startswith(("maxpool","Maxpool")):
             print layer
+            pool_w = params['pool_width']
+            pool_h = params['pool_height']
+            pool_str = params['pool_stride']
+            w = (output_dim[-2] - pool_w) / pool_str + 1
+            h = (output_dim[-1] - pool_h) / pool_str + 1
+            output_dim[-2] = w
+            output_dim[-1] = h
             print "    " + str(params)
+            print "   Dim: " + str(output_dim)
+
     print "Total # params: " + "{:,}".format(total_num_param)
 
 def load_malpi(filename, verbose=True):

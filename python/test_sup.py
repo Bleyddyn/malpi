@@ -40,10 +40,15 @@ def log( message, name='test' ):
 
 def initializeModel( model_name ):
     imsize = 79
-    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "FC-10"]
-    layer_params = [{'filter_size':3, 'stride':1, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-        {'filter_size':3}, {'relu':False} ]
+#    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "FC-10"]
+#    layer_params = [{'filter_size':3, 'stride':1, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
+#        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
+#        {'filter_size':3}, {'relu':False} ]
+    layers = ["conv-32", "conv-64", "conv-64", "FC-512", "FC-10"]
+    layer_params = [{'filter_size':8, 'stride':2, 'pad':4 },
+        {'filter_size':4, 'stride':2, 'pad':2},
+        {'filter_size':3, 'stride':1, 'pad':1},
+        {}, {'relu':False} ]
     model = MalpiModel(layers, layer_params, input_dim=(3,imsize,imsize), reg=.005, dtype=np.float32, verbose=True)
     model.name = model_name
     return model
@@ -70,11 +75,16 @@ def hyperparameterGenerator( oneRun = False ):
                 yield hparams
 
 def train():
-    name = "ThreeLayerTest2"
-    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "FC-10"]
-    layer_params = [{'filter_size':3, 'stride':1, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-        {'filter_size':3}, {'relu':False} ]
+    name = "ThreeLayerTest3"
+#    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "FC-10"]
+#    layer_params = [{'filter_size':3, 'stride':1, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
+#        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
+#        {'filter_size':3}, {'relu':False} ]
+    layers = ["conv-32", "conv-64", "conv-64", "FC-512", "FC-10"]
+    layer_params = [{'filter_size':8, 'stride':2, 'pad':1 },
+        {'filter_size':4, 'stride':2, 'pad':2},
+        {'filter_size':3, 'stride':1, 'pad':1},
+        {}, {'relu':False} ]
 
     log( "%s = %s" % (name, str(layers)), name )
     log( "   %s" % (str(layer_params,)), name )
@@ -90,7 +100,7 @@ def train():
         best_val_acc = best_model.validation_accuracy
 
     for hparams in hyperparameterGenerator(oneRun=True):
-        model = MalpiModel(layers, layer_params, input_dim=(3, 32, 32), reg=hparams['reg'], dtype=np.float32, verbose=False)
+        model = MalpiModel(layers, layer_params, input_dim=(3, 32, 32), reg=hparams['reg'], dtype=np.float32, verbose=True)
         model.name = model_name
         model.hyper_parameters = hparams
         solver = Solver(model, data,

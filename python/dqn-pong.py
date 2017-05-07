@@ -119,12 +119,12 @@ class Optimizer(object):
         elif self.optim_type == "rmsprop":
             for k,v in self.model.params.iteritems():
                 g = grad_buffer[k] # gradient
-                #stats(g, "grad["+k+"] " )
+                #self._stats(g, "grad["+k+"] " )
                 self.cache[k] = self.decay_rate * self.cache[k] + (1 - self.decay_rate) * g**2
-                self._stats(self.cache[k],"cache["+k+"] " )
-                self._stats(self.model.params[k],"params["+k+"] " )
+                #self._stats(self.cache[k],"cache["+k+"] " )
+                #self._stats(self.model.params[k],"params["+k+"] " )
                 diff = (self.learning_rate * g) / (np.sqrt(self.cache[k]) + self.epsilon)
-                self._stats(diff, "diff["+k+"] " )
+                #self._stats(diff, "diff["+k+"] " )
                 if check_ratio:
                     update_scale = np.linalg.norm( self.learning_rate * g / (np.sqrt(self.cache[k]) + self.epsilon) )
                     param_scale = np.linalg.norm(self.model.params[k].ravel())
@@ -143,8 +143,9 @@ class Optimizer(object):
 
     def describe(self):
         print "Optimizer %s; lr=%f, dr=%f, ep=%e" % (self.optim_type, self.learning_rate, self.decay_rate, self.epsilon)
-        for k,v in self.model.params.iteritems():
-            self._stats( self.cache[k], msg=("   "+k+" cache ") )
+        if self.optim_type == "rmsprop":
+            for k,v in self.model.params.iteritems():
+                self._stats( self.cache[k], msg=("   "+k+" cache ") )
 
 def saveModel( model, options ):
     filename = os.path.join( options.dir_model, options.model_name + ".pickle" )
@@ -154,11 +155,18 @@ def saveModel( model, options ):
 def initializeModel( name, number_actions ):
     output = "FC-%d" % (number_actions,)
 # From the DQN paper, mostly
-    layers = ["conv-32", "conv-64", "conv-64", "FC-512", output]
-    layer_params = [{'filter_size':8, 'stride':4, 'pad':4 },
-        {'filter_size':4, 'stride':2, 'pad':2},
-        {'filter_size':3, 'stride':1, 'pad':1},
+    layers = ["conv-32", "maxpool", "conv-64", "maxpool", "conv-64", "FC-512", output]
+    layer_params = [{'filter_size':3, 'stride':1 },
+        {'pool_stride': 2, 'pool_width': 2, 'pool_height': 2},
+        {'filter_size':3, 'stride':1 },
+        {'pool_stride': 2, 'pool_width': 2, 'pool_height': 2},
+        {'filter_size':3, 'stride':2 },
         {}, {'relu':False} ]
+#    layers = ["conv-32", "conv-64", "conv-64", "FC-512", output]
+#    layer_params = [{'filter_size':8, 'stride':4, 'pad':4 },
+#        {'filter_size':4, 'stride':2, 'pad':2},
+#        {'filter_size':3, 'stride':1, 'pad':1},
+#        {}, {'relu':False} ]
     model = MalpiModel(layers, layer_params, input_dim=(4,84,84), reg=0.005, dtype=np.float32, verbose=True)
     model.name = name
 
@@ -179,6 +187,7 @@ def prepro(I):
   I = I[35:195] # crop
   I = imresize(I, (84,84), interp='nearest' )
   I = np.sum( I * rgb_weights, axis=2) # Convert to grayscale, shape = (84,84)
+  #return I.astype(np.float) / 255.0
   return I.astype(np.float)
 
 def discount_rewards(r, gamma, normalize=True):
@@ -239,7 +248,7 @@ def train(target, env, options):
     target.reg = 0.005
 
     behavior = copy.deepcopy(target)
-    optim = Optimizer( "rmsprop", behavior, learning_rate=0.001) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
+    optim = Optimizer( "sgd", behavior, learning_rate=0.005) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
     policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
 
     running_reward = None
@@ -302,7 +311,7 @@ def train(target, env, options):
       exp_history.save( state, action, reward, done, next_state ) # 2.91559257e-04 seconds
       state = next_state
 
-      if exp_history.size() > batch_size:
+      if exp_history.size() > (batch_size * 5):
           states, actions, rewards, batch_done, new_states = exp_history.batch( batch_size ) # 3.04588500e-05 seconds
           actions = actions.astype(np.int)
 
@@ -318,35 +327,42 @@ def train(target, env, options):
 
           action_values, cache = behavior.forward(states, mode='train', verbose=False)
 
+          #This gives the same results as the block below
+          #target_values = copy.deepcopy(action_values)
+          #target_values[ np.arange(batch_size), actions ] = q_target
+          #q_error2 = target_values - action_values
+
           q_error = np.zeros( action_values.shape )
-# Only update values for actions taken
-          q_error[ np.arange(batch_size), actions ] = q_target - action_values[ np.arange(batch_size), actions ]
-          q_error /= batch_size
+          # Only update values for actions taken
+          #q_error[ np.arange(batch_size), actions ] = q_target - action_values[ np.arange(batch_size), actions ]
+          q_error[ np.arange(batch_size), actions ] = action_values[ np.arange(batch_size), actions ] - q_target
+          #q_error /= batch_size
           dx = q_error
-          print "actions: %s" % (actions[1:5],)
-          print "a_values: %s" % (action_values[1:5,:],)
-          print "t_values: %s" % (target_values[1:5,:],)
-          print "rewards : %s" % (rewards[1:5],)
-          print "batch_d : %s" % (batch_done[1:5],)
-          print "q_target: %s" % (q_target[1:5],)
-          print "q_error : %s" % (q_error[1:5,:],)
+
+          #print "actions: %s" % (actions[1:5],)
+          #print "a_values: %s" % (action_values[1:5,:],)
+          #print "t_values: %s" % (target_values[1:5,:],)
+          #print "rewards : %s" % (rewards[1:5],)
+          #print "batch_d : %s" % (batch_done[1:5],)
+          #print "q_target: %s" % (q_target[1:5],)
+          #print "q_error : %s" % (q_error[1:5,:],)
 
           q_error = np.sum( np.square( q_error ) )
 
           # dx needs to have shape(batch_size,num_actions), e.g. (32,6)
           _, grad = behavior.backward(cache, q_error, dx ) # def backward(self, layer_caches, data_loss, dx ): # 2.37275421e-01 seconds
-          optim.update( grad, check_ratio = True ) # 1.85747565e-01 seconds
+          optim.update( grad, check_ratio=False ) # 1.85747565e-01 seconds
 
           #stats(states,"states " )
           #stats(reward, "reward " )
           #stats(values, "target " )
           #target.describe()
           #stats(temp_values, "behavior " )
-          stats(q_target, "q_target " )
+          #stats(q_target, "q_target " )
           #stats(actions, "actions " )
           #print q_error.shape
-          stats(dx, "dx " )
-          print "========"
+          #stats(dx, "dx " )
+          #print "========"
 
       if done: # an episode finished
         episode_number += 1
