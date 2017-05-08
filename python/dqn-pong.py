@@ -123,7 +123,7 @@ class Optimizer(object):
                 self.cache[k] = self.decay_rate * self.cache[k] + (1 - self.decay_rate) * g**2
                 #self._stats(self.cache[k],"cache["+k+"] " )
                 #self._stats(self.model.params[k],"params["+k+"] " )
-                diff = (self.learning_rate * g) / (np.sqrt(self.cache[k]) + self.epsilon)
+                #diff = (self.learning_rate * g) / (np.sqrt(self.cache[k]) + self.epsilon)
                 #self._stats(diff, "diff["+k+"] " )
                 if check_ratio:
                     update_scale = np.linalg.norm( self.learning_rate * g / (np.sqrt(self.cache[k]) + self.epsilon) )
@@ -154,19 +154,19 @@ def saveModel( model, options ):
 
 def initializeModel( name, number_actions ):
     output = "FC-%d" % (number_actions,)
-# From the DQN paper, mostly
-    layers = ["conv-32", "maxpool", "conv-64", "maxpool", "conv-64", "FC-512", output]
-    layer_params = [{'filter_size':3, 'stride':1 },
-        {'pool_stride': 2, 'pool_width': 2, 'pool_height': 2},
-        {'filter_size':3, 'stride':1 },
-        {'pool_stride': 2, 'pool_width': 2, 'pool_height': 2},
-        {'filter_size':3, 'stride':2 },
-        {}, {'relu':False} ]
-#    layers = ["conv-32", "conv-64", "conv-64", "FC-512", output]
-#    layer_params = [{'filter_size':8, 'stride':4, 'pad':4 },
-#        {'filter_size':4, 'stride':2, 'pad':2},
-#        {'filter_size':3, 'stride':1, 'pad':1},
+#    layers = ["conv-32", "maxpool", "conv-64", "maxpool", "conv-64", "FC-512", output]
+#    layer_params = [{'filter_size':3, 'stride':1 },
+#        {'pool_stride': 2, 'pool_width': 2, 'pool_height': 2},
+#        {'filter_size':3, 'stride':1 },
+#        {'pool_stride': 2, 'pool_width': 2, 'pool_height': 2},
+#        {'filter_size':3, 'stride':2 },
 #        {}, {'relu':False} ]
+# From the DQN paper, mostly
+    layers = ["conv-32", "conv-64", "conv-64", "FC-512", output]
+    layer_params = [{'filter_size':8, 'stride':4, 'pad':4 },
+        {'filter_size':4, 'stride':2, 'pad':2},
+        {'filter_size':3, 'stride':1, 'pad':1},
+        {}, {'relu':False} ]
     model = MalpiModel(layers, layer_params, input_dim=(4,84,84), reg=0.005, dtype=np.float32, verbose=True)
     model.name = name
 
@@ -239,7 +239,8 @@ def choose_epsilon_greedy( estimator, observation, epsilon, nA ):
 
 def train(target, env, options):
     batch_size = 32 # backprop batch size
-    update_rate = 2 # every how many episodes to copy behavior model to target
+    update_rate = 10 # every how many episodes to copy behavior model to target
+    learning_rate = 0.005
     learning_rate_decay = 1.0 # 0.999
     gamma = 0.99 # discount factor for reward
     epsilon = 1.0
@@ -334,9 +335,11 @@ def train(target, env, options):
 
           q_error = np.zeros( action_values.shape )
           # Only update values for actions taken
-          #q_error[ np.arange(batch_size), actions ] = q_target - action_values[ np.arange(batch_size), actions ]
-          q_error[ np.arange(batch_size), actions ] = action_values[ np.arange(batch_size), actions ] - q_target
+          # See: https://zhuanlan.zhihu.com/p/25771039
+          q_error[ np.arange(batch_size), actions ] = q_target - action_values[ np.arange(batch_size), actions ]
+          #q_error[ np.arange(batch_size), actions ] = action_values[ np.arange(batch_size), actions ] - q_target
           #q_error /= batch_size
+          q_error *= -learning_rate
           dx = q_error
 
           #print "actions: %s" % (actions[1:5],)
