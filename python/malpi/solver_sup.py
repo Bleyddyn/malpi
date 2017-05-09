@@ -1,7 +1,7 @@
 import numpy as np
+import pickle
 
 from malpi import optim
-
 
 class Solver(object):
   """
@@ -71,7 +71,7 @@ class Solver(object):
       names to gradients of the loss with respect to those parameters.
   """
 
-  def __init__(self, model, data, **kwargs):
+  def __init__(self, model, optimizer, data, **kwargs):
     """
     Construct a new Solver instance.
     
@@ -126,6 +126,7 @@ class Solver(object):
     if not hasattr(optim, self.update_rule):
       raise ValueError('Invalid update_rule "%s"' % self.update_rule)
     self.update_rule = getattr(optim, self.update_rule)
+    self.optimizer = optimizer
 
     self._reset()
 
@@ -143,12 +144,15 @@ class Solver(object):
     self.train_acc_history = []
     self.val_acc_history = []
 
-    # Make a deep copy of the optim_config for each parameter
-    self.optim_configs = {}
-    for p in self.model.params:
-      d = {k: v for k, v in self.optim_config.iteritems()}
-      self.optim_configs[p] = d
-
+  def _stats(self, arr, msg=""):
+    mi = np.min(arr)
+    ma = np.max(arr)
+    av = np.mean(arr)
+    std = np.std(arr)
+    arr_abs = np.abs(arr)
+    mi_abs = np.min(arr_abs)
+    ma_abs = np.max(arr_abs)
+    print "%sMin/Max/Mean/Stdev abs(Min/Max): %g/%g/%g/%g %g/%g" % (msg,mi,ma,av,std,mi_abs,ma_abs)
 
   def _step(self):
     """
@@ -166,13 +170,7 @@ class Solver(object):
     self.loss_history.append(loss)
 
     # Perform a parameter update
-    for p, w in self.model.params.iteritems():
-      dw = grads[p]
-      config = self.optim_configs[p]
-      next_w, next_config = self.update_rule(w, dw, config)
-      self.model.params[p] = next_w
-      self.optim_configs[p] = next_config
-
+    self.optimizer.update(grads)
 
   def check_accuracy(self, X, y, num_samples=None, batch_size=100):
     """
@@ -236,8 +234,7 @@ class Solver(object):
       epoch_end = (t + 1) % iterations_per_epoch == 0
       if epoch_end:
         self.epoch += 1
-        for k in self.optim_configs:
-          self.optim_configs[k]['learning_rate'] *= self.lr_decay
+        self.optimizer.decay_learning_rate(self.lr_decay)
 
       # Check train and val accuracy on the first iteration, the last
       # iteration, and at the end of each epoch.

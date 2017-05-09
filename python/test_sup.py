@@ -6,6 +6,7 @@ import numpy as np
 from malpi.model import *
 from malpi.data_utils import get_CIFAR10_data
 from malpi.solver_sup import Solver
+from malpi.optimizer import Optimizer
 from optparse import OptionParser
 from malpi.fast_layers import *
 
@@ -71,7 +72,7 @@ def hyperparameterGenerator( oneRun = False ):
     for reg in reguls:
         for lr in lrs:
             for decay in decays:
-                hparams = { "reg": reg, "lr": lr, "lr_decay":decay, "epochs":6, "batch_size":50, "update":"adam" }
+                hparams = { "reg": reg, "lr": lr, "lr_decay":decay, "epochs":6, "batch_size":50, "update":"rmsprop" }
                 yield hparams
 
 def train():
@@ -103,7 +104,8 @@ def train():
         model = MalpiModel(layers, layer_params, input_dim=(3, 32, 32), reg=hparams['reg'], dtype=np.float32, verbose=True)
         model.name = model_name
         model.hyper_parameters = hparams
-        solver = Solver(model, data,
+        optim = Optimizer( "rmsprop", model, learning_rate=hparams['lr'] )
+        solver = Solver(model, optim, data, 
                         num_epochs=hparams['epochs'], batch_size=hparams['batch_size'],
                         lr_decay=hparams['lr_decay'],
                         update_rule=hparams['update'],

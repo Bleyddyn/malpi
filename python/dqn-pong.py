@@ -18,8 +18,10 @@ from scipy.misc import imresize
 
 from malpi.layers import *
 from malpi.model import *
+from malpi.optimizer import Optimizer
 
-np.seterr(all='raise')
+#np.seterr(all='raise')
+np.seterr(under='ignore')
 
 class Experience(object):
     
@@ -94,59 +96,6 @@ def stats(arr, msg=""):
     std = np.std(arr)
     print "%sMin/Max/Mean/Stdev: %f/%f/%f/%f" % (msg,mi,ma,av,std)
             
-class Optimizer(object):
-    """ TODO: Add support for Adam: http://sebastianruder.com/optimizing-gradient-descent/index.html#rmsprop
-    """
-    def __init__( self, optim_type, model, learning_rate = 0.01, decay_rate=0.99, epsilon=1e-8 ):
-        supported = ["sgd","rmsprop"]
-        if optim_type not in supported:
-            print "Invalid optimizer type: " % (optim_type,)
-            print "Supported types: %s" % (str(supported),)
-            return
-
-        self.model = model
-        self.optim_type = optim_type
-        self.learning_rate = learning_rate
-        self.decay_rate = decay_rate
-        self.epsilon = epsilon
-        self.cache = { k : np.zeros_like(v) for k,v in self.model.params.iteritems() }
-
-    def update( self, grad_buffer, check_ratio = False ):
-        if self.optim_type == "sgd":
-            for k,v in self.model.params.iteritems():
-                g = grad_buffer[k] # gradient
-                self.model.params[k] -= self.learning_rate * g
-        elif self.optim_type == "rmsprop":
-            for k,v in self.model.params.iteritems():
-                g = grad_buffer[k] # gradient
-                #self._stats(g, "grad["+k+"] " )
-                self.cache[k] = self.decay_rate * self.cache[k] + (1 - self.decay_rate) * g**2
-                #self._stats(self.cache[k],"cache["+k+"] " )
-                #self._stats(self.model.params[k],"params["+k+"] " )
-                #diff = (self.learning_rate * g) / (np.sqrt(self.cache[k]) + self.epsilon)
-                #self._stats(diff, "diff["+k+"] " )
-                if check_ratio:
-                    update_scale = np.linalg.norm( self.learning_rate * g / (np.sqrt(self.cache[k]) + self.epsilon) )
-                    param_scale = np.linalg.norm(self.model.params[k].ravel())
-                    if param_scale != 0.0:
-                        ratio = update_scale / param_scale
-                        if abs(ratio - 1e-3) >  0.01:
-                            print "Update ratio for %s: %f" % ( k, ratio) # should be ~1e-3
-                self.model.params[k] -= (self.learning_rate * g) / (np.sqrt(self.cache[k]) + self.epsilon)
-
-    def _stats(self, arr, msg=""):
-        mi = np.min(arr)
-        ma = np.max(arr)
-        av = np.mean(arr)
-        std = np.std(arr)
-        print "%sMin/Max/Mean/Stdev: %f/%f/%f/%f" % (msg,mi,ma,av,std)
-
-    def describe(self):
-        print "Optimizer %s; lr=%f, dr=%f, ep=%e" % (self.optim_type, self.learning_rate, self.decay_rate, self.epsilon)
-        if self.optim_type == "rmsprop":
-            for k,v in self.model.params.iteritems():
-                self._stats( self.cache[k], msg=("   "+k+" cache ") )
-
 def saveModel( model, options ):
     filename = os.path.join( options.dir_model, options.model_name + ".pickle" )
     with open(filename, 'wb') as f:
@@ -187,8 +136,8 @@ def prepro(I):
   I = I[35:195] # crop
   I = imresize(I, (84,84), interp='nearest' )
   I = np.sum( I * rgb_weights, axis=2) # Convert to grayscale, shape = (84,84)
-  #return I.astype(np.float) / 255.0
-  return I.astype(np.float)
+  return I.astype(np.float) / 255.0
+  #return I.astype(np.float)
 
 def discount_rewards(r, gamma, normalize=True):
     """ take 1D float array of rewards and compute discounted reward.
@@ -237,6 +186,16 @@ def choose_epsilon_greedy( estimator, observation, epsilon, nA ):
         q_values,_ = estimator.forward(observation, mode="test")
         return np.argmax(q_values[0])
 
+def check_weights( model ):
+    for k,w in model.params.iteritems():
+        smallest = np.min( np.abs(w) )
+        print "Smallest %s: %g" % (k,smallest)
+        mask_zeros = w != 0.0
+        mask = np.abs(w) < 1e-20
+        mask = np.logical_and(mask_zeros,mask)
+        if np.count_nonzero(mask) > 0:
+            print "Underflow in %s " % (k,)
+
 def train(target, env, options):
     batch_size = 32 # backprop batch size
     update_rate = 10 # every how many episodes to copy behavior model to target
@@ -249,13 +208,14 @@ def train(target, env, options):
     target.reg = 0.005
 
     behavior = copy.deepcopy(target)
-    optim = Optimizer( "sgd", behavior, learning_rate=0.005) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
-    policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
+    optim = Optimizer( "rmsprop", behavior, learning_rate=0.005) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
+    #policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
 
     running_reward = None
     reward_sum = 0
     episode_number = options.starting_ep
     steps = 0
+    episode_steps = 0
 
     num_actions = env.action_space.n
     VALID_ACTIONS = xrange(num_actions) # [0, 1, 2, 3]
@@ -308,6 +268,7 @@ def train(target, env, options):
 
       reward_sum += reward
       steps += ksteps
+      episode_steps += ksteps
 
       exp_history.save( state, action, reward, done, next_state ) # 2.91559257e-04 seconds
       state = next_state
@@ -328,20 +289,21 @@ def train(target, env, options):
 
           action_values, cache = behavior.forward(states, mode='train', verbose=False)
 
-          #This gives the same results as the block below
-          #target_values = copy.deepcopy(action_values)
-          #target_values[ np.arange(batch_size), actions ] = q_target
-          #q_error2 = target_values - action_values
+          # This is where Double Q-Learning comes in!
+          #q_values_next = q_estimator.predict(sess, next_states_batch)
+          #best_actions = np.argmax(q_values_next, axis=1)
+          #q_values_next_target = target_estimator.predict(sess, next_states_batch)
+          #targets_batch = reward_batch + np.invert(done_batch).astype(np.float32) * discount_factor * q_values_next_target[np.arange(batch_size), best_actions]
 
           q_error = np.zeros( action_values.shape )
           # Only update values for actions taken
-          # See: https://zhuanlan.zhihu.com/p/25771039
           q_error[ np.arange(batch_size), actions ] = q_target - action_values[ np.arange(batch_size), actions ]
           #q_error[ np.arange(batch_size), actions ] = action_values[ np.arange(batch_size), actions ] - q_target
           #q_error /= batch_size
-          q_error *= -learning_rate
+          # See: https://zhuanlan.zhihu.com/p/25771039
           dx = q_error
-
+          dx /= batch_size
+          stats( dx, "dx " )
           #print "actions: %s" % (actions[1:5],)
           #print "a_values: %s" % (action_values[1:5,:],)
           #print "t_values: %s" % (target_values[1:5,:],)
@@ -353,8 +315,19 @@ def train(target, env, options):
           q_error = np.sum( np.square( q_error ) )
 
           # dx needs to have shape(batch_size,num_actions), e.g. (32,6)
+          #check_weights( behavior )
           _, grad = behavior.backward(cache, q_error, dx ) # def backward(self, layer_caches, data_loss, dx ): # 2.37275421e-01 seconds
-          optim.update( grad, check_ratio=False ) # 1.85747565e-01 seconds
+          optim.update( grad, check_ratio=True ) # 1.85747565e-01 seconds
+
+          # Clip very small weights to prevent underflow in multiplications
+          if False:
+              for k,v in behavior.params.iteritems():
+                  mask_zeros = behavior.params[k] != 0.0
+                  mask = np.abs(behavior.params[k]) < 1e-15
+                  mask = np.logical_and(mask_zeros,mask)
+                  behavior.params[k][mask] = 0.0
+                  if np.count_nonzero(mask) > 0:
+                      print "Underflow in %s " % (k,)
 
           #stats(states,"states " )
           #stats(reward, "reward " )
@@ -375,7 +348,7 @@ def train(target, env, options):
             target = copy.deepcopy(behavior)
 
         running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
-        print 'resetting env. episode reward total was %f. running mean: %f' % (reward_sum, running_reward)
+        print 'resetting env. episode reward total was %f. running mean: %f.  In %d steps' % (reward_sum, running_reward, episode_steps)
         behavior.describe()
         optim.describe()
 
@@ -388,6 +361,7 @@ def train(target, env, options):
                 f.write( "%d,%f\n" % (episode_number,running_reward) )
 
         reward_sum = 0
+        episode_steps = 0
         observation = env.reset()
         state = prepro(observation)
         state = np.stack([state] * 4, axis=0)

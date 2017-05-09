@@ -236,6 +236,12 @@ class MalpiModel(object):
             b = self.params['b'+layer_num_str]
             layer_params = self.layer_params[layer_num-1]
             cache = layer_caches[layer_num-1]
+            #smallest = np.min( np.abs(W) )
+            #lowest = np.min( W )
+            #print "%s: %g %g" % (layer, smallest, lowest)
+            #tmp = np.sum(W*W)
+            #tmp *= self.reg
+            #tmp *= 0.5
             reg_loss += 0.5 * self.reg * np.sum(W*W)
             if 'relu' in layer_params and not layer_params['relu']:
                 dx, dw,db = affine_backward( dx, cache )
@@ -263,6 +269,7 @@ class MalpiModel(object):
       if y is None:
           return scores
       data_loss, dx = softmax_loss( scores, y )
+      #print "dL: %g" % (np.max(np.abs(dx)),)
       loss, grads = self.backward( layer_caches, data_loss, dx )
       return loss, grads
   
