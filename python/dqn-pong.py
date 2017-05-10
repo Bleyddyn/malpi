@@ -94,7 +94,10 @@ def stats(arr, msg=""):
     ma = np.max(arr)
     av = np.mean(arr)
     std = np.std(arr)
-    print "%sMin/Max/Mean/Stdev: %f/%f/%f/%f" % (msg,mi,ma,av,std)
+    abs_arr = np.abs(arr)
+    mi_abs = np.min(abs_arr)
+    ma_abs = np.max(abs_arr)
+    print "%sMin/Max/Mean/Stdev abs(Min/Max): %g/%g/%g/%g %g/%g" % (msg,mi,ma,av,std,mi_abs,ma_abs)
             
 def saveModel( model, options ):
     filename = os.path.join( options.dir_model, options.model_name + ".pickle" )
@@ -202,7 +205,7 @@ def train(target, env, options):
     learning_rate = 0.005
     learning_rate_decay = 1.0 # 0.999
     gamma = 0.99 # discount factor for reward
-    epsilon = 1.0
+    epsilon = 0.2
     ksteps = options.k_steps # number of frames to skip before selecting a new action
 
     target.reg = 0.005
@@ -247,6 +250,7 @@ def train(target, env, options):
           epsilon -= 9e-07 # Decay to 0.1 over 1 million steps
 
       # step the environment once, or ksteps times
+      # TODO: fix this so it will work for ksteps other than 1 and 4
       if ksteps > 1:
           reward = 0
           done = False
@@ -276,6 +280,14 @@ def train(target, env, options):
       if exp_history.size() > (batch_size * 5):
           states, actions, rewards, batch_done, new_states = exp_history.batch( batch_size ) # 3.04588500e-05 seconds
           actions = actions.astype(np.int)
+          onehot = np.zeros( (batch_size,actions.shape[0]) )
+          onehot[np.arange(batch_size),actions] = 1.0
+          print np.mean(onehot, axis=0)[0:6]
+          #stats(states,"states ")
+          #stats(actions,"actions ")
+          #stats(rewards,"rewards ")
+          #stats(batch_done,"batch_done ")
+          #stats(new_states,"new_states ")
 
           # Save one mini-batch for testing
           #with open('one_experience.pickle', 'wb') as pf:
@@ -283,19 +295,19 @@ def train(target, env, options):
           #    pickle.dump( one, pf, pickle.HIGHEST_PROTOCOL)
 
           target_values, _ = target.forward( new_states, mode='test' ) # 2.00298658e-01 seconds
-          #behavior_values, _ = behavior.forward( new_states, mode='test' ) # 1.74144219e-01 seconds
 
-          q_target = rewards + batch_done * gamma * np.max(target_values, axis=1)
+          double_dqn = True
+          if double_dqn:
+              behavior_values, _ = behavior.forward( new_states, mode='test' ) # 1.74144219e-01 seconds
+              best_actions = np.argmax(behavior_values,axis=1)
+              q_target = rewards + batch_done * gamma * target_values[np.arange(batch_size), best_actions]
+          else:
+              q_target = rewards + batch_done * gamma * np.max(target_values, axis=1)
 
           action_values, cache = behavior.forward(states, mode='train', verbose=False)
 
-          # This is where Double Q-Learning comes in!
-          #q_values_next = q_estimator.predict(sess, next_states_batch)
-          #best_actions = np.argmax(q_values_next, axis=1)
-          #q_values_next_target = target_estimator.predict(sess, next_states_batch)
-          #targets_batch = reward_batch + np.invert(done_batch).astype(np.float32) * discount_factor * q_values_next_target[np.arange(batch_size), best_actions]
-
           q_error = np.zeros( action_values.shape )
+          #q_error[ np.arange(batch_size), 2 ] = -batch_size
           # Only update values for actions taken
           q_error[ np.arange(batch_size), actions ] = q_target - action_values[ np.arange(batch_size), actions ]
           #q_error[ np.arange(batch_size), actions ] = action_values[ np.arange(batch_size), actions ] - q_target
@@ -316,7 +328,7 @@ def train(target, env, options):
 
           # dx needs to have shape(batch_size,num_actions), e.g. (32,6)
           #check_weights( behavior )
-          _, grad = behavior.backward(cache, q_error, dx ) # def backward(self, layer_caches, data_loss, dx ): # 2.37275421e-01 seconds
+          _, grad = behavior.backward(cache, q_error, dx ) # 2.37275421e-01 seconds
           optim.update( grad, check_ratio=True ) # 1.85747565e-01 seconds
 
           # Clip very small weights to prevent underflow in multiplications
@@ -389,6 +401,10 @@ def getOptions():
         print usage
         exit()
 
+    if options.k_steps != 1 and options.k_steps != 4:
+        print "Game step sizes other than 1 and 4 are not currently supported."
+        exit()
+
     if args[0].endswith('.pickle'):
         args[0] = args[0][:-7]
 
@@ -419,7 +435,7 @@ if __name__ == "__main__":
     options, _ = getOptions()
 
     env = gym.envs.make(options.game)
-    #env.get_action_meanings()
+    print env.get_action_meanings()
 
     if options.initialize:
         print "Initializing model with %d actions..." % (env.action_space.n,)
