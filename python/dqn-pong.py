@@ -89,6 +89,60 @@ class Experience(object):
         print e.actions[0:2]
         print e.rewards[0:2]
 
+class Experience2(object):
+
+    Transition = namedtuple("Transition", ["state", "action", "reward", "done", "next_state"])
+
+    def __init__( self, maxN, stateDim=None ):
+        # stateDim is only for compatibility with Experience
+        self.maxN = maxN
+        self.memory = []
+
+    def size( self ):
+        return len(self.memory)
+
+    def save( self, state, action, reward, done, next_state ):
+        if len(self.memory) == self.maxN:
+            self.memory.pop(0)
+
+        if done:
+            done = 0.0
+        else:
+            done = 1.0
+
+        self.memory.append(self.Transition(state, action, reward, done, next_state))
+
+    def batch( self, batch_size ):
+        if batch_size >= len(self.memory):
+            return (None,None,None,None,None)
+
+        samples = random.sample(self.memory, batch_size)
+        states_batch, action_batch, reward_batch, done_batch, next_states_batch = map(np.array, zip(*samples))
+        return (states_batch, action_batch, reward_batch, done_batch, next_states_batch)
+
+
+    def clear( self ):
+        self.memory = []
+
+    @staticmethod
+    def test():
+        e = Experience2( 10 )
+        s = np.zeros( (20,20) )
+        e.save( s, 1, -3, False, s )
+        e.save( s, 2, -4, True, s )
+        e.save( s, 3, -5, False, s )
+        e.save( s, 4, -6, True, s )
+        s1, a, r, d, n = e.batch( 2 )
+        print s1.shape # (2, 20, 20)
+        print a # e.g. [ 1.  2.]
+        print r # e.g. [-3. -4.]
+        print d
+        for _ in range(2):
+            e.save( s, 5, -7, False, s )
+            e.save( s, 6, -8, False, s )
+            e.save( s, 7, -9, True, s )
+            e.save( s, 8, -10, False, s )
+
 def stats(arr, msg=""):
     mi = np.min(arr)
     ma = np.max(arr)
@@ -201,7 +255,7 @@ def check_weights( model ):
 
 def train(target, env, options):
     batch_size = 32 # backprop batch size
-    update_rate = 10 # every how many episodes to copy behavior model to target
+    update_rate = 2 # every how many episodes to copy behavior model to target
     learning_rate = 0.005
     learning_rate_decay = 1.0 # 0.999
     gamma = 0.99 # discount factor for reward
@@ -219,6 +273,7 @@ def train(target, env, options):
     episode_number = options.starting_ep
     steps = 0
     episode_steps = 0
+    point = 1 # how many points have been scored by either side in this episode
 
     num_actions = env.action_space.n
     VALID_ACTIONS = xrange(num_actions) # [0, 1, 2, 3]
@@ -227,7 +282,7 @@ def train(target, env, options):
     state = prepro(observation)
     state = np.stack([state] * 4, axis=0)
 
-    exp_history = Experience( 2000, state.shape )
+    exp_history = Experience2( 2000, state.shape )
 
     with open( target.name + '_hparams.txt', 'a+') as f:
         f.write( "%s = %s\n" % ('Start',time.strftime("%Y-%m-%d %H:%M:%S")) )
@@ -280,9 +335,11 @@ def train(target, env, options):
       if exp_history.size() > (batch_size * 5):
           states, actions, rewards, batch_done, new_states = exp_history.batch( batch_size ) # 3.04588500e-05 seconds
           actions = actions.astype(np.int)
-          onehot = np.zeros( (batch_size,actions.shape[0]) )
-          onehot[np.arange(batch_size),actions] = 1.0
-          print np.mean(onehot, axis=0)[0:6]
+
+          #onehot = np.zeros( (batch_size,actions.shape[0]) )
+          #onehot[np.arange(batch_size),actions] = 1.0
+          #print np.mean(onehot, axis=0)[0:6]
+
           #stats(states,"states ")
           #stats(actions,"actions ")
           #stats(rewards,"rewards ")
@@ -315,7 +372,12 @@ def train(target, env, options):
           # See: https://zhuanlan.zhihu.com/p/25771039
           dx = q_error
           dx /= batch_size
-          stats( dx, "dx " )
+
+          print_stats = False
+          if done:
+              print_stats = True
+              stats( dx, "dx " )
+
           #print "actions: %s" % (actions[1:5],)
           #print "a_values: %s" % (action_values[1:5,:],)
           #print "t_values: %s" % (target_values[1:5,:],)
@@ -329,7 +391,7 @@ def train(target, env, options):
           # dx needs to have shape(batch_size,num_actions), e.g. (32,6)
           #check_weights( behavior )
           _, grad = behavior.backward(cache, q_error, dx ) # 2.37275421e-01 seconds
-          optim.update( grad, check_ratio=True ) # 1.85747565e-01 seconds
+          optim.update( grad, check_ratio=print_stats ) # 1.85747565e-01 seconds
 
           # Clip very small weights to prevent underflow in multiplications
           if False:
@@ -354,10 +416,12 @@ def train(target, env, options):
 
       if done: # an episode finished
         episode_number += 1
+        point = 0
 
         #At update rate, copy behavior into target
         if episode_number % update_rate == 0:
             target = copy.deepcopy(behavior)
+            print "Copying behavior network to target"
 
         running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
         print 'resetting env. episode reward total was %f. running mean: %f.  In %d steps' % (reward_sum, running_reward, episode_steps)
@@ -379,7 +443,8 @@ def train(target, env, options):
         state = np.stack([state] * 4, axis=0)
 
       if reward != 0: # Pong has either +1 or -1 reward exactly when game ends.
-        print ('ep %d, steps %d, reward: %f' % (episode_number, steps, reward))
+        point += 1
+        print ('ep %d, points %d, steps %d, reward: %f' % (episode_number, point, steps, reward))
         steps = 0
 
 
@@ -414,7 +479,7 @@ def getOptions():
     return (options, args)
 
 def test(options, model):
-#    Experience.test()
+    Experience2.test()
 
 #    behavior = copy.deepcopy(model)
 #    print "%f == %f" % (model.params['W1'][0,0], behavior.params['W1'][0,0])
@@ -426,8 +491,8 @@ def test(options, model):
 #    for k,v in model.params.iteritems():
 #        print "%s: %d" % (k, len(v))
 
-    optim = Optimizer( "rmsprop", model, learning_rate=0.0003, decay_rate=0.99, epsilon=1e-7) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
-    optim.describe()
+#    optim = Optimizer( "rmsprop", model, learning_rate=0.0003, decay_rate=0.99, epsilon=1e-7) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
+#    optim.describe()
 
     pass
 
