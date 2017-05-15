@@ -168,11 +168,13 @@ def initializeModel( name, number_actions ):
 #        {'filter_size':3, 'stride':2 },
 #        {}, {'relu':False} ]
 # From the DQN paper, mostly
-    layers = ["conv-32", "conv-64", "conv-64", "FC-512", output]
-    layer_params = [{'filter_size':8, 'stride':4, 'pad':4 },
-        {'filter_size':4, 'stride':2, 'pad':2},
-        {'filter_size':3, 'stride':1, 'pad':1},
-        {}, {'relu':False} ]
+#    layers = ["conv-32", "conv-64", "conv-64", "FC-512", output]
+#    layer_params = [{'filter_size':8, 'stride':4, 'pad':4 },
+#        {'filter_size':4, 'stride':2, 'pad':2},
+#        {'filter_size':3, 'stride':1, 'pad':1},
+#        {}, {'relu':False} ]
+    layers = ["FC-200", output]
+    layer_params = [ {}, {'relu':False} ]
     model = MalpiModel(layers, layer_params, input_dim=(4,84,84), reg=0.005, dtype=np.float32, verbose=True)
     model.name = name
 
@@ -259,13 +261,13 @@ def train(target, env, options):
     learning_rate = 0.005
     learning_rate_decay = 1.0 # 0.999
     gamma = 0.99 # discount factor for reward
-    epsilon = 0.2
+    epsilon = 1.0
     ksteps = options.k_steps # number of frames to skip before selecting a new action
 
     target.reg = 0.005
 
     behavior = copy.deepcopy(target)
-    optim = Optimizer( "rmsprop", behavior, learning_rate=0.005) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
+    optim = Optimizer( "rmsprop", behavior, learning_rate=0.005, upd_frequency=1000) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
     #policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
 
     running_reward = None
@@ -274,9 +276,8 @@ def train(target, env, options):
     steps = 0
     episode_steps = 0
     point = 1 # how many points have been scored by either side in this episode
-
-    num_actions = env.action_space.n
-    VALID_ACTIONS = xrange(num_actions) # [0, 1, 2, 3]
+    num_actions = 2 # env.action_space.n
+    action_counts = np.zeros(env.action_space.n)
 
     observation = env.reset()
     state = prepro(observation)
@@ -301,6 +302,7 @@ def train(target, env, options):
       if options.render: env.render()
 
       action = choose_epsilon_greedy( behavior, state.reshape(1,4,84,84), epsilon, num_actions )
+      action_counts[action+2] += 1
       if epsilon > 0.1:
           epsilon -= 9e-07 # Decay to 0.1 over 1 million steps
 
@@ -311,13 +313,13 @@ def train(target, env, options):
           done = False
           next_state = copy.deepcopy(state) # 5.87693955e-05 seconds
           for i in range(ksteps):
-              observation, r, d, info = env.step(action)
+              observation, r, d, info = env.step(action+2)
               reward += r
               if d: done = True
               observation = prepro(observation) #  1.22250773e-03 seconds
               next_state[i,:,:] = observation
       else:
-          observation, reward, done, info = env.step(action)
+          observation, reward, done, info = env.step(action+2)
           observation = prepro(observation) #  1.22250773e-03 seconds
           next_state = copy.deepcopy(state) # 5.87693955e-05 seconds
           next_state[0,:,:] = next_state[1,:,:]
@@ -425,17 +427,20 @@ def train(target, env, options):
 
         running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
         print 'resetting env. episode reward total was %f. running mean: %f.  In %d steps' % (reward_sum, running_reward, episode_steps)
-        behavior.describe()
-        optim.describe()
+        print 'Actions: %s' % (action_counts,)
+        #behavior.describe()
+        #optim.describe()
+        with open( target.name + '.txt', 'a+') as f:
+            f.write( "%d,%f\n" % (episode_number,running_reward) )
 
         if episode_number % 10 == 0:
             optim.learning_rate *= learning_rate_decay
             if learning_rate_decay < 1.0:
                 print "Learning rate: %f" % (optim.learning_rate,)
+            print "Saving model"
             saveModel( target, options )
-            with open( target.name + '.txt', 'a+') as f:
-                f.write( "%d,%f\n" % (episode_number,running_reward) )
 
+        action_counts = np.zeros(env.action_space.n)
         reward_sum = 0
         episode_steps = 0
         observation = env.reset()
@@ -503,8 +508,10 @@ if __name__ == "__main__":
     print env.get_action_meanings()
 
     if options.initialize:
-        print "Initializing model with %d actions..." % (env.action_space.n,)
-        model = initializeModel( options.model_name, env.action_space.n )
+        nA = env.action_space.n
+        nA = 2 # try to simplify things
+        print "Initializing model with %d actions..." % (nA,)
+        model = initializeModel( options.model_name, nA )
         model.env = options.game
         saveModel( model, options )
     else:
