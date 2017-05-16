@@ -158,7 +158,7 @@ def saveModel( model, options ):
     with open(filename, 'wb') as f:
         pickle.dump( model, f, pickle.HIGHEST_PROTOCOL)
 
-def initializeModel( name, number_actions ):
+def initializeModel( name, number_actions, input_dim=(4,84,84) ):
     output = "FC-%d" % (number_actions,)
 #    layers = ["conv-32", "maxpool", "conv-64", "maxpool", "conv-64", "FC-512", output]
 #    layer_params = [{'filter_size':3, 'stride':1 },
@@ -175,7 +175,7 @@ def initializeModel( name, number_actions ):
 #        {}, {'relu':False} ]
     layers = ["FC-200", output]
     layer_params = [ {}, {'relu':False} ]
-    model = MalpiModel(layers, layer_params, input_dim=(4,84,84), reg=0.005, dtype=np.float32, verbose=True)
+    model = MalpiModel(layers, layer_params, input_dim=input_dim, reg=0.005, dtype=np.float32, verbose=True)
     model.name = name
 
     print
@@ -276,13 +276,10 @@ def train(target, env, options):
     steps = 0
     episode_steps = 0
     point = 1 # how many points have been scored by either side in this episode
-    num_actions = 2 # env.action_space.n
+    num_actions = env.action_space.n
     action_counts = np.zeros(env.action_space.n)
 
-    observation = env.reset()
-    state = prepro(observation)
-    state = np.stack([state] * 4, axis=0)
-
+    state = env.reset()
     exp_history = Experience2( 2000, state.shape )
 
     with open( target.name + '_hparams.txt', 'a+') as f:
@@ -301,31 +298,20 @@ def train(target, env, options):
     while True:
       if options.render: env.render()
 
-      action = choose_epsilon_greedy( behavior, state.reshape(1,4,84,84), epsilon, num_actions )
-      action_counts[action+2] += 1
+      action = choose_epsilon_greedy( behavior, state, epsilon, num_actions )
+      action_counts[action] += 1
       if epsilon > 0.1:
           epsilon -= 9e-07 # Decay to 0.1 over 1 million steps
 
       # step the environment once, or ksteps times
       # TODO: fix this so it will work for ksteps other than 1 and 4
-      if ksteps > 1:
-          reward = 0
-          done = False
-          next_state = copy.deepcopy(state) # 5.87693955e-05 seconds
-          for i in range(ksteps):
-              observation, r, d, info = env.step(action+2)
-              reward += r
-              if d: done = True
-              observation = prepro(observation) #  1.22250773e-03 seconds
-              next_state[i,:,:] = observation
-      else:
-          observation, reward, done, info = env.step(action+2)
-          observation = prepro(observation) #  1.22250773e-03 seconds
-          next_state = copy.deepcopy(state) # 5.87693955e-05 seconds
-          next_state[0,:,:] = next_state[1,:,:]
-          next_state[1,:,:] = next_state[2,:,:]
-          next_state[2,:,:] = next_state[3,:,:]
-          next_state[3,:,:] = observation # 2.22372381e-05 seconds for all four
+      reward = 0
+      done = False
+      for k in range(ksteps):
+          next_state, r, d, info = env.step(action)
+          reward += r
+          if d:
+              done = True
 
       reward_sum += reward
       steps += ksteps
@@ -395,16 +381,6 @@ def train(target, env, options):
           _, grad = behavior.backward(cache, q_error, dx ) # 2.37275421e-01 seconds
           optim.update( grad, check_ratio=print_stats ) # 1.85747565e-01 seconds
 
-          # Clip very small weights to prevent underflow in multiplications
-          if False:
-              for k,v in behavior.params.iteritems():
-                  mask_zeros = behavior.params[k] != 0.0
-                  mask = np.abs(behavior.params[k]) < 1e-15
-                  mask = np.logical_and(mask_zeros,mask)
-                  behavior.params[k][mask] = 0.0
-                  if np.count_nonzero(mask) > 0:
-                      print "Underflow in %s " % (k,)
-
           #stats(states,"states " )
           #stats(reward, "reward " )
           #stats(values, "target " )
@@ -443,9 +419,7 @@ def train(target, env, options):
         action_counts = np.zeros(env.action_space.n)
         reward_sum = 0
         episode_steps = 0
-        observation = env.reset()
-        state = prepro(observation)
-        state = np.stack([state] * 4, axis=0)
+        state = env.reset()
 
       if reward != 0: # Pong has either +1 or -1 reward exactly when game ends.
         point += 1
@@ -505,13 +479,13 @@ if __name__ == "__main__":
     options, _ = getOptions()
 
     env = gym.envs.make(options.game)
-    print env.get_action_meanings()
+    if hasattr(env,'get_action_meanings'):
+        print env.get_action_meanings()
 
     if options.initialize:
         nA = env.action_space.n
-        nA = 2 # try to simplify things
         print "Initializing model with %d actions..." % (nA,)
-        model = initializeModel( options.model_name, nA )
+        model = initializeModel( options.model_name, nA, input_dim=(2,1) )
         model.env = options.game
         saveModel( model, options )
     else:

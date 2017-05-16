@@ -43,6 +43,7 @@ def play(behavior, env, options):
     reward_sum = 0
     episode_number = 0
     steps = 0
+    ksteps = options.k_steps
     act_random = False
     # Atari Breakout Actions: 0 (noop), 1 (fire), 2 (left) and 3 (right) are valid actions
     VALID_ACTIONS = xrange(env.action_space.n) # [0, 1, 2, 3]
@@ -59,6 +60,7 @@ def play(behavior, env, options):
           observation, reward, done, info = env.step(action)
       else:
           q_values, _ = behavior.forward(state.reshape(1,4,84,84), mode="test")
+          print "Q values: %s" % (str(q_values),)
           #print "Action: %s" % ( env.get_action_meanings()[ np.argmax(q_values) ], )
           action = np.argmax(q_values)
           action += 2
@@ -68,13 +70,13 @@ def play(behavior, env, options):
               done = False
               next_state = copy.deepcopy(state) # 5.87693955e-05 seconds
               for i in range(ksteps):
-                  observation, r, d, info = env.step(action+2)
+                  observation, r, d, info = env.step(action)
                   reward += r
                   if d: done = True
                   observation = prepro(observation) #  1.22250773e-03 seconds
                   next_state[i,:,:] = observation
           else:
-              observation, reward, done, info = env.step(action+2)
+              observation, reward, done, info = env.step(action)
               observation = prepro(observation) #  1.22250773e-03 seconds
               next_state = copy.deepcopy(state) # 5.87693955e-05 seconds
               next_state[0,:,:] = next_state[1,:,:]
