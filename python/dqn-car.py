@@ -242,7 +242,7 @@ def choose_epsilon_greedy( estimator, observation, epsilon, nA ):
     if np.random.random() < epsilon:
         return np.random.randint(nA)
     else:
-        q_values,_ = estimator.forward(observation, mode="test")
+        q_values,_ = estimator.forward(observation.reshape(1,2), mode="test")
         return np.argmax(q_values[0])
 
 def check_weights( model ):
@@ -261,7 +261,7 @@ def train(target, env, options):
     learning_rate = 0.005
     learning_rate_decay = 1.0 # 0.999
     gamma = 0.99 # discount factor for reward
-    epsilon = 1.0
+    epsilon = 0.2
     ksteps = options.k_steps # number of frames to skip before selecting a new action
 
     target.reg = 0.005
@@ -270,7 +270,7 @@ def train(target, env, options):
     optim = Optimizer( "rmsprop", behavior, learning_rate=0.005, upd_frequency=5000) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
     #policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
 
-    running_reward = None
+    running_reward = 0
     reward_sum = 0
     episode_number = options.starting_ep
     steps = 0
@@ -392,14 +392,17 @@ def train(target, env, options):
           #stats(dx, "dx " )
           #print "========"
 
+      if episode_steps % 100000 == 0:
+          print 'Running mean: %f.  In %d steps' % (running_reward, episode_steps)
+
+          target = copy.deepcopy(behavior)
+          print "Copying behavior network to target"
+          print "Saving model"
+          saveModel( target, options )
+
       if done: # an episode finished
         episode_number += 1
         point = 0
-
-        #At update rate, copy behavior into target
-        if episode_number % update_rate == 0:
-            target = copy.deepcopy(behavior)
-            print "Copying behavior network to target"
 
         running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
         print 'resetting env. episode reward total was %f. running mean: %f.  In %d steps' % (reward_sum, running_reward, episode_steps)
@@ -419,12 +422,8 @@ def train(target, env, options):
         action_counts = np.zeros(env.action_space.n)
         reward_sum = 0
         episode_steps = 0
-        state = env.reset()
-
-      if reward != 0: # Pong has either +1 or -1 reward exactly when game ends.
-        point += 1
-        print ('ep %d, points %d, steps %d, reward: %f' % (episode_number, point, steps, reward))
         steps = 0
+        state = env.reset()
 
 
 def getOptions():

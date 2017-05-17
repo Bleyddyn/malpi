@@ -25,7 +25,7 @@ def affine_forward(x, w, b):
   # will need to reshape the input into rows.                                 #
   #############################################################################
   N = x.shape[0]
-  D = np.prod(x.shape[1:])
+  D = np.prod(x.shape[1:],dtype=np.int32)
   xr = np.reshape(x, (N, D))
 
   out = xr.dot(w) + b
