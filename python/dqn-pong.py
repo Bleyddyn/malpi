@@ -257,7 +257,7 @@ def check_weights( model ):
 
 def train(target, env, options):
     batch_size = 32 # backprop batch size
-    update_rate = 2 # every how many episodes to copy behavior model to target
+    update_rate = 10 # every how many episodes to copy behavior model to target
     learning_rate = 0.005
     learning_rate_decay = 1.0 # 0.999
     gamma = 0.99 # discount factor for reward
@@ -289,13 +289,13 @@ def train(target, env, options):
         f.write( "%s = %s\n" % ('Start',time.strftime("%Y-%m-%d %H:%M:%S")) )
         f.write( "%s = %d\n" % ('batch_size',batch_size) )
         f.write( "%s = %d\n" % ('update_rate',update_rate) )
-        f.write( "%s = %f\n" % ('gamma',gamma) )
-        f.write( "%s = %f\n" % ('epsilon',epsilon) )
+        f.write( "%s = %g\n" % ('gamma',gamma) )
+        f.write( "%s = %g\n" % ('epsilon',epsilon) )
         f.write( "%s = %d\n" % ('k-steps',ksteps) )
         f.write( "Optimizer %s\n" % (optim.optim_type,) )
-        f.write( "   %s = %f\n" % ('learning rate',optim.learning_rate) )
-        f.write( "   %s = %f\n" % ('decay rate',optim.decay_rate) )
-        f.write( "   %s = %f\n" % ('epsilon',optim.epsilon) )
+        f.write( "   %s = %g\n" % ('learning rate',optim.learning_rate) )
+        f.write( "   %s = %g\n" % ('decay rate',optim.decay_rate) )
+        f.write( "   %s = %g\n" % ('epsilon',optim.epsilon) )
         f.write( "\n" )
 
     while True:
@@ -368,8 +368,8 @@ def train(target, env, options):
           q_error = np.zeros( action_values.shape )
           #q_error[ np.arange(batch_size), 2 ] = -batch_size
           # Only update values for actions taken
-          q_error[ np.arange(batch_size), actions ] = q_target - action_values[ np.arange(batch_size), actions ]
-          #q_error[ np.arange(batch_size), actions ] = action_values[ np.arange(batch_size), actions ] - q_target
+          #q_error[ np.arange(batch_size), actions ] = q_target - action_values[ np.arange(batch_size), actions ]
+          q_error[ np.arange(batch_size), actions ] = action_values[ np.arange(batch_size), actions ] - q_target
           #q_error /= batch_size
           # See: https://zhuanlan.zhihu.com/p/25771039
           dx = q_error
@@ -395,16 +395,6 @@ def train(target, env, options):
           _, grad = behavior.backward(cache, q_error, dx ) # 2.37275421e-01 seconds
           optim.update( grad, check_ratio=print_stats ) # 1.85747565e-01 seconds
 
-          # Clip very small weights to prevent underflow in multiplications
-          if False:
-              for k,v in behavior.params.iteritems():
-                  mask_zeros = behavior.params[k] != 0.0
-                  mask = np.abs(behavior.params[k]) < 1e-15
-                  mask = np.logical_and(mask_zeros,mask)
-                  behavior.params[k][mask] = 0.0
-                  if np.count_nonzero(mask) > 0:
-                      print "Underflow in %s " % (k,)
-
           #stats(states,"states " )
           #stats(reward, "reward " )
           #stats(values, "target " )
@@ -426,7 +416,8 @@ def train(target, env, options):
             print "Copying behavior network to target"
 
         running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
-        print 'resetting env. episode reward total was %f. running mean: %f.  In %d steps' % (reward_sum, running_reward, episode_steps)
+        print 'Episode reward total was %f. running mean: %f.  In %d steps' % (reward_sum, running_reward, episode_steps)
+        print 'Epsilon: %g' % (epsilon,)
         print 'Actions: %s' % (action_counts,)
         #behavior.describe()
         #optim.describe()

@@ -22,15 +22,6 @@ from malpi.model import *
 np.seterr(all='raise')
 
 def prepro(I):
-  """ prepro 210x160x3 uint8 frame into (84x84) float 
-      Code from the Denny Britz DQN chapter:
-      self.input_state = tf.placeholder(shape=[210, 160, 3], dtype=tf.uint8)
-      self.output = tf.image.rgb_to_grayscale(self.input_state)
-      self.output = tf.image.crop_to_bounding_box(self.output, 34, 0, 160, 160)
-      self.output = tf.image.resize_images( self.output, (84, 84), method=tf.image.ResizeMethod.NEAREST_NEIGHBOR )
-      self.output = tf.squeeze(self.output)
-  """
-
   rgb_weights = [0.2989, 0.5870, 0.1140]
   I = I[35:195] # crop
 #  I = I[::2,::2,:] # downsample by factor of 2

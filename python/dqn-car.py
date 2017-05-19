@@ -245,6 +245,30 @@ def choose_epsilon_greedy( estimator, observation, epsilon, nA ):
         q_values,_ = estimator.forward(observation.reshape(1,2), mode="test")
         return np.argmax(q_values[0])
 
+def choose_optimal( estimator, observation, epsilon, nA ):
+    """ Ignore all inputs except the observation and choose an optimal action
+        Or, something close to optimal
+    """
+    a_left = 0
+    a_neutral = 1
+    a_right = 2
+    action = a_neutral
+    pos = observation[0]
+    vel = observation[1]
+    if pos < -1.0:
+        action = a_right
+    elif pos < 0:
+        if vel >= 0:
+            action = a_right
+        else:
+            action = a_left
+    elif pos > 0:
+        if vel >= 0:
+            action = a_right
+        else:
+            action = a_left
+    return action
+
 def check_weights( model ):
     for k,w in model.params.iteritems():
         smallest = np.min( np.abs(w) )
@@ -255,53 +279,77 @@ def check_weights( model ):
         if np.count_nonzero(mask) > 0:
             print "Underflow in %s " % (k,)
 
+def test(tmodel, env, options):
+    reward_100 = 0
+    for i in range(100):
+        episode_reward = 0
+        state = env.reset()
+        done = False
+        steps = 0
+        while not done and (steps < 1000):
+            if options.render: env.render()
+            q_values,_ = tmodel.forward(state.reshape(1,2), mode="test")
+            action = np.argmax(q_values[0])
+            state, reward, done, info = env.step(action)
+            episode_reward += reward
+            steps += 1
+        reward_100 += episode_reward
+    return (reward_100 / 100.0)
+
 def train(target, env, options):
     batch_size = 32 # backprop batch size
-    update_rate = 2 # every how many episodes to copy behavior model to target
-    learning_rate = 0.005
-    learning_rate_decay = 1.0 # 0.999
+    update_rate = 10 # every how many episodes to copy behavior model to target
+    learning_rate = 0.001
+    learning_rate_decay = 1.0
     gamma = 0.99 # discount factor for reward
-    epsilon = 0.2
+    epsilon = 1.0
+    if options.play:
+        epsilon = 0.0
     ksteps = options.k_steps # number of frames to skip before selecting a new action
 
     target.reg = 0.005
 
     behavior = copy.deepcopy(target)
-    optim = Optimizer( "rmsprop", behavior, learning_rate=0.005, upd_frequency=5000) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
-    #policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
+    optim = Optimizer( "rmsprop", behavior, learning_rate=learning_rate, decay_rate=0.9, upd_frequency=2000)
 
-    running_reward = 0
+    running_reward = None
     reward_sum = 0
     episode_number = options.starting_ep
     steps = 0
     episode_steps = 0
-    point = 1 # how many points have been scored by either side in this episode
     num_actions = env.action_space.n
     action_counts = np.zeros(env.action_space.n)
+
+    reward_100 = []
+    reward_count = 0
+    best_test = -100000
 
     state = env.reset()
     exp_history = Experience2( 2000, state.shape )
 
-    with open( target.name + '_hparams.txt', 'a+') as f:
-        f.write( "%s = %s\n" % ('Start',time.strftime("%Y-%m-%d %H:%M:%S")) )
-        f.write( "%s = %d\n" % ('batch_size',batch_size) )
-        f.write( "%s = %d\n" % ('update_rate',update_rate) )
-        f.write( "%s = %f\n" % ('gamma',gamma) )
-        f.write( "%s = %f\n" % ('epsilon',epsilon) )
-        f.write( "%s = %d\n" % ('k-steps',ksteps) )
-        f.write( "Optimizer %s\n" % (optim.optim_type,) )
-        f.write( "   %s = %f\n" % ('learning rate',optim.learning_rate) )
-        f.write( "   %s = %f\n" % ('decay rate',optim.decay_rate) )
-        f.write( "   %s = %f\n" % ('epsilon',optim.epsilon) )
-        f.write( "\n" )
+    if not options.play:
+        with open( target.name + '_hparams.txt', 'a+') as f:
+            f.write( "%s = %s\n" % ('Start',time.strftime("%Y-%m-%d %H:%M:%S")) )
+            if options.initialize:
+                f.write( "Weights initialized\n" )
+            f.write( "%s = %d\n" % ('batch_size',batch_size) )
+            f.write( "%s = %d\n" % ('update_rate',update_rate) )
+            f.write( "%s = %f\n" % ('gamma',gamma) )
+            f.write( "%s = %f\n" % ('epsilon',epsilon) )
+            f.write( "%s = %d\n" % ('k-steps',ksteps) )
+            f.write( "Optimizer %s\n" % (optim.optim_type,) )
+            f.write( "   %s = %f\n" % ('learning rate',optim.learning_rate) )
+            f.write( "   %s = %f\n" % ('decay rate',optim.decay_rate) )
+            f.write( "   %s = %f\n" % ('epsilon',optim.epsilon) )
+            f.write( "   %s = %f\n" % ('update frequency',optim.upd_frequency) )
+            f.write( "\n" )
 
     while True:
       if options.render: env.render()
 
       action = choose_epsilon_greedy( behavior, state, epsilon, num_actions )
+      #action = choose_optimal( behavior, state, epsilon, num_actions )
       action_counts[action] += 1
-      if epsilon > 0.1:
-          epsilon -= 9e-07 # Decay to 0.1 over 1 million steps
 
       # step the environment once, or ksteps times
       # TODO: fix this so it will work for ksteps other than 1 and 4
@@ -314,30 +362,17 @@ def train(target, env, options):
               done = True
 
       reward_sum += reward
+
       steps += ksteps
       episode_steps += ksteps
 
-      exp_history.save( state, action, reward, done, next_state ) # 2.91559257e-04 seconds
+      if not options.play:
+          exp_history.save( state, action, reward, done, next_state ) # 2.91559257e-04 seconds
       state = next_state
 
-      if exp_history.size() > (batch_size * 5):
+      if not options.play and (exp_history.size() > (batch_size * 5)):
           states, actions, rewards, batch_done, new_states = exp_history.batch( batch_size ) # 3.04588500e-05 seconds
           actions = actions.astype(np.int)
-
-          #onehot = np.zeros( (batch_size,actions.shape[0]) )
-          #onehot[np.arange(batch_size),actions] = 1.0
-          #print np.mean(onehot, axis=0)[0:6]
-
-          #stats(states,"states ")
-          #stats(actions,"actions ")
-          #stats(rewards,"rewards ")
-          #stats(batch_done,"batch_done ")
-          #stats(new_states,"new_states ")
-
-          # Save one mini-batch for testing
-          #with open('one_experience.pickle', 'wb') as pf:
-          #    one = (states,actions,rewards,batch_done,new_states)
-          #    pickle.dump( one, pf, pickle.HIGHEST_PROTOCOL)
 
           target_values, _ = target.forward( new_states, mode='test' ) # 2.00298658e-01 seconds
 
@@ -352,73 +387,56 @@ def train(target, env, options):
           action_values, cache = behavior.forward(states, mode='train', verbose=False)
 
           q_error = np.zeros( action_values.shape )
-          #q_error[ np.arange(batch_size), 2 ] = -batch_size
-          # Only update values for actions taken
-          q_error[ np.arange(batch_size), actions ] = q_target - action_values[ np.arange(batch_size), actions ]
-          #q_error[ np.arange(batch_size), actions ] = action_values[ np.arange(batch_size), actions ] - q_target
-          #q_error /= batch_size
-          # See: https://zhuanlan.zhihu.com/p/25771039
+          #q_error[ np.arange(batch_size), actions ] = q_target - action_values[ np.arange(batch_size), actions ]
+          q_error[ np.arange(batch_size), actions ] = action_values[ np.arange(batch_size), actions ] - q_target
           dx = q_error
           dx /= batch_size
-
-          print_stats = False
-          if done:
-              print_stats = True
-              stats( dx, "dx " )
-
-          #print "actions: %s" % (actions[1:5],)
-          #print "a_values: %s" % (action_values[1:5,:],)
-          #print "t_values: %s" % (target_values[1:5,:],)
-          #print "rewards : %s" % (rewards[1:5],)
-          #print "batch_d : %s" % (batch_done[1:5],)
-          #print "q_target: %s" % (q_target[1:5],)
-          #print "q_error : %s" % (q_error[1:5,:],)
 
           q_error = np.sum( np.square( q_error ) )
 
           # dx needs to have shape(batch_size,num_actions), e.g. (32,6)
-          #check_weights( behavior )
           _, grad = behavior.backward(cache, q_error, dx ) # 2.37275421e-01 seconds
-          optim.update( grad, check_ratio=print_stats ) # 1.85747565e-01 seconds
-
-          #stats(states,"states " )
-          #stats(reward, "reward " )
-          #stats(values, "target " )
-          #target.describe()
-          #stats(temp_values, "behavior " )
-          #stats(q_target, "q_target " )
-          #stats(actions, "actions " )
-          #print q_error.shape
-          #stats(dx, "dx " )
-          #print "========"
+          optim.update( grad, check_ratio=False ) # 1.85747565e-01 seconds
 
       if episode_steps % 100000 == 0:
-          print 'Running mean: %f.  In %d steps' % (running_reward, episode_steps)
-
-          target = copy.deepcopy(behavior)
-          print "Copying behavior network to target"
-          print "Saving model"
-          saveModel( target, options )
+          print "%d steps, epsilon %f, actions: %s" % (episode_steps,epsilon,str(action_counts))
+          if not options.play:
+              target = copy.deepcopy(behavior)
+              saveModel( target, options )
 
       if done: # an episode finished
         episode_number += 1
-        point = 0
 
-        running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
-        print 'resetting env. episode reward total was %f. running mean: %f.  In %d steps' % (reward_sum, running_reward, episode_steps)
-        print 'Actions: %s' % (action_counts,)
-        #behavior.describe()
-        #optim.describe()
-        with open( target.name + '.txt', 'a+') as f:
-            f.write( "%d,%f\n" % (episode_number,running_reward) )
+        reward_100.append(reward_sum)
+        reward_count += 1
+        if reward_count > 100:
+            reward_count = 100
+            reward_100.pop(0)
+        print 'Gym reward (ep %d): %0.2f  %g' % ( episode_number, reward_sum, (np.sum(reward_100) / reward_count) )
 
-        if episode_number % 10 == 0:
-            optim.learning_rate *= learning_rate_decay
-            if learning_rate_decay < 1.0:
-                print "Learning rate: %f" % (optim.learning_rate,)
-            print "Saving model"
-            saveModel( target, options )
+        if not options.play:
+            with open( target.name + '.txt', 'a+') as f:
+                f.write( "%d,%f\n" % (episode_number, (np.sum(reward_100) / reward_count) ) )
 
+            if episode_number % update_rate == 0:
+                optim.learning_rate *= learning_rate_decay
+                if learning_rate_decay < 1.0:
+                    print "Learning rate: %f" % (optim.learning_rate,)
+                print "Epsilon: %f" % (epsilon,)
+                print "Saving model"
+                target = copy.deepcopy(behavior)
+                saveModel( target, options )
+
+                treward = test(target, env, options)
+                print "Test reward: %f" % treward
+                if treward > best_test:
+                    best_test = treward
+                    print "Saving best test model"
+                    with open(os.path.join( options.dir_model, options.model_name + "_best.pickle" ), 'wb') as f:
+                        pickle.dump( model, f, pickle.HIGHEST_PROTOCOL)
+
+        if epsilon > 0.1:
+            epsilon -= 9e-04 # Decay to 0.1 over one thousand episodes
         action_counts = np.zeros(env.action_space.n)
         reward_sum = 0
         episode_steps = 0
@@ -433,7 +451,8 @@ def getOptions():
     parser.add_option("-d","--dir_model", default="", help="Directory for finding/initializing model files. Defaults to current directory.");
     parser.add_option("-r","--render", action="store_true", default=False, help="Render gym environment while training. Will greatly reduce speed.");
     parser.add_option("-s","--starting_ep", type="int", default=0, help="Starting episode number (for record keeping).");
-    parser.add_option("-k","--k_steps", type="int", default=4, help="How many game steps to take before the model chooses a new action.");
+    parser.add_option("-k","--k_steps", type="int", default=1, help="How many game steps to take before the model chooses a new action.");
+    parser.add_option("-p","--play", action="store_true", default=False, help="Play only. No training and always choose the best action.");
     parser.add_option("--test_only", action="store_true", default=False, help="Run tests, then exit.");
     parser.add_option("--desc", action="store_true", default=False, help="Describe the model, then exit.");
     parser.add_option("-g","--game", default="Breakout-v0", help="The game environment to use. Defaults to Breakout");
@@ -455,24 +474,6 @@ def getOptions():
     options.dir_model = os.path.expanduser(options.dir_model)
 
     return (options, args)
-
-def test(options, model):
-    Experience2.test()
-
-#    behavior = copy.deepcopy(model)
-#    print "%f == %f" % (model.params['W1'][0,0], behavior.params['W1'][0,0])
-#    model.params['W1'][0,0] = 99
-#    print "%f == %f" % (model.params['W1'][0,0], behavior.params['W1'][0,0])
-#    model.describe()
-#    behavior.describe()
-
-#    for k,v in model.params.iteritems():
-#        print "%s: %d" % (k, len(v))
-
-#    optim = Optimizer( "rmsprop", model, learning_rate=0.0003, decay_rate=0.99, epsilon=1e-7) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
-#    optim.describe()
-
-    pass
 
 if __name__ == "__main__":
     options, _ = getOptions()
@@ -499,7 +500,8 @@ if __name__ == "__main__":
         exit()
 
     if options.test_only:
-        test(options, model)
+        treward = test(model, env, options)
+        print "Gym reward: %f" % treward
         exit()
 
     if hasattr(model, 'env'):
