@@ -4,6 +4,7 @@ from malpi.optimizer import *
 from malpi import optim
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from optparse import OptionParser
 
 def stats(arr, msg=""):
     mi = np.min(arr)
@@ -15,8 +16,20 @@ def stats(arr, msg=""):
     ma_abs = np.max(arr_abs)
     print "%sMin/Max/Mean/Stdev abs(Min/Max): %g/%g/%g/%g %g/%g" % (msg,mi,ma,av,std,mi_abs,ma_abs)
 
-with open('dqn_mc_v2.pickle') as f:
+parser = OptionParser()
+(options, args) = parser.parse_args()
+if len(args) != 1:
+    print "Usage: python check_weights.py <model name>"
+    exit()
+
+if args[0].endswith('.pickle'):
+    args[0] = args[0][:-7]
+
+with open(args[0] + '.pickle') as f:
     model = pickle.load( f )
+
+for k,w in model.params.iteritems():
+    stats( w, msg=k+" " )
 
 xs = []
 ys = []
@@ -32,6 +45,10 @@ for x in np.random.uniform( -1.3, 0.7, 20 ):
         zs.append( qvalues[0][0] )
         zs2.append( qvalues[0][1] )
         zs3.append( qvalues[0][2] )
+
+print "Max 0: %f" % np.max(zs)
+print "Max 1: %f" % np.max(zs2)
+print "Max 2: %f" % np.max(zs3)
 
 fig = plt.figure()
 ax = fig.add_subplot(311, projection='3d')

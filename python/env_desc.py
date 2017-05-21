@@ -1,7 +1,7 @@
 import numpy as np
 import gym
 
-env_name = "MountainCar-v0"
+env_name = "CartPole-v0"
 
 env = gym.make(env_name)
 print( "Action Space: %s" % (env.action_space,) )
