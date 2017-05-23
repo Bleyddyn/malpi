@@ -162,7 +162,7 @@ def train(target, env, options):
     ksteps = options.k_steps # number of frames to skip before selecting a new action
     learning_rate = 0.01
     learning_rate_decay = 0.999
-    lr_decay_on_best = 0.99
+    lr_decay_on_best = 0.95
 
     if options.play:
         epsilon = 0.0
@@ -170,7 +170,7 @@ def train(target, env, options):
     target.reg = 0.005
 
     behavior = copy.deepcopy(target)
-    optim = Optimizer( "rmsprop", behavior, learning_rate=learning_rate, decay_rate=0.9, upd_frequency=200)
+    optim = Optimizer( "rmsprop", behavior, learning_rate=learning_rate, decay_rate=0.99, upd_frequency=200)
 
     running_reward = None
     reward_sum = 0
