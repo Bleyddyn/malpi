@@ -200,8 +200,7 @@ def train(target, env, options):
     num_actions = env.action_space.n
     action_counts = np.zeros(env.action_space.n)
 
-    reward_100 = []
-    reward_count = 0
+    reward_100 = deque(maxlen=100)
     if options.play:
         best_test = -21.0
     else:
@@ -346,18 +345,14 @@ def train(target, env, options):
             point = 0
    
             reward_100.append(reward_sum)
-            reward_count += 1
-            if reward_count > 100:
-                reward_count = 100
-                reward_100.pop(0)
   
             if options.play:
-                print 'Reward for Ep %d %0.2f  %0.2f' % ( episode_number, reward_sum, (np.sum(reward_100) / reward_count) )
+                print 'Reward for Ep %d %0.2f  %0.2f' % ( episode_number, reward_sum, np.mean(reward_100) )
                                                                                 
             if not options.play:
                 if episode_number % update_rate == 0:
                     with open( os.path.join( options.dir_model, target.name+ ".txt" ), 'a+') as f:
-                        f.write( "%d,%f\n" % (episode_number, (np.sum(reward_100) / reward_count) ) )
+                        f.write( "%d,%f\n" % (episode_number, np.mean(reward_100) ) )
 
                     target = copy.deepcopy(behavior)
                     saveModel( target, options )
@@ -366,7 +361,7 @@ def train(target, env, options):
 
                     print
                     print 'Ep %d' % ( episode_number, )
-                    print 'Reward       : %0.2f  %0.2f' % ( reward_sum, (np.sum(reward_100) / reward_count) )
+                    print 'Reward       : %0.2f  %0.2f' % ( reward_sum, np.mean(reward_100) )
                     print "Test reward  : %0.2f vs %0.2f" % (treward, best_test)
                     print "Learning rate: %f" % (optim.learning_rate,)
                     print "Epsilon      : %f" % (epsilon,)
