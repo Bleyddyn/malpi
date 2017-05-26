@@ -75,7 +75,7 @@ class Experience2(object):
     def __init__( self, maxN, stateDim=None, max_priority=0  ):
         # stateDim is only for compatibility with Experience
         self.maxN = maxN
-        self.memory = []
+        self.memory = [] # TODO Switch this to a deque
         self.maxP = max_priority
         self.priority = []
 

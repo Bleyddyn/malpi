@@ -50,7 +50,7 @@ print "Max 0: %f" % np.max(zs)
 print "Max 1: %f" % np.max(zs2)
 print "Max 2: %f" % np.max(zs3)
 
-fig = plt.figure()
+fig = plt.figure(1,figsize=(16, 18), dpi=80)
 ax = fig.add_subplot(311, projection='3d')
 ax.scatter(xs,ys,zs=zs)
 ax.set_xlabel('Location')

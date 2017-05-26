@@ -171,27 +171,32 @@ def test(tmodel, env, options):
             if options.render: env.render()
             q_values,_ = tmodel.forward(state.reshape(1,2), mode="test")
             action = np.argmax(q_values[0])
+            #action = choose_optimal( tmodel, state, 0.0, env.action_space.n )
             state, reward, done, info = env.step(action)
             episode_reward += reward
             steps += 1
         reward_100 += episode_reward
+        #print "Ep %d in %d steps for %f reward" % (i, steps,episode_reward)
     return (reward_100 / 100.0)
 
 def train(target, env, options):
     batch_size = 32 # backprop batch size
-    update_rate = 2 # every how many episodes to copy behavior model to target
-    learning_rate = 0.005
-    learning_rate_decay = 1.0
-    gamma = 0.9 # discount factor for reward
-    epsilon = 0.6
+    update_rate = 20 # every how many episodes to copy behavior model to target
+    gamma = 0.99 # discount factor for reward
+    epsilon = 0.3
+    epsilon_decay = 0.9999
+    ksteps = options.k_steps # number of frames to skip before selecting a new action
+    learning_rate = 0.01
+    learning_rate_decay = 0.9999
+    lr_decay_on_best = 0.95
+
     if options.play:
         epsilon = 0.0
-    ksteps = options.k_steps # number of frames to skip before selecting a new action
 
     target.reg = 0.005
 
     behavior = copy.deepcopy(target)
-    optim = Optimizer( "rmsprop", behavior, learning_rate=learning_rate, decay_rate=0.99, upd_frequency=5000)
+    optim = Optimizer( "rmsprop", behavior, learning_rate=learning_rate, decay_rate=0.99, upd_frequency=200)
 
     running_reward = None
     reward_sum = 0
@@ -203,24 +208,38 @@ def train(target, env, options):
 
     reward_100 = []
     reward_count = 0
-    best_test = test(target, env, options)
-    print "Starting test score: %f" % (best_test,)
+    if options.play:
+        best_test = 1000000
+    else:
+        best_test = test(target, env, options)
+        print "Starting test score: %f" % (best_test,)
+
+    # Adding fake rewards to try to get past the initial stage where the agent can't finish an episode in < 200 steps
+    max_velocity = 0.0
+    min_velocity = 0.0
+    max_location = 0.0
+    min_location = 0.0
 
     state = env.reset()
-    exp_history = Experience2( 2000, state.shape )
+    exp_history = Experience2( 10000, state.shape )
 
     if not options.play:
-        with open( target.name + '_hparams.txt', 'a+') as f:
+        with open( os.path.join( options.game + ".txt" ), 'a+') as f:
             f.write( "%s = %s\n" % ('Start',time.strftime("%Y-%m-%d %H:%M:%S")) )
+            f.write( "%s = %s\n" % ('Model Name',target.name) )
             if options.initialize:
                 f.write( "Weights initialized\n" )
-                f.write( str(model.layers) + "\n" )
-                f.write( str(model.layer_params) + "\n" )
+                f.write( str(target.layers) + "\n" )
+                f.write( str(target.layer_params) + "\n" )
             f.write( "%s = %d\n" % ('batch_size',batch_size) )
             f.write( "%s = %d\n" % ('update_rate',update_rate) )
             f.write( "%s = %f\n" % ('gamma',gamma) )
             f.write( "%s = %f\n" % ('epsilon',epsilon) )
+            f.write( "%s = %f\n" % ('epsilon_decay',epsilon_decay) )
             f.write( "%s = %d\n" % ('k-steps',ksteps) )
+            f.write( "%s = %f\n" % ('learning_rate',learning_rate) )
+            f.write( "%s = %f\n" % ('learning_rate_decay',learning_rate_decay) )
+            f.write( "%s = %f\n" % ('lr_decay_on_best',lr_decay_on_best) )
             f.write( "Optimizer %s\n" % (optim.optim_type,) )
             f.write( "   %s = %f\n" % ('learning rate',optim.learning_rate) )
             f.write( "   %s = %f\n" % ('decay rate',optim.decay_rate) )
@@ -237,7 +256,6 @@ def train(target, env, options):
       action_counts[action] += 1
 
       # step the environment once, or ksteps times
-      # TODO: fix this so it will work for ksteps other than 1 and 4
       reward = 0
       done = False
       for k in range(ksteps):
@@ -245,6 +263,26 @@ def train(target, env, options):
           reward += r
           if d:
               done = True
+
+      if reward >= 0.0:
+          print "Non-negative reward !!!!!!!!!"
+
+#      if next_state[0] > max_location:
+#          print "max_location reward for: %f" % (max_location,)
+#          max_location = next_state[0]
+#          reward += 10.0
+#      if next_state[0] < min_location:
+#          print "min_location reward for: %f" % (min_location,)
+#          min_location = next_state[0]
+#          reward += 10.0
+#      if next_state[1] > max_velocity:
+#          print "max_velocity reward for: %f" % (max_velocity,)
+#          max_velocity = next_state[1]
+#          reward += 10.0
+#      if next_state[1] < min_velocity:
+#          print "min_velocity reward for: %f" % (min_velocity,)
+#          min_velocity = next_state[1]
+#          reward += 10.0
 
       reward_sum += reward
 
@@ -263,9 +301,6 @@ def train(target, env, options):
               print "Priority Batch"
 
           actions = actions.astype(np.int)
-
-          if np.max(rewards) > 0:
-              print "Batch contains positive reward(s)"
 
           target_values, _ = target.forward( new_states, mode='test' ) # 2.00298658e-01 seconds
 
@@ -305,37 +340,58 @@ def train(target, env, options):
         if reward_count > 100:
             reward_count = 100
             reward_100.pop(0)
-        print 'Gym reward (ep %d): %0.2f  %g' % ( episode_number, reward_sum, (np.sum(reward_100) / reward_count) )
+
+        if options.play:
+            print 'Reward for Ep %d %0.2f  %0.2f' % ( episode_number, reward_sum, (np.sum(reward_100) / reward_count) )
 
         if not options.play:
-            with open( target.name + '.txt', 'a+') as f:
-                f.write( "%d,%f\n" % (episode_number, (np.sum(reward_100) / reward_count) ) )
-
             if episode_number % update_rate == 0:
-                optim.learning_rate *= learning_rate_decay
-                if learning_rate_decay < 1.0:
-                    print "Learning rate: %f" % (optim.learning_rate,)
-                print "Epsilon: %f" % (epsilon,)
-                print "Saving model"
+                with open( os.path.join( options.dir_model, target.name+ ".txt" ), 'a+') as f:
+                    f.write( "%d,%f\n" % (episode_number, (np.sum(reward_100) / reward_count) ) )
+
                 target = copy.deepcopy(behavior)
                 saveModel( target, options )
 
                 treward = test(target, env, options)
-                print "Test reward: %f" % treward
+
+                print
+                print 'Ep %d' % ( episode_number, )
+                print 'Reward       : %0.2f  %0.2f' % ( reward_sum, (np.sum(reward_100) / reward_count) )
+                print "Test reward  : %0.2f vs %0.2f" % (treward, best_test)
+                print "Learning rate: %f" % (optim.learning_rate,)
+                print "Epsilon      : %f" % (epsilon,)
+
+                if optim.learning_rate > 0.00001:
+                    optim.learning_rate *= learning_rate_decay
+
                 if treward > best_test:
                     best_test = treward
-                    print "Saving best test model"
                     with open(os.path.join( options.dir_model, options.model_name + "_best.pickle" ), 'wb') as f:
-                        pickle.dump( model, f, pickle.HIGHEST_PROTOCOL)
+                        pickle.dump( target, f, pickle.HIGHEST_PROTOCOL)
+
+                    if treward > -110.0:
+                        print "Final Learning rate: %f" % (optim.learning_rate,)
+                        print "WON! In %d episodes" % (episode_number,)
+                        break
+
+                    if optim.learning_rate > 0.00001:
+                        optim.learning_rate *= lr_decay_on_best
 
         if epsilon > 0.1:
-            epsilon -= 3e-04
+            epsilon *= epsilon_decay
         action_counts = np.zeros(env.action_space.n)
         reward_sum = 0
         episode_steps = 0
         steps = 0
         state = env.reset()
 
+    if not options.play:
+        with open( os.path.join( options.game + ".txt" ), 'a+') as f:
+            f.write( "%s = %f\n" % ('Final epsilon', epsilon) )
+            f.write( "%s = %f\n" % ('Final learning rate', optim.learning_rate) )
+            f.write( "%s = %f\n" % ('Best test score', best_test) )
+            f.write( "%s = %d\n" % ('Episodes', episode_number) )
+            f.write( "\n\n" )
 
 def getOptions():
     usage = "Usage: python pg-pong [options] <model name>"
@@ -350,6 +406,7 @@ def getOptions():
     parser.add_option("--desc", action="store_true", default=False, help="Describe the model, then exit.");
     parser.add_option("-g","--game", default="Breakout-v0", help="The game environment to use. Defaults to Breakout.");
     parser.add_option("-m","--max_episodes", default="0", type="int", help="Maximum number of episodes to train.");
+    parser.add_option("--upload", action="store_true", default=False, help="Monitor the training run and upload to OpenAI.");
 
     (options, args) = parser.parse_args()
 
@@ -372,7 +429,14 @@ def getOptions():
 if __name__ == "__main__":
     options, _ = getOptions()
 
-    env = gym.envs.make(options.game)
+    gym.envs.register( id='MountainCarExtraLong-v0',
+                       entry_point='gym.envs.classic_control:MountainCarEnv',
+                       max_episode_steps=20000
+                      )
+    env = gym.make('MountainCarExtraLong-v0')
+
+    #env = gym.envs.make(options.game)
+
     if hasattr(env,'get_action_meanings'):
         print env.get_action_meanings()
 
@@ -400,6 +464,9 @@ if __name__ == "__main__":
         model.describe()
         exit()
 
+    if options.upload:
+        env = gym.wrappers.Monitor(env, "./" + options.game, force=True)
+
     if options.test_only:
         treward = test(model, env, options)
         print "Gym reward: %f" % treward
@@ -411,3 +478,7 @@ if __name__ == "__main__":
             exit()
 
     train(model, env, options)
+
+    if options.upload:
+        #gym.upload('./cartpole', api_key="")
+        pass

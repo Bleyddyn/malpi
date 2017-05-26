@@ -189,13 +189,13 @@ def train(target, env, options):
     exp_history = Experience2( 2000, state.shape )
 
     if not options.play:
-        with open( os.path.join( "cartpole.txt" ), 'a+') as f:
+        with open( os.path.join( options.game + ".txt" ), 'a+') as f:
             f.write( "%s = %s\n" % ('Start',time.strftime("%Y-%m-%d %H:%M:%S")) )
             f.write( "%s = %s\n" % ('Model Name',target.name) )
             if options.initialize:
                 f.write( "Weights initialized\n" )
-                f.write( str(model.layers) + "\n" )
-                f.write( str(model.layer_params) + "\n" )
+                f.write( str(target.layers) + "\n" )
+                f.write( str(target.layer_params) + "\n" )
             f.write( "%s = %d\n" % ('batch_size',batch_size) )
             f.write( "%s = %d\n" % ('update_rate',update_rate) )
             f.write( "%s = %f\n" % ('gamma',gamma) )
@@ -286,7 +286,6 @@ def train(target, env, options):
             reward_100.pop(0)
 
         if not options.play:
-        
             if episode_number % update_rate == 0:
                 with open( os.path.join( options.dir_model, target.name+ ".txt" ), 'a+') as f:
                     f.write( "%d,%f\n" % (episode_number, (np.sum(reward_100) / reward_count) ) )
@@ -305,12 +304,6 @@ def train(target, env, options):
 
                 if optim.learning_rate > 0.00001:
                     optim.learning_rate *= learning_rate_decay
-
-                #lr = 0.01 * ((250.0 - treward) / 250.0)
-                #if lr < 0.00001:
-                #    lr = 0.00001
-                #optim.learning_rate = lr
-                #print "Learning rate: %f" % (optim.learning_rate,)
 
                 if treward > best_test:
                     best_test = treward
@@ -333,7 +326,7 @@ def train(target, env, options):
         steps = 0
         state = env.reset()
 
-    with open( os.path.join( "cartpole.txt" ), 'a+') as f:
+    with open( os.path.join( options.game + ".txt" ), 'a+') as f:
         f.write( "%s = %f\n" % ('Final epsilon', epsilon) )
         f.write( "%s = %f\n" % ('Final learning rate', optim.learning_rate) )
         f.write( "%s = %f\n" % ('Best test score', best_test) )
@@ -381,9 +374,6 @@ if __name__ == "__main__":
     if hasattr(env,'get_action_meanings'):
         print env.get_action_meanings()
 
-    if options.upload:
-        env = gym.wrappers.Monitor(env, "./cartpole_monitor", force=True)
-
     if options.initialize:
         filename = os.path.join( options.dir_model, options.model_name + ".pickle" )
         if os.path.exists(filename):
@@ -407,6 +397,9 @@ if __name__ == "__main__":
     if options.desc:
         model.describe()
         exit()
+
+    if options.upload:
+        env = gym.wrappers.Monitor(env, "./" + options.game, force=True)
 
     if options.test_only:
         treward = test(model, env, options)
