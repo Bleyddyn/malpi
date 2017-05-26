@@ -19,129 +19,10 @@ from scipy.misc import imresize
 from malpi.layers import *
 from malpi.model import *
 from malpi.optimizer import Optimizer
+from malpi.experience import Experience2
 
 #np.seterr(all='raise')
 np.seterr(under='ignore')
-
-class Experience(object):
-    
-    def __init__( self, maxN, state_dim ):
-        self.N = maxN
-        sdim = (maxN,) + state_dim
-        self.states = np.zeros(sdim)
-        self.actions = np.zeros(maxN)
-        self.rewards = np.zeros(maxN)
-        self.done = np.ones(maxN).astype(np.float)
-        self.next_states = np.zeros(sdim)
-        self.next_insert = 0
-        self.max_batch = 0
-
-    def size( self ):
-        return self.max_batch
-
-    def save( self, state, action, reward, done, next_state ):
-        self.states[self.next_insert,:] = state
-        self.actions[self.next_insert] = action
-        self.rewards[self.next_insert] = reward
-        if done:
-            self.done[self.next_insert] = 0.0
-        self.next_states[self.next_insert,:] = next_state
-        self.next_insert += 1
-        self.max_batch = max(self.next_insert, self.max_batch)
-        if self.next_insert >= self.N:
-            self.next_insert = 0
-
-    def batch( self, batch_size ):
-        if batch_size >= self.max_batch:
-            return (None,None,None,None)
-        start = np.random.randint( 0, high=(1+self.max_batch - batch_size) )
-        end = start + batch_size
-        r_s = self.states[start:end,:]
-        r_a = self.actions[start:end]
-        r_r = self.rewards[start:end]
-        r_d = self.done[start:end]
-        r_n = self.next_states[start:end,:]
-        return (r_s,r_a,r_r,r_d,r_n)
-
-    def clear( self ):
-        self.next_insert = 0
-        self.max_batch = 0
-
-    @staticmethod
-    def test():
-        e = Experience( 10, (20,20) )
-        s = np.zeros( (20,20) )
-        e.save( s, 1, -3, False, s )
-        e.save( s, 2, -4, False, s )
-        e.save( s, 3, -5, False, s )
-        e.save( s, 4, -6, False, s )
-        print e.max_batch # 4
-        s1, a, r, d, n = e.batch( 2 )
-        print s1.shape # (2, 20, 20)
-        print a # e.g. [ 1.  2.]
-        print r # e.g. [-3. -4.]
-        for _ in range(2):
-            e.save( s, 5, -7, False, s )
-            e.save( s, 6, -8, False, s )
-            e.save( s, 7, -9, True, s )
-            e.save( s, 8, -10, False, s )
-        print e.max_batch # 10
-        print e.actions[0:2]
-        print e.rewards[0:2]
-
-class Experience2(object):
-
-    Transition = namedtuple("Transition", ["state", "action", "reward", "done", "next_state"])
-
-    def __init__( self, maxN, stateDim=None ):
-        # stateDim is only for compatibility with Experience
-        self.maxN = maxN
-        self.memory = []
-
-    def size( self ):
-        return len(self.memory)
-
-    def save( self, state, action, reward, done, next_state ):
-        if len(self.memory) == self.maxN:
-            self.memory.pop(0)
-
-        if done:
-            done = 0.0
-        else:
-            done = 1.0
-
-        self.memory.append(self.Transition(state, action, reward, done, next_state))
-
-    def batch( self, batch_size ):
-        if batch_size >= len(self.memory):
-            return (None,None,None,None,None)
-
-        samples = random.sample(self.memory, batch_size)
-        states_batch, action_batch, reward_batch, done_batch, next_states_batch = map(np.array, zip(*samples))
-        return (states_batch, action_batch, reward_batch, done_batch, next_states_batch)
-
-
-    def clear( self ):
-        self.memory = []
-
-    @staticmethod
-    def test():
-        e = Experience2( 10 )
-        s = np.zeros( (20,20) )
-        e.save( s, 1, -3, False, s )
-        e.save( s, 2, -4, True, s )
-        e.save( s, 3, -5, False, s )
-        e.save( s, 4, -6, True, s )
-        s1, a, r, d, n = e.batch( 2 )
-        print s1.shape # (2, 20, 20)
-        print a # e.g. [ 1.  2.]
-        print r # e.g. [-3. -4.]
-        print d
-        for _ in range(2):
-            e.save( s, 5, -7, False, s )
-            e.save( s, 6, -8, False, s )
-            e.save( s, 7, -9, True, s )
-            e.save( s, 8, -10, False, s )
 
 def stats(arr, msg=""):
     mi = np.min(arr)
@@ -158,7 +39,7 @@ def saveModel( model, options ):
     with open(filename, 'wb') as f:
         pickle.dump( model, f, pickle.HIGHEST_PROTOCOL)
 
-def initializeModel( name, number_actions ):
+def initializeModel( name, number_actions, input_dim=(4,84,84) ):
     output = "FC-%d" % (number_actions,)
 #    layers = ["conv-32", "maxpool", "conv-64", "maxpool", "conv-64", "FC-512", output]
 #    layer_params = [{'filter_size':3, 'stride':1 },
@@ -175,7 +56,7 @@ def initializeModel( name, number_actions ):
 #        {}, {'relu':False} ]
     layers = ["FC-200", output]
     layer_params = [ {}, {'relu':False} ]
-    model = MalpiModel(layers, layer_params, input_dim=(4,84,84), reg=0.005, dtype=np.float32, verbose=True)
+    model = MalpiModel(layers, layer_params, input_dim=input_dim, reg=0.005, dtype=np.float32, verbose=True)
     model.name = name
 
     print
@@ -255,20 +136,60 @@ def check_weights( model ):
         if np.count_nonzero(mask) > 0:
             print "Underflow in %s " % (k,)
 
+def test(tmodel, env, options):
+    reward_100 = 0
+    for i in range(10):
+        episode_reward = 0
+        state = env.reset()
+        state = prepro(state)
+        state = np.stack([state] * 4, axis=0)
+        done = False
+        steps = 0
+        while not done:
+            if options.render: env.render()
+            q_values,_ = tmodel.forward(state, mode="test")
+            action = np.argmax(q_values[0])
+            if ksteps > 1:
+                reward = 0
+                done = False
+                next_state = copy.deepcopy(state)
+                for i in range(ksteps):
+                    observation, r, d, info = env.step(action)
+                    reward += r
+                    if d: done = True
+                    observation = prepro(observation)
+                    next_state[i,:,:] = observation
+            else:
+                observation, reward, done, info = env.step(action)
+                observation = prepro(observation)
+                next_state = copy.deepcopy(state)
+                next_state[0,:,:] = next_state[1,:,:]
+                next_state[1,:,:] = next_state[2,:,:]
+                next_state[2,:,:] = next_state[3,:,:]
+                next_state[3,:,:] = observation # 2.22372381e-05 seconds for all four
+
+            state = next_state
+            episode_reward += reward
+            steps += 1
+
+        reward_100 += episode_reward
+    return (reward_100 / 100.0)
+
 def train(target, env, options):
     batch_size = 32 # backprop batch size
     update_rate = 10 # every how many episodes to copy behavior model to target
-    learning_rate = 0.005
-    learning_rate_decay = 1.0 # 0.999
     gamma = 0.99 # discount factor for reward
     epsilon = 1.0
+    epsilon_decay = 0.9999
     ksteps = options.k_steps # number of frames to skip before selecting a new action
+    learning_rate = 0.01
+    learning_rate_decay = 0.9999
+    lr_decay_on_best = 0.95
 
     target.reg = 0.005
 
     behavior = copy.deepcopy(target)
-    optim = Optimizer( "rmsprop", behavior, learning_rate=0.005, upd_frequency=5000) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
-    #policy = make_epsilon_greedy_policy(behavior, epsilon, env.action_space.n)
+    optim = Optimizer( "rmsprop", behavior, learning_rate=learning_rate, decay_rate=0.99, upd_frequency=5000)
 
     running_reward = None
     reward_sum = 0
@@ -276,8 +197,16 @@ def train(target, env, options):
     steps = 0
     episode_steps = 0
     point = 1 # how many points have been scored by either side in this episode
-    num_actions = 2 # env.action_space.n
+    num_actions = env.action_space.n
     action_counts = np.zeros(env.action_space.n)
+
+    reward_100 = []
+    reward_count = 0
+    if options.play:
+        best_test = -21.0
+    else:
+        best_test = test(target, env, options)
+        print "Starting test score: %f" % (best_test,)
 
     observation = env.reset()
     state = prepro(observation)
@@ -285,164 +214,197 @@ def train(target, env, options):
 
     exp_history = Experience2( 2000, state.shape )
 
-    with open( target.name + '_hparams.txt', 'a+') as f:
-        f.write( "%s = %s\n" % ('Start',time.strftime("%Y-%m-%d %H:%M:%S")) )
-        f.write( "%s = %d\n" % ('batch_size',batch_size) )
-        f.write( "%s = %d\n" % ('update_rate',update_rate) )
-        f.write( "%s = %g\n" % ('gamma',gamma) )
-        f.write( "%s = %g\n" % ('epsilon',epsilon) )
-        f.write( "%s = %d\n" % ('k-steps',ksteps) )
-        f.write( "Optimizer %s\n" % (optim.optim_type,) )
-        f.write( "   %s = %g\n" % ('learning rate',optim.learning_rate) )
-        f.write( "   %s = %g\n" % ('decay rate',optim.decay_rate) )
-        f.write( "   %s = %g\n" % ('epsilon',optim.epsilon) )
-        f.write( "\n" )
+    if not options.play:
+        with open( os.path.join( options.game + ".txt" ), 'a+') as f:
+            f.write( "%s = %s\n" % ('Start',time.strftime("%Y-%m-%d %H:%M:%S")) )
+            f.write( "%s = %s\n" % ('Model Name',target.name) )
+            if options.initialize:
+                f.write( "Weights initialized\n" )
+                f.write( str(target.layers) + "\n" )
+                f.write( str(target.layer_params) + "\n" )
+            f.write( "%s = %d\n" % ('batch_size',batch_size) )
+            f.write( "%s = %d\n" % ('update_rate',update_rate) )
+            f.write( "%s = %f\n" % ('gamma',gamma) )
+            f.write( "%s = %f\n" % ('epsilon',epsilon) )
+            f.write( "%s = %f\n" % ('epsilon_decay',epsilon_decay) )
+            f.write( "%s = %d\n" % ('k-steps',ksteps) )
+            f.write( "%s = %f\n" % ('learning_rate',learning_rate) )
+            f.write( "%s = %f\n" % ('learning_rate_decay',learning_rate_decay) )
+            f.write( "%s = %f\n" % ('lr_decay_on_best',lr_decay_on_best) )
+            f.write( "Optimizer %s\n" % (optim.optim_type,) )
+            f.write( "   %s = %f\n" % ('learning rate',optim.learning_rate) )
+            f.write( "   %s = %f\n" % ('decay rate',optim.decay_rate) )
+            f.write( "   %s = %f\n" % ('epsilon',optim.epsilon) )
+            f.write( "   %s = %f\n" % ('update frequency',optim.upd_frequency) )
+            f.write( "\n" )
 
-    while True:
-      if options.render: env.render()
+    while (options.max_episodes == 0) or (episode_number < options.max_episodes):
+        if options.render: env.render()
+  
+        action = choose_epsilon_greedy( behavior, state.reshape(1,4,84,84), epsilon, num_actions )
+        #action = np.random.randint(num_actions)
+        action_counts[action] += 1
+  
+        # step the environment once, or ksteps times
+        # TODO: fix this so it will work for ksteps other than 1 and 4
+        if ksteps > 1:
+            reward = 0
+            done = False
+            next_state = copy.deepcopy(state) # 5.87693955e-05 seconds
+            for i in range(ksteps):
+                observation, r, d, info = env.step(action+2)
+                reward += r
+                if d: done = True
+                observation = prepro(observation) #  1.22250773e-03 seconds
+                next_state[i,:,:] = observation
+        else:
+            observation, reward, done, info = env.step(action+2)
+            observation = prepro(observation) #  1.22250773e-03 seconds
+            next_state = copy.deepcopy(state) # 5.87693955e-05 seconds
+            next_state[0,:,:] = next_state[1,:,:]
+            next_state[1,:,:] = next_state[2,:,:]
+            next_state[2,:,:] = next_state[3,:,:]
+            next_state[3,:,:] = observation # 2.22372381e-05 seconds for all four
+  
+        reward_sum += reward
+        steps += ksteps
+        episode_steps += ksteps
+ 
+        if not options.play: 
+            exp_history.save( state, action, reward, done, next_state )
+        state = next_state
+  
+        if not options.play and (exp_history.size() > (batch_size * 5)):
+            states, actions, rewards, batch_done, new_states = exp_history.batch( batch_size )
+            actions = actions.astype(np.int)
+  
+            #onehot = np.zeros( (batch_size,actions.shape[0]) )
+            #onehot[np.arange(batch_size),actions] = 1.0
+            #print np.mean(onehot, axis=0)[0:6]
+  
+            #stats(states,"states ")
+            #stats(actions,"actions ")
+            #stats(rewards,"rewards ")
+            #stats(batch_done,"batch_done ")
+            #stats(new_states,"new_states ")
+  
+            # Save one mini-batch for testing
+            #with open('one_experience.pickle', 'wb') as pf:
+            #    one = (states,actions,rewards,batch_done,new_states)
+            #    pickle.dump( one, pf, pickle.HIGHEST_PROTOCOL)
+  
+            target_values, _ = target.forward( new_states, mode='test' )
+  
+            double_dqn = True
+            if double_dqn:
+                behavior_values, _ = behavior.forward( new_states, mode='test' )
+                best_actions = np.argmax(behavior_values,axis=1)
+                q_target = rewards + batch_done * gamma * target_values[np.arange(batch_size), best_actions]
+            else:
+                q_target = rewards + batch_done * gamma * np.max(target_values, axis=1)
+  
+            action_values, cache = behavior.forward(states, mode='train', verbose=False)
+  
+            q_error = np.zeros( action_values.shape )
+            #q_error[ np.arange(batch_size), 2 ] = -batch_size
+            # Only update values for actions taken
+            #q_error[ np.arange(batch_size), actions ] = q_target - action_values[ np.arange(batch_size), actions ]
+            q_error[ np.arange(batch_size), actions ] = action_values[ np.arange(batch_size), actions ] - q_target
+            #q_error /= batch_size
+            # See: https://zhuanlan.zhihu.com/p/25771039
+            dx = q_error
+            dx /= batch_size
+  
+            #print "actions: %s" % (actions[1:5],)
+            #print "a_values: %s" % (action_values[1:5,:],)
+            #print "t_values: %s" % (target_values[1:5,:],)
+            #print "rewards : %s" % (rewards[1:5],)
+            #print "batch_d : %s" % (batch_done[1:5],)
+            #print "q_target: %s" % (q_target[1:5],)
+            #print "q_error : %s" % (q_error[1:5,:],)
+  
+            q_error = np.sum( np.square( q_error ) )
+  
+            # dx needs to have shape(batch_size,num_actions), e.g. (32,6)
+            #check_weights( behavior )
+            _, grad = behavior.backward(cache, q_error, dx ) # 2.37275421e-01 seconds
+            optim.update( grad, check_ratio=print_stats ) # 1.85747565e-01 seconds
+  
+            #stats(states,"states " )
+            #stats(reward, "reward " )
+            #stats(values, "target " )
+            #target.describe()
+            #stats(temp_values, "behavior " )
+            #stats(q_target, "q_target " )
+            #stats(actions, "actions " )
+            #print q_error.shape
+            #stats(dx, "dx " )
+            #print "========"
+  
+        if done: # an episode finished
+            episode_number += 1
+            point = 0
+   
+            reward_100.append(reward_sum)
+            reward_count += 1
+            if reward_count > 100:
+                reward_count = 100
+                reward_100.pop(0)
+  
+            if options.play:
+                print 'Reward for Ep %d %0.2f  %0.2f' % ( episode_number, reward_sum, (np.sum(reward_100) / reward_count) )
+                                                                                
+            if not options.play:
+                if episode_number % update_rate == 0:
+                    with open( os.path.join( options.dir_model, target.name+ ".txt" ), 'a+') as f:
+                        f.write( "%d,%f\n" % (episode_number, (np.sum(reward_100) / reward_count) ) )
 
-      action = choose_epsilon_greedy( behavior, state.reshape(1,4,84,84), epsilon, num_actions )
-      action_counts[action+2] += 1
-      if epsilon > 0.1:
-          epsilon -= 9e-07 # Decay to 0.1 over 1 million steps
+                    target = copy.deepcopy(behavior)
+                    saveModel( target, options )
 
-      # step the environment once, or ksteps times
-      # TODO: fix this so it will work for ksteps other than 1 and 4
-      if ksteps > 1:
-          reward = 0
-          done = False
-          next_state = copy.deepcopy(state) # 5.87693955e-05 seconds
-          for i in range(ksteps):
-              observation, r, d, info = env.step(action+2)
-              reward += r
-              if d: done = True
-              observation = prepro(observation) #  1.22250773e-03 seconds
-              next_state[i,:,:] = observation
-      else:
-          observation, reward, done, info = env.step(action+2)
-          observation = prepro(observation) #  1.22250773e-03 seconds
-          next_state = copy.deepcopy(state) # 5.87693955e-05 seconds
-          next_state[0,:,:] = next_state[1,:,:]
-          next_state[1,:,:] = next_state[2,:,:]
-          next_state[2,:,:] = next_state[3,:,:]
-          next_state[3,:,:] = observation # 2.22372381e-05 seconds for all four
+                    treward = test(target, env, options)
 
-      reward_sum += reward
-      steps += ksteps
-      episode_steps += ksteps
+                    print
+                    print 'Ep %d' % ( episode_number, )
+                    print 'Reward       : %0.2f  %0.2f' % ( reward_sum, (np.sum(reward_100) / reward_count) )
+                    print "Test reward  : %0.2f vs %0.2f" % (treward, best_test)
+                    print "Learning rate: %f" % (optim.learning_rate,)
+                    print "Epsilon      : %f" % (epsilon,)
 
-      exp_history.save( state, action, reward, done, next_state ) # 2.91559257e-04 seconds
-      state = next_state
+                    if treward > best_test:
+                        best_test = treward
+                        with open(os.path.join( options.dir_model, options.model_name + "_best.pickle" ), 'wb') as f:
+                            pickle.dump( target, f, pickle.HIGHEST_PROTOCOL)
 
-      if exp_history.size() > (batch_size * 5):
-          states, actions, rewards, batch_done, new_states = exp_history.batch( batch_size ) # 3.04588500e-05 seconds
-          actions = actions.astype(np.int)
+                        if treward > 20.5:
+                            print "Final Learning rate: %f" % (optim.learning_rate,)
+                            print "WON! In %d episodes" % (episode_number,)
+                            break
+                if optim.learning_rate > 0.00001:
+                    optim.learning_rate *= learning_rate_decay
 
-          #onehot = np.zeros( (batch_size,actions.shape[0]) )
-          #onehot[np.arange(batch_size),actions] = 1.0
-          #print np.mean(onehot, axis=0)[0:6]
+                if epsilon > 0.1:
+                    epsilon *= epsilon_decay
 
-          #stats(states,"states ")
-          #stats(actions,"actions ")
-          #stats(rewards,"rewards ")
-          #stats(batch_done,"batch_done ")
-          #stats(new_states,"new_states ")
+            action_counts = np.zeros(env.action_space.n)
+            reward_sum = 0
+            episode_steps = 0
+            observation = env.reset()
+            state = prepro(observation)
+            state = np.stack([state] * 4, axis=0)
+  
+        if reward != 0: # Pong has either +1 or -1 reward exactly when game ends.
+          point += 1
+          print ('ep %d, points %d, steps %d, reward: %f' % (episode_number, point, steps, reward))
+          steps = 0
 
-          # Save one mini-batch for testing
-          #with open('one_experience.pickle', 'wb') as pf:
-          #    one = (states,actions,rewards,batch_done,new_states)
-          #    pickle.dump( one, pf, pickle.HIGHEST_PROTOCOL)
-
-          target_values, _ = target.forward( new_states, mode='test' ) # 2.00298658e-01 seconds
-
-          double_dqn = True
-          if double_dqn:
-              behavior_values, _ = behavior.forward( new_states, mode='test' ) # 1.74144219e-01 seconds
-              best_actions = np.argmax(behavior_values,axis=1)
-              q_target = rewards + batch_done * gamma * target_values[np.arange(batch_size), best_actions]
-          else:
-              q_target = rewards + batch_done * gamma * np.max(target_values, axis=1)
-
-          action_values, cache = behavior.forward(states, mode='train', verbose=False)
-
-          q_error = np.zeros( action_values.shape )
-          #q_error[ np.arange(batch_size), 2 ] = -batch_size
-          # Only update values for actions taken
-          #q_error[ np.arange(batch_size), actions ] = q_target - action_values[ np.arange(batch_size), actions ]
-          q_error[ np.arange(batch_size), actions ] = action_values[ np.arange(batch_size), actions ] - q_target
-          #q_error /= batch_size
-          # See: https://zhuanlan.zhihu.com/p/25771039
-          dx = q_error
-          dx /= batch_size
-
-          print_stats = False
-          if done:
-              print_stats = True
-              stats( dx, "dx " )
-
-          #print "actions: %s" % (actions[1:5],)
-          #print "a_values: %s" % (action_values[1:5,:],)
-          #print "t_values: %s" % (target_values[1:5,:],)
-          #print "rewards : %s" % (rewards[1:5],)
-          #print "batch_d : %s" % (batch_done[1:5],)
-          #print "q_target: %s" % (q_target[1:5],)
-          #print "q_error : %s" % (q_error[1:5,:],)
-
-          q_error = np.sum( np.square( q_error ) )
-
-          # dx needs to have shape(batch_size,num_actions), e.g. (32,6)
-          #check_weights( behavior )
-          _, grad = behavior.backward(cache, q_error, dx ) # 2.37275421e-01 seconds
-          optim.update( grad, check_ratio=print_stats ) # 1.85747565e-01 seconds
-
-          #stats(states,"states " )
-          #stats(reward, "reward " )
-          #stats(values, "target " )
-          #target.describe()
-          #stats(temp_values, "behavior " )
-          #stats(q_target, "q_target " )
-          #stats(actions, "actions " )
-          #print q_error.shape
-          #stats(dx, "dx " )
-          #print "========"
-
-      if done: # an episode finished
-        episode_number += 1
-        point = 0
-
-        #At update rate, copy behavior into target
-        if episode_number % update_rate == 0:
-            target = copy.deepcopy(behavior)
-            print "Copying behavior network to target"
-
-        running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
-        print 'Episode reward total was %f. running mean: %f.  In %d steps' % (reward_sum, running_reward, episode_steps)
-        print 'Epsilon: %g' % (epsilon,)
-        print 'Actions: %s' % (action_counts,)
-        #behavior.describe()
-        #optim.describe()
-        with open( target.name + '.txt', 'a+') as f:
-            f.write( "%d,%f\n" % (episode_number,running_reward) )
-
-        if episode_number % 10 == 0:
-            optim.learning_rate *= learning_rate_decay
-            if learning_rate_decay < 1.0:
-                print "Learning rate: %f" % (optim.learning_rate,)
-            print "Saving model"
-            saveModel( target, options )
-
-        action_counts = np.zeros(env.action_space.n)
-        reward_sum = 0
-        episode_steps = 0
-        observation = env.reset()
-        state = prepro(observation)
-        state = np.stack([state] * 4, axis=0)
-
-      if reward != 0: # Pong has either +1 or -1 reward exactly when game ends.
-        point += 1
-        print ('ep %d, points %d, steps %d, reward: %f' % (episode_number, point, steps, reward))
-        steps = 0
-
+    if not options.play:
+        with open( os.path.join( options.game + ".txt" ), 'a+') as f:
+            f.write( "%s = %f\n" % ('Final epsilon', epsilon) )
+            f.write( "%s = %f\n" % ('Final learning rate', optim.learning_rate) )
+            f.write( "%s = %f\n" % ('Best test score', best_test) )
+            f.write( "%s = %d\n" % ('Episodes', episode_number) )
+            f.write( "\n\n" )
 
 def getOptions():
     usage = "Usage: python pg-pong [options] <model name>"
@@ -455,6 +417,8 @@ def getOptions():
     parser.add_option("--test_only", action="store_true", default=False, help="Run tests, then exit.");
     parser.add_option("--desc", action="store_true", default=False, help="Describe the model, then exit.");
     parser.add_option("-g","--game", default="Breakout-v0", help="The game environment to use. Defaults to Breakout");
+    parser.add_option("-m","--max_episodes", default="0", type="int", help="Maximum number of episodes to train.");
+    parser.add_option("--upload", action="store_true", default=False, help="Monitor the training run and upload to OpenAI.");
 
     (options, args) = parser.parse_args()
 
@@ -474,33 +438,20 @@ def getOptions():
 
     return (options, args)
 
-def test(options, model):
-    Experience2.test()
-
-#    behavior = copy.deepcopy(model)
-#    print "%f == %f" % (model.params['W1'][0,0], behavior.params['W1'][0,0])
-#    model.params['W1'][0,0] = 99
-#    print "%f == %f" % (model.params['W1'][0,0], behavior.params['W1'][0,0])
-#    model.describe()
-#    behavior.describe()
-
-#    for k,v in model.params.iteritems():
-#        print "%s: %d" % (k, len(v))
-
-#    optim = Optimizer( "rmsprop", model, learning_rate=0.0003, decay_rate=0.99, epsilon=1e-7) # learning_rate = 0.001, decay_rate=0.9, epsilon=1e-8 )
-#    optim.describe()
-
-    pass
-
 if __name__ == "__main__":
     options, _ = getOptions()
 
     env = gym.envs.make(options.game)
-    print env.get_action_meanings()
+    if hasattr(env,'get_action_meanings'):
+        print env.get_action_meanings()
 
     if options.initialize:
+        filename = os.path.join( options.dir_model, options.model_name + ".pickle" )
+        if os.path.exists(filename):
+            print "Model already exists at " + filename
+            print "Delete the existing file or don't use the --initialize/-i flag."
+            exit()
         nA = env.action_space.n
-        nA = 2 # try to simplify things
         print "Initializing model with %d actions..." % (nA,)
         model = initializeModel( options.model_name, nA )
         model.env = options.game
@@ -516,6 +467,10 @@ if __name__ == "__main__":
         model.describe()
         exit()
 
+    if options.upload:
+        filename = os.path.join( options.dir_model, options.model_name + "_monitor" )
+        env = gym.wrappers.Monitor(env, filename, force=True)
+
     if options.test_only:
         test(options, model)
         exit()
@@ -526,3 +481,7 @@ if __name__ == "__main__":
             exit()
 
     train(model, env, options)
+
+    if options.upload:
+        #gym.upload('./cartpole', api_key="")
+        pass
