@@ -12,7 +12,7 @@ from optparse import OptionParser
 import itertools
 import random
 import time
-from collections import deque, namedtuple
+from collections import deque
 import copy
 from scipy.misc import imresize
 
@@ -138,7 +138,8 @@ def check_weights( model ):
 
 def test(tmodel, env, options):
     reward_100 = 0
-    for i in range(10):
+    count = 10.0
+    for i in range(int(count)):
         episode_reward = 0
         state = env.reset()
         state = prepro(state)
@@ -147,13 +148,13 @@ def test(tmodel, env, options):
         steps = 0
         while not done:
             if options.render: env.render()
-            q_values,_ = tmodel.forward(state, mode="test")
+            q_values,_ = tmodel.forward(state.reshape(1,28224), mode="test")
             action = np.argmax(q_values[0])
-            if ksteps > 1:
+            if options.k_steps > 1:
                 reward = 0
                 done = False
                 next_state = copy.deepcopy(state)
-                for i in range(ksteps):
+                for i in range(options.k_steps):
                     observation, r, d, info = env.step(action)
                     reward += r
                     if d: done = True
@@ -173,7 +174,7 @@ def test(tmodel, env, options):
             steps += 1
 
         reward_100 += episode_reward
-    return (reward_100 / 100.0)
+    return (reward_100 / count)
 
 def train(target, env, options):
     batch_size = 32 # backprop batch size
@@ -185,6 +186,7 @@ def train(target, env, options):
     learning_rate = 0.01
     learning_rate_decay = 0.9999
     lr_decay_on_best = 0.95
+    clip_error = True
 
     target.reg = 0.005
 
@@ -204,7 +206,8 @@ def train(target, env, options):
     if options.play:
         best_test = -21.0
     else:
-        best_test = test(target, env, options)
+        #best_test = test(target, env, options)
+        best_test = -21.0
         print "Starting test score: %f" % (best_test,)
 
     observation = env.reset()
@@ -230,6 +233,7 @@ def train(target, env, options):
             f.write( "%s = %f\n" % ('learning_rate',learning_rate) )
             f.write( "%s = %f\n" % ('learning_rate_decay',learning_rate_decay) )
             f.write( "%s = %f\n" % ('lr_decay_on_best',lr_decay_on_best) )
+            f.write( "%s = %s\n" % ('clip_error',str(clip_error)) )
             f.write( "Optimizer %s\n" % (optim.optim_type,) )
             f.write( "   %s = %f\n" % ('learning rate',optim.learning_rate) )
             f.write( "   %s = %f\n" % ('decay rate',optim.decay_rate) )
@@ -251,13 +255,13 @@ def train(target, env, options):
             done = False
             next_state = copy.deepcopy(state) # 5.87693955e-05 seconds
             for i in range(ksteps):
-                observation, r, d, info = env.step(action+2)
+                observation, r, d, info = env.step(action)
                 reward += r
                 if d: done = True
                 observation = prepro(observation) #  1.22250773e-03 seconds
                 next_state[i,:,:] = observation
         else:
-            observation, reward, done, info = env.step(action+2)
+            observation, reward, done, info = env.step(action)
             observation = prepro(observation) #  1.22250773e-03 seconds
             next_state = copy.deepcopy(state) # 5.87693955e-05 seconds
             next_state[0,:,:] = next_state[1,:,:]
@@ -313,6 +317,8 @@ def train(target, env, options):
             # See: https://zhuanlan.zhihu.com/p/25771039
             dx = q_error
             dx /= batch_size
+            if clip_error:
+                np.clip( dx, -1.0, 1.0, dx )
   
             #print "actions: %s" % (actions[1:5],)
             #print "a_values: %s" % (action_values[1:5,:],)
@@ -327,7 +333,7 @@ def train(target, env, options):
             # dx needs to have shape(batch_size,num_actions), e.g. (32,6)
             #check_weights( behavior )
             _, grad = behavior.backward(cache, q_error, dx ) # 2.37275421e-01 seconds
-            optim.update( grad, check_ratio=print_stats ) # 1.85747565e-01 seconds
+            optim.update( grad, check_ratio=False ) # 1.85747565e-01 seconds
   
             #stats(states,"states " )
             #stats(reward, "reward " )
@@ -346,8 +352,7 @@ def train(target, env, options):
    
             reward_100.append(reward_sum)
   
-            if options.play:
-                print 'Reward for Ep %d %0.2f  %0.2f' % ( episode_number, reward_sum, np.mean(reward_100) )
+            print 'Reward for Ep %d %0.2f  %0.2f' % ( episode_number, reward_sum, np.mean(reward_100) )
                                                                                 
             if not options.play:
                 if episode_number % update_rate == 0:
@@ -357,7 +362,7 @@ def train(target, env, options):
                     target = copy.deepcopy(behavior)
                     saveModel( target, options )
 
-                    treward = test(target, env, options)
+                    treward = np.mean(reward_100) # test(target, env, options)
 
                     print
                     print 'Ep %d' % ( episode_number, )
@@ -370,6 +375,7 @@ def train(target, env, options):
                         best_test = treward
                         with open(os.path.join( options.dir_model, options.model_name + "_best.pickle" ), 'wb') as f:
                             pickle.dump( target, f, pickle.HIGHEST_PROTOCOL)
+                        print "Saving current best model."
 
                         if treward > 20.5:
                             print "Final Learning rate: %f" % (optim.learning_rate,)
@@ -388,10 +394,10 @@ def train(target, env, options):
             state = prepro(observation)
             state = np.stack([state] * 4, axis=0)
   
-        if reward != 0: # Pong has either +1 or -1 reward exactly when game ends.
-          point += 1
-          print ('ep %d, points %d, steps %d, reward: %f' % (episode_number, point, steps, reward))
-          steps = 0
+#        if reward != 0: # Pong has either +1 or -1 reward exactly when game ends.
+#          point += 1
+#          print ('ep %d, points %d, steps %d, reward: %f' % (episode_number, point, steps, reward))
+#          steps = 0
 
     if not options.play:
         with open( os.path.join( options.game + ".txt" ), 'a+') as f:
@@ -409,6 +415,7 @@ def getOptions():
     parser.add_option("-r","--render", action="store_true", default=False, help="Render gym environment while training. Will greatly reduce speed.");
     parser.add_option("-s","--starting_ep", type="int", default=0, help="Starting episode number (for record keeping).");
     parser.add_option("-k","--k_steps", type="int", default=4, help="How many game steps to take before the model chooses a new action.");
+    parser.add_option("-p","--play", action="store_true", default=False, help="Play only. No training and always choose the best action.");
     parser.add_option("--test_only", action="store_true", default=False, help="Run tests, then exit.");
     parser.add_option("--desc", action="store_true", default=False, help="Describe the model, then exit.");
     parser.add_option("-g","--game", default="Breakout-v0", help="The game environment to use. Defaults to Breakout");
@@ -467,7 +474,8 @@ if __name__ == "__main__":
         env = gym.wrappers.Monitor(env, filename, force=True)
 
     if options.test_only:
-        test(options, model)
+        reward = test(model, env, options)
+        print "Average test reward: %f" % (reward,)
         exit()
 
     if hasattr(model, 'env'):

@@ -170,85 +170,86 @@ commands = ["forward","backward","left","right","stop"]
 def actionToCommand(action):
     return commands[action]
 
-if len(args) != 1:
-    print "Usage: plot.py <file.pickle>"
-    exit()
+if __name__ == "__main__":
+    if len(args) != 1:
+        print "Usage: plot.py <file.pickle>"
+        exit()
 
-with open(args[0]) as f:
-    data = pickle.load(f)
+    with open(args[0]) as f:
+        data = pickle.load(f)
 
-if type(data) is dict:
-    actions = np.array(data['actions'])
-    act_times = np.array(data['action_times'])
-    data = data['accelerometer']
+    if type(data) is dict:
+        actions = np.array(data['actions'])
+        act_times = np.array(data['action_times'])
+        data = data['accelerometer']
 
-if type(data) is not list:
-    print "Invalid data type in %s: %s" % (args[0],str(type(data)))
+    if type(data) is not list:
+        print "Invalid data type in %s: %s" % (args[0],str(type(data)))
 
-base = baseline(gen=False)
-t0 = data[0][0]
-act_times = act_times - t0
-print [actionToCommand(act) for act in actions[0:5]]
+    base = baseline(gen=False)
+    t0 = data[0][0]
+    act_times = act_times - t0
+    print [actionToCommand(act) for act in actions[0:5]]
 #actions = ((actions + 1) * -1.0) / 5.0
-actions = ((actions / 25.0) * 1.0) + 0.4
+    actions = ((actions / 25.0) * 1.0) + 0.4
 
-times, x, y, z = extract(data, do_mavg=True, do_norm=False)
+    times, x, y, z = extract(data, do_mavg=True, do_norm=False)
 #x = x - np.mean(x)
 #y = y - np.mean(y)
-z = z - np.mean(z)
+    z = z - np.mean(z)
 
-labels = np.zeros( (len(times)) )
+    labels = np.zeros( (len(times)) )
 
-rms_f = moving_rms( times, x, y, z )
-rms_s = stopped_rms( times, x, y, z )
+    rms_f = moving_rms( times, x, y, z )
+    rms_s = stopped_rms( times, x, y, z )
 
-labels[rms_s < 0.025] = 0.1
+    labels[rms_s < 0.025] = 0.1
 
-state = 'stopped'
-prev = -100
-for idx, yi in enumerate(y):
-    if rms_f[idx] < 0.08 and state is 'stopped':
-        state = 'check'
-        prev = rms_f[idx]
-    elif state is 'check':
-        if rms_f[idx] > prev:
-            state = 'forward'
-            prev = -100
-            labels[idx] = 0.2
-        else:
+    state = 'stopped'
+    prev = -100
+    for idx, yi in enumerate(y):
+        if rms_f[idx] < 0.08 and state is 'stopped':
+            state = 'check'
             prev = rms_f[idx]
-    elif state is 'forward':
-        if abs(labels[idx] - 0.1) < 0.0001:
-            state = 'stopped'
-        else:
-            labels[idx] = 0.2
+        elif state is 'check':
+            if rms_f[idx] > prev:
+                state = 'forward'
+                prev = -100
+                labels[idx] = 0.2
+            else:
+                prev = rms_f[idx]
+        elif state is 'forward':
+            if abs(labels[idx] - 0.1) < 0.0001:
+                state = 'stopped'
+            else:
+                labels[idx] = 0.2
 
-crash = np.abs(x) + np.abs(y) + (np.abs(z) * 2)
-n = 3
+    crash = np.abs(x) + np.abs(y) + (np.abs(z) * 2)
+    n = 3
 #crash = moving_average(crash, n=n)
 #crash = np.append(crash,  [0] * (n-1) )
-labels[crash >= 1.1] = 0.3
+    labels[crash >= 1.1] = 0.3
 # expand crashes
-for i in range(2,len(labels)-2):
-    if abs(labels[i+2] - 0.3) < 0.0001:
-        labels[i] = 0.3
-    elif abs(labels[i+1] - 0.3) < 0.0001:
-        labels[i] = 0.3
-for i in range(len(labels)-2,2,-1):
-    if abs(labels[i-1] - 0.3) < 0.0001:
-        labels[i] = 0.3
-    elif abs(labels[i-2] - 0.3) < 0.0001:
-        labels[i] = 0.3
+    for i in range(2,len(labels)-2):
+        if abs(labels[i+2] - 0.3) < 0.0001:
+            labels[i] = 0.3
+        elif abs(labels[i+1] - 0.3) < 0.0001:
+            labels[i] = 0.3
+    for i in range(len(labels)-2,2,-1):
+        if abs(labels[i-1] - 0.3) < 0.0001:
+            labels[i] = 0.3
+        elif abs(labels[i-2] - 0.3) < 0.0001:
+            labels[i] = 0.3
 
-fig = plt.figure()
-ax = fig.add_subplot(111)
-ax.plot(times, labels, 'ko', times, y, 'bs', times, x, 'r--', times, z, 'yx', act_times, actions, 'gx' )
-ax.text(0.03, 0.4, 'Forward', fontsize=10)
-ax.text(0.03, 0.44, 'Backward', fontsize=10)
-ax.text(0.03, 0.48, 'Left', fontsize=10)
-ax.text(0.03, 0.52, 'Right', fontsize=10)
-ax.text(0.03, 0.56, 'Stop', fontsize=10)
-plt.show()
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(times, labels, 'ko', times, y, 'bs', times, x, 'r--', times, z, 'yx', act_times, actions, 'gx' )
+    ax.text(0.03, 0.4, 'Forward', fontsize=10)
+    ax.text(0.03, 0.44, 'Backward', fontsize=10)
+    ax.text(0.03, 0.48, 'Left', fontsize=10)
+    ax.text(0.03, 0.52, 'Right', fontsize=10)
+    ax.text(0.03, 0.56, 'Stop', fontsize=10)
+    plt.show()
 
 #labels = label1( times, x, y, z )
 #plt.plot(times, labels, 'ko', times, x, 'r--', times, y, 'bs', times, z, 'g^')

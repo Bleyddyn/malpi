@@ -6,3 +6,5 @@ directories = {
 # Root directory for the Motor Daemon
     "motors": ""
 }
+
+openai_key = ""

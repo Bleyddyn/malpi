@@ -1,3 +1,5 @@
+FFT for accel data: https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/19970034695.pdf
+
 accel_20170221-184036.pickle
     No movement?
 accel_20170221-184349.pickle
