@@ -211,10 +211,15 @@ def readParams():
     with open('CartPole-v0_won.txt', 'r') as f:
         for line in f:
             resd = ast.literal_eval(line)
-            best = 195.0
-            if 'best_score' in resd:
-                best = resd['best_score']
-            sample = [32, 10, 200, 0.99, resd['epsilon'], resd['epsilon_decay'],resd['learning_rate'],resd['learning_rate_decay'],resd['lr_decay_on_best'],resd['clip_error']]
+            if isinstance(resd,dict):
+                best = 195.0
+                if 'best_score' in resd:
+                    best = resd['best_score']
+                sample = [32, 10, 200, 0.99, resd['epsilon'], resd['epsilon_decay'],resd['learning_rate'],resd['learning_rate_decay'],resd['lr_decay_on_best'],resd['clip_error'], 0.005]
+            elif isinstance(resd,list):
+                sample = resd[0:10]
+                sample.append(0.005)
+                best = resd[10]
             hparams.append(sample)
             y.append(best)
 
@@ -425,7 +430,10 @@ def train(env, options):
     x_list,y_list = readParams()
     xp = np.array(x_list)
     yp = np.array(y_list)
-    bounds = np.array( [ [10, 50], [1,50], [100,1000], [0.9,1.0], [0.1,1.0], [0.9,1.0], [0.000001,0.1], [0.9,1.0], [0.9,1.0],[0.0,1.0]] )
+    bounds = np.array( [ [10, 50], [1,50], [100,1000], [0.1,1.0], [0.1,1.0], [0.99,1.0], [0.0001,0.1], [0.99,1.0], [0.9,1.0],[0.0,1.0], [0.0005,0.01] ] )
+    print bounds.shape
+    print xp.shape
+
     for i in range(100):
         model.fit(xp, yp)
 
@@ -435,8 +443,10 @@ def train(env, options):
         if np.any(np.abs(next_sample - xp) <= epsilon):
             next_sample = np.random.uniform(bounds[:, 0], bounds[:, 1], bounds.shape[0])
 
+        #next_sample = [32, 20, 200, 0.99, 0.88, 0.99957, 0.0045, 0.9999, 0.95, True, 0.005]
         # Sample loss for new set of parameters
         cv_score = train_one(env, next_sample, options)
+        print "Score %f for %s" % (cv_score, next_sample)
 
         # Update lists
         x_list.append(next_sample)
@@ -452,20 +462,20 @@ def train_one(env, hparams, options):
 
     batch_size = int(hparams[0])
     update_rate = int(hparams[1])
-    update_freq = int(hparams[1])
-    gamma = hparams[2]
-    epsilon = hparams[3]
-    epsilon_decay = hparams[4]
-    learning_rate = hparams[5]
-    learning_rate_decay = hparams[6]
-    lr_decay_on_best = hparams[7]
-    if hparams[8] < 0.5:
+    update_freq = int(hparams[2])
+    gamma = hparams[3]
+    epsilon = hparams[4]
+    epsilon_decay = hparams[5]
+    learning_rate = hparams[6]
+    learning_rate_decay = hparams[7]
+    lr_decay_on_best = hparams[8]
+    if hparams[9] < 0.5:
         clip_error = False
     else:
         clip_error = True
 
     target = initializeModel( options.model_name, num_actions, input_dim=(4,1) )
-    target.reg = hparams[9]
+    target.reg = hparams[10]
     target.params["W1"] *= 0.1
     behavior = copy.deepcopy(target)
     optim = Optimizer( "rmsprop", behavior, learning_rate=learning_rate, decay_rate=0.99, upd_frequency=update_freq)
@@ -600,11 +610,9 @@ def train_one(env, hparams, options):
         steps = 0
         state = env.reset()
 
-    print hparams
-#    with open( os.path.join( options.game + "_won.txt" ), 'a+') as f:
-#        hparams.append(episode_number)
-#        hparams.append(best_test)
-#        f.write( "%s\n" % (hparams,) )
+    with open( os.path.join( options.game + "_won.txt" ), 'a+') as f:
+        hparams = np.append( hparams, [best_test, episode_number] )
+        f.write( "%s\n" % (hparams.tolist(),) )
 
     with open( os.path.join( options.game + ".txt" ), 'a+') as f:
         f.write( "%s = %f\n" % ('Final epsilon', epsilon) )
