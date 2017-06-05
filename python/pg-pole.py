@@ -282,6 +282,11 @@ def initializeModel( name, number_actions, input_dim=(4,84,84), verbose=False ):
 def sigmoid(x): 
   return 1.0 / (1.0 + np.exp(-x)) # sigmoid "squashing" function to interval [0,1]
 
+def softmax_batch(x):
+    probs = np.exp(x - np.max(x, axis=1, keepdims=True))
+    probs /= np.sum(probs, axis=1, keepdims=True)
+    return probs
+
 def prepro(I):
   """ prepro 210x160x3 uint8 frame into (84x84) float 
   """
@@ -293,14 +298,14 @@ def prepro(I):
   return I.astype(np.float) / 255.0
   #return I.astype(np.float)
 
-def discount_rewards(r, gamma, normalize=True):
+def discount_rewards(r, gamma, done, normalize=True):
     """ take 1D float array of rewards and compute discounted reward.
         if normalize is True: subtract mean and divide by std dev
     """
     discounted_r = np.zeros_like(r)
     running_add = 0
     for t in reversed(xrange(0, r.size)):
-        if r[t] != 0: running_add = 0 # reset the sum, since this was a game boundary (pong specific!)
+        if not done[t]: running_add = 0 # reset the sum, since this was a game boundary
         running_add = running_add * gamma + r[t]
         discounted_r[t] = running_add
 
@@ -431,10 +436,8 @@ def train(env, options):
     xp = np.array(x_list)
     yp = np.array(y_list)
     bounds = np.array( [ [10, 50], [1,50], [100,1000], [0.1,1.0], [0.1,1.0], [0.99,1.0], [0.0001,0.1], [0.99,1.0], [0.9,1.0],[0.0,1.0], [0.0005,0.01] ] )
-    print bounds.shape
-    print xp.shape
     do_bayes = False
-    next_sample = np.array( [ 32, 20, 100, 0.99, 0.7, 0.9995, 0.01, 0.9999, 0.95,True, 0.0005 ] )
+    next_sample = np.array( [ 32, 20, 100, 0.99, 0.9, 0.9995, 0.01, 0.9999, 0.95,True, 0.0005 ] )
     scores = []
 
     for i in range(100):
@@ -483,15 +486,14 @@ def train_one(env, hparams, options):
     else:
         clip_error = True
 
-    target = initializeModel( options.model_name, num_actions, input_dim=(4,1) )
-    target.reg = hparams[10]
-    target.params["W1"] *= 0.1
-    behavior = copy.deepcopy(target)
+    behavior = initializeModel( options.model_name, num_actions, input_dim=(4,1) )
+    behavior.reg = hparams[10]
+    behavior.params["W1"] *= 0.1
     optim = Optimizer( "rmsprop", behavior, learning_rate=learning_rate, decay_rate=0.99, upd_frequency=update_freq)
 
     reward_sum = 0
     reward_100 = deque(maxlen=100)
-    best_test = 15.0 # test(target, env, options)
+    best_test = 15.0 # test(behavior, env, options)
     steps = 0
     episode_steps = 0
     episode_number = 0
@@ -501,11 +503,11 @@ def train_one(env, hparams, options):
 
     with open( os.path.join( options.game + ".txt" ), 'a+') as f:
         f.write( "%s = %s\n" % ('Start',time.strftime("%Y-%m-%d %H:%M:%S")) )
-        f.write( "%s = %s\n" % ('Model Name',target.name) )
+        f.write( "%s = %s\n" % ('Model Name',behavior.name) )
         if options.initialize:
             f.write( "Weights initialized\n" )
-            f.write( str(target.layers) + "\n" )
-            f.write( str(target.layer_params) + "\n" )
+            f.write( str(behavior.layers) + "\n" )
+            f.write( str(behavior.layer_params) + "\n" )
         f.write( "%s = %d\n" % ('batch_size',batch_size) )
         f.write( "%s = %d\n" % ('update_rate',update_rate) )
         f.write( "%s = %f\n" % ('gamma',gamma) )
@@ -524,100 +526,84 @@ def train_one(env, hparams, options):
         f.write( "\n" )
 
     while (options.max_episodes == 0) or (episode_number < options.max_episodes):
-      if options.render: env.render()
+        if options.render: env.render()
 
-      action = choose_epsilon_greedy( behavior, state, epsilon, num_actions )
-      #action = np.random.randint(num_actions)
+        actions_raw, _ = behavior.forward( state.reshape(1,4), mode="test")
+        action_probs = softmax_batch(actions_raw)
+        action = np.random.choice(num_actions, p=action_probs[0])
 
-      # step the environment once, or ksteps times
-      reward = 0
-      done = False
-      for k in range(ksteps):
-          next_state, r, d, info = env.step(action)
-          reward += r
-          if d:
-              done = True
+        # step the environment once, or ksteps times
+        reward = 0
+        done = False
+        for k in range(ksteps):
+            next_state, r, d, info = env.step(action)
+            reward += r
+            if d:
+                done = True
+  
+        reward_sum += reward
+        steps += ksteps
+        episode_steps += ksteps
+  
+        exp_history.save( state, action, reward, done, next_state )
+        state = next_state
+  
+        if done: # an episode finished
+            states, actions, rewards, batch_done, new_states = exp_history.all()
+  
+            actions = actions.astype(np.int)
+            rewards = discount_rewards( rewards, gamma, batch_done, normalize=False )
+  
+            actions_raw, caches = behavior.forward( states )
+            action_probs = softmax_batch(actions_raw)
+# Gradient of the action taken divided by the probability of the action taken
+            #action_probs = np.zeros(action_probs.shape)
+            #action_probs[actions] = 1.0
+            dx = -1 * rewards.reshape(rewards.shape[0],1) / action_probs[actions]
+            loss = 0.0
+             
+            if clip_error:
+                np.clip( dx, -1.0, 1.0, dx )
 
-      reward_sum += reward
+            # dx needs to have shape(batch_size,num_actions), e.g. (32,6)
+            _, grad = behavior.backward(caches, loss, action_probs )
+            optim.update( grad, check_ratio=False )
 
-      steps += ksteps
-      episode_steps += ksteps
+            episode_number += 1
 
-      exp_history.save( state, action, reward, done, next_state )
-      state = next_state
+            reward_100.append(reward_sum)
 
-      if (exp_history.size() > (batch_size * 5)):
-          if ( len(exp_history.priority) < 1) or (np.random.uniform(0,10) < 9):
-              states, actions, rewards, batch_done, new_states = exp_history.batch( batch_size )
-          else:
-              states, actions, rewards, batch_done, new_states = exp_history.priority_batch()
-              print "Priority Batch"
+            exp_history.clear()
 
-          actions = actions.astype(np.int)
+            if episode_number % update_rate == 0:
+                treward = np.mean(reward_100) # test(behavior, env, options)
 
-          target_values, _ = target.forward( new_states, mode='test' )
+                print
+                print 'Ep %d' % ( episode_number, )
+                print 'Reward       : %0.2f  %0.2f' % ( reward_sum, np.mean(reward_100) )
+                print "Test reward  : %0.2f vs %0.2f" % (treward, best_test)
+                print "Learning rate: %g" % (optim.learning_rate,)
+                print "Epsilon      : %g" % (epsilon,)
 
-          double_dqn = True
-          if double_dqn:
-              behavior_values, _ = behavior.forward( new_states, mode='test' )
-              best_actions = np.argmax(behavior_values,axis=1)
-              q_target = rewards + batch_done * gamma * target_values[np.arange(batch_size), best_actions]
-          else:
-              q_target = rewards + batch_done * gamma * np.max(target_values, axis=1)
+                if treward > best_test:
+                    best_test = treward
 
-          action_values, cache = behavior.forward(states, mode='train', verbose=False)
+                    if treward > 195.0:
+                        print "Final Learning rate: %f" % (optim.learning_rate,)
+                        print "WON! In %d episodes" % (episode_number,)
+                        break
 
-          q_error = np.zeros( action_values.shape )
-          #q_error[ np.arange(batch_size), actions ] = q_target - action_values[ np.arange(batch_size), actions ]
-          q_error[ np.arange(batch_size), actions ] = action_values[ np.arange(batch_size), actions ] - q_target
-          dx = q_error
-          dx /= batch_size
-          if clip_error:
-              np.clip( dx, -1.0, 1.0, dx )
+                    if optim.learning_rate > 0.00001:
+                        optim.learning_rate *= lr_decay_on_best
 
-          q_error = np.sum( np.square( q_error ) )
-
-          # dx needs to have shape(batch_size,num_actions), e.g. (32,6)
-          _, grad = behavior.backward(cache, q_error, dx )
-          optim.update( grad, check_ratio=False )
-
-      if done: # an episode finished
-        episode_number += 1
-
-        reward_100.append(reward_sum)
-
-        if episode_number % update_rate == 0:
-
-            target = copy.deepcopy(behavior)
-
-            treward = np.mean(reward_100) # test(target, env, options)
-
-            print
-            print 'Ep %d' % ( episode_number, )
-            print 'Reward       : %0.2f  %0.2f' % ( reward_sum, np.mean(reward_100) )
-            print "Test reward  : %0.2f vs %0.2f" % (treward, best_test)
-            print "Learning rate: %g" % (optim.learning_rate,)
-            print "Epsilon      : %g" % (epsilon,)
-
-            if treward > best_test:
-                best_test = treward
-
-                if treward > 195.0:
-                    print "Final Learning rate: %f" % (optim.learning_rate,)
-                    print "WON! In %d episodes" % (episode_number,)
-                    break
-
-                if optim.learning_rate > 0.00001:
-                    optim.learning_rate *= lr_decay_on_best
-
-        if optim.learning_rate > 0.00001:
-            optim.learning_rate *= learning_rate_decay
-        if epsilon > 0.1:
-            epsilon *= epsilon_decay
-        reward_sum = 0
-        episode_steps = 0
-        steps = 0
-        state = env.reset()
+            if optim.learning_rate > 0.00001:
+                optim.learning_rate *= learning_rate_decay
+            if epsilon > 0.1:
+                epsilon *= epsilon_decay
+            reward_sum = 0
+            episode_steps = 0
+            steps = 0
+            state = env.reset()
 
     with open( os.path.join( options.game + "_won.txt" ), 'a+') as f:
         hparams = np.append( hparams, [best_test, episode_number] )

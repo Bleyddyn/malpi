@@ -109,6 +109,13 @@ class Experience2(object):
         states_batch, action_batch, reward_batch, done_batch, next_states_batch = map(np.array, zip(*samples))
         return (states_batch, action_batch, reward_batch, done_batch, next_states_batch)
 
+    def all( self, max_size=200 ):
+        if len(self.memory) > max_size:
+            states_batch, action_batch, reward_batch, done_batch, next_states_batch = map(np.array, zip(*self.memory[-200:]))
+        else:
+            states_batch, action_batch, reward_batch, done_batch, next_states_batch = map(np.array, zip(*self.memory))
+        return (states_batch, action_batch, reward_batch, done_batch, next_states_batch)
+
     def priority_batch( self ):
         return random.sample(self.priority, 1)
 
