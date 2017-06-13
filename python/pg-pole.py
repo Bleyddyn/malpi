@@ -267,7 +267,7 @@ def initializeModel( name, number_actions, input_dim=(4,84,84), verbose=False ):
 #        {'filter_size':4, 'stride':2, 'pad':2},
 #        {'filter_size':3, 'stride':1, 'pad':1},
 #        {}, {'relu':False} ]
-    layers = ["FC-20", output]
+    layers = ["FC-100", output]
     layer_params = [ {}, {'relu':False} ]
     model = MalpiModel(layers, layer_params, input_dim=input_dim, reg=0.005, dtype=np.float32, verbose=verbose)
     model.name = name
@@ -437,7 +437,7 @@ def train(env, options):
     yp = np.array(y_list)
     bounds = np.array( [ [10, 50], [1,50], [100,1000], [0.1,1.0], [0.1,1.0], [0.99,1.0], [0.0001,0.1], [0.99,1.0], [0.9,1.0],[0.0,1.0], [0.0005,0.01] ] )
     do_bayes = False
-    next_sample = np.array( [ 32, 20, 100, 0.99, 0.9, 0.9995, 0.01, 0.9999, 0.95,True, 0.0005 ] )
+    next_sample = np.array( [ 32, 20, 100, 0.99, 0.9, 0.9995, 0.005, 0.9999, 0.95,True, 0.0005 ] )
     scores = []
 
     for i in range(100):
@@ -531,6 +531,8 @@ def train_one(env, hparams, options):
         actions_raw, _ = behavior.forward( state.reshape(1,4), mode="test")
         action_probs = softmax_batch(actions_raw)
         action = np.random.choice(num_actions, p=action_probs[0])
+# Random action, for baseline scores
+#        action = np.random.randint(num_actions)
 
         # step the environment once, or ksteps times
         reward = 0
@@ -552,22 +554,48 @@ def train_one(env, hparams, options):
             states, actions, rewards, batch_done, new_states = exp_history.all()
   
             actions = actions.astype(np.int)
-            rewards = discount_rewards( rewards, gamma, batch_done, normalize=False )
+            rewards = discount_rewards( rewards, gamma, batch_done, normalize=True )
   
             actions_raw, caches = behavior.forward( states )
             action_probs = softmax_batch(actions_raw)
+
+            gradients = action_probs[range(action_probs.shape[0]),actions]
+            #print action_probs
+            #print actions
+            #print "action_probs: %s" % (action_probs.shape,)
+            #print "Gradients: %s" % (gradients.shape,)
+            #print "Rewards: %s" % (rewards.shape,)
+            #dx = rewards / gradients
+            #y = np.zeros(action_probs.shape)
+            #y[range(action_probs.shape[0]),actions] = dx
+            #dx = -y
+
+            # From: https://github.com/keon/policy-gradient/blob/master/pg.py
+            y = np.zeros(action_probs.shape)
+            y[range(action_probs.shape[0]),actions] = 1.0
+            gradients = y - action_probs
+            gradients *= np.reshape(rewards, [rewards.shape[0],1])
+            dx = -gradients
+
 # Gradient of the action taken divided by the probability of the action taken
             #action_probs = np.zeros(action_probs.shape)
             #action_probs[actions] = 1.0
-            dx = -1 * rewards.reshape(rewards.shape[0],1) / action_probs[actions]
+
+            # From: http://minpy.readthedocs.io/en/latest/tutorial/rl_policy_gradient_tutorial/rl_policy_gradient.html 
+            # ps = np.maximum(1.0e-5, np.minimum(1.0 - 1e-5, ps)) # prevent log of zero
+            #policy_grad_loss = -np.sum(np.log(ps) * actions_one_hot * advs)
+# would still need the derivitive of the loss
+
+            #dx = actions_raw + gradients
+            #dx = -gradients
             loss = 0.0
              
             if clip_error:
                 np.clip( dx, -1.0, 1.0, dx )
 
             # dx needs to have shape(batch_size,num_actions), e.g. (32,6)
-            _, grad = behavior.backward(caches, loss, action_probs )
-            optim.update( grad, check_ratio=False )
+            _, grad = behavior.backward(caches, loss, dx )
+            optim.update( grad, check_ratio=True )
 
             episode_number += 1
 
