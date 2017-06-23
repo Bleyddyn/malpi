@@ -208,7 +208,7 @@ def readParams():
     hparams = []
     y = []
 
-    with open('CartPole-v0_won.txt', 'r') as f:
+    with open('CartPole-v0_dqn_won.txt', 'r') as f:
         for line in f:
             resd = ast.literal_eval(line)
             if isinstance(resd,dict):
@@ -217,9 +217,8 @@ def readParams():
                     best = resd['best_score']
                 sample = [32, 10, 200, 0.99, resd['epsilon'], resd['epsilon_decay'],resd['learning_rate'],resd['learning_rate_decay'],resd['lr_decay_on_best'],resd['clip_error'], 0.005]
             elif isinstance(resd,list):
-                sample = resd[0:10]
-                sample.append(0.005)
-                best = resd[10]
+                sample = resd[0:11]
+                best = resd[11]
             hparams.append(sample)
             y.append(best)
 
@@ -267,7 +266,7 @@ def initializeModel( name, number_actions, input_dim=(4,84,84), verbose=False ):
 #        {'filter_size':4, 'stride':2, 'pad':2},
 #        {'filter_size':3, 'stride':1, 'pad':1},
 #        {}, {'relu':False} ]
-    layers = ["FC-20", output]
+    layers = ["FC-200", output]
     layer_params = [ {}, {'relu':False} ]
     model = MalpiModel(layers, layer_params, input_dim=input_dim, reg=0.005, dtype=np.float32, verbose=verbose)
     model.name = name
@@ -292,6 +291,24 @@ def prepro(I):
   I = np.sum( I * rgb_weights, axis=2) # Convert to grayscale, shape = (84,84)
   return I.astype(np.float) / 255.0
   #return I.astype(np.float)
+
+def discount_rewards(r, gamma, done, normalize=True):
+    """ take 1D float array of rewards and compute discounted reward.
+        if normalize is True: subtract mean and divide by std dev
+    """
+    discounted_r = np.zeros_like(r)
+    running_add = 0
+    for t in reversed(xrange(0, r.size)):
+        if not done[t]: running_add = 0 # reset the sum, since this was a game boundary
+        running_add = running_add * gamma + r[t]
+        discounted_r[t] = running_add
+
+    if normalize:
+# standardize the rewards to be unit normal (helps control the gradient estimator variance)
+        discounted_r -= np.mean(discounted_r)
+        discounted_r /= np.std(discounted_r)
+
+    return discounted_r
 
 def discount_rewards(r, gamma, normalize=True):
     """ take 1D float array of rewards and compute discounted reward.
@@ -427,13 +444,28 @@ def train(env, options):
                                         n_restarts_optimizer=10,
                                         normalize_y=True)
 
-    x_list,y_list = readParams()
+    #x_list,y_list = readParams()
+    good_list = [ [48.76090415229852, 1.6927175081103532, 223.02341007066963, 0.5678010007909667, 0.5549954432648416, 0.9933886373603302, 0.04461187669276121, 0.9911454128640629, 0.9563065642076264, 0.8080555822008355, 0.0015395898545990808, 165.0, 5000.0],
+                [44.05077224914717, 4.581278696929539, 567.454951740726, 0.872342953950116, 0.18049877148475657, 0.990163709408304, 0.062370916712252866, 0.9944033072903318, 0.9963371399648688, 0.6395886294825446, 0.0010001848382758618, 117.75, 5000.0],
+                [36.3723209296144, 17.13540920146732, 649.2612028561178, 0.13224300863461783, 0.543166266140875, 0.9943310250757145, 0.08187568538373177, 0.9966047176258499, 0.996227517495977, 0.4472571272004753, 0.00832929196043553, 105.12, 5000.0],
+                [10.916692091321929, 1.7197588754360758, 859.5984930832783, 0.9928960793644326, 0.1274628002990129, 0.9905321890913572, 0.08505446936131436, 0.9954039819492306, 0.9393970414024277, 0.20165955117569845, 0.00393562696555546, 184.0, 5000.0],
+                [24.61024966623437, 2.3382317127384797, 125.6807628925593, 0.7513928228888437, 0.2758971455651426, 0.9928318138327047, 0.013857939559698086, 0.9927166247992542, 0.9609541841323385, 0.4939770517123132, 0.004033141328968626, 127.14, 5000.0],
+                [48.414647941793945, 29.60459215462402, 929.5659155100193, 0.22797686540871967, 0.29012857317101626, 0.9902589981938963, 0.048126323473176816, 0.999365668290878, 0.9537590730846931, 0.3837955994859634, 0.0046700024476340925, 131.60344827586206, 5000.0],
+                [11.625857336308801, 1.7992254729400174, 834.250910881173, 0.9904487770340547, 0.1441466452323528, 0.99, 0.08112103123697603, 0.9967248247150776, 0.9628560158758284, 0.64953096598099, 0.005206558865528496, 134.0, 5000.0],
+                [ 32, 20, 100, 0.99, 0.7, 0.9995, 0.01, 0.9999, 0.95,True, 0.0005, 195.0, 2000.0 ]
+                ]
+    x_list = []
+    y_list = []
+    for param in good_list:
+        x_list.append( param[0:11] )
+        y_list.append( param[11] )
     xp = np.array(x_list)
     yp = np.array(y_list)
+# batch_size update_rate update_freq gamma epsilon epsilon_decay learning_rate learning_rate_decay lr_decay_on_best clip_error behavior.reg
     bounds = np.array( [ [10, 50], [1,50], [100,1000], [0.1,1.0], [0.1,1.0], [0.99,1.0], [0.0001,0.1], [0.99,1.0], [0.9,1.0],[0.0,1.0], [0.0005,0.01] ] )
-    print bounds.shape
-    print xp.shape
     do_bayes = False
+    do_uniform = False
+    do_normal = False
     next_sample = np.array( [ 32, 20, 100, 0.99, 0.7, 0.9995, 0.01, 0.9999, 0.95,True, 0.0005 ] )
     scores = []
 
@@ -450,6 +482,7 @@ def train(env, options):
             #next_sample = [32, 20, 200, 0.99, 0.88, 0.99957, 0.0045, 0.9999, 0.95, True, 0.005]
             # Sample loss for new set of parameters
             cv_score = train_one(env, next_sample, options)
+            scores.append(cv_score)
             print "Score %f for %s" % (cv_score, next_sample)
 
             # Update lists
@@ -460,6 +493,20 @@ def train(env, options):
             xp = np.array(x_list)
             yp = np.array(y_list)
         else:
+            if do_uniform:
+                next_sample = []
+                for b in bounds:
+                    next_sample.append( np.random.uniform( b[0], b[1] ) )
+            elif do_normal:
+                next_sample = []
+                stddev = [ 5.0, 0.1, 50, 0.01, 0.01, 0.01, 0.01, 0.01, 0.1, 0.5, 0.001 ]
+                stdi = 0
+                for b in good_list[3][0:11]:
+                    next_sample.append( np.random.normal( b, stddev[stdi] ) )
+                    stdi += 1
+                bt = bounds.T
+                next_sample = np.clip( next_sample, bt[0], bt[1] )
+                print next_sample
             cv_score = train_one(env, next_sample, options)
             scores.append(cv_score)
 
@@ -619,7 +666,7 @@ def train_one(env, hparams, options):
         steps = 0
         state = env.reset()
 
-    with open( os.path.join( options.game + "_won.txt" ), 'a+') as f:
+    with open( os.path.join( options.game + "_dqn_won.txt" ), 'a+') as f:
         hparams = np.append( hparams, [best_test, episode_number] )
         f.write( "%s\n" % (hparams.tolist(),) )
 

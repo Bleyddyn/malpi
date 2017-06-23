@@ -456,7 +456,6 @@ def train(env, options):
     ns12= [35.67269471, 39.23544342, 237.63394761, 0.49218579, 0.21019492, 0.99898196, 0.07409025, 0.99972359, 0.97938121, 0.29803843, 0.00675115, 200., 1287.]
     ns13= [15.13436928, 27.73185857, 173.97569991, 0.72684987, 0.72425576, 0.99975706, 0.0601372, 0.99826244, 0.98179968, 0.43993769, 0.00271678, 200., 972.]
 
-    next_sample = ns11
     #x_list,y_list = readParams()
     x_list = [ns2,ns3,ns4,ns5,ns6,ns7,ns8,ns9,ns10[0:11],ns11[0:11],ns12[0:11]]
     y_list = [136.04,123.39,192.15, 138.44,62.33,128.06,189.53,192.88,ns10[11],ns11[11],ns12[11]]
@@ -465,6 +464,13 @@ def train(env, options):
     bounds = np.array( [ [10, 50], [1,50], [100,1000], [0.1,1.0], [0.1,1.0], [0.99,1.0], [0.0001,0.1], [0.99,1.0], [0.9,1.0],[0.0,1.0], [0.0005,0.01] ] )
     do_bayes = False
     scores = []
+
+    if not do_bayes:
+        next_sample = ns11
+# Try setting learning rate decay to 1.0 so that RMSProp does all of the learning decay.
+# Doesn't seem to work as well, so keep the learning rate decay
+#        next_sample[7] = 1.0
+#        next_sample[8] = 1.0
 
     for i in range(100):
         if do_bayes:
