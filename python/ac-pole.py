@@ -1,4 +1,4 @@
-""" Trains an agent with Deep Q Learning or Double DQN on Breakout. Uses OpenAI Gym.
+""" Trains an agent with Actor/Critic on CartPole. Uses OpenAI Gym.
 """
 import sys
 import os
@@ -310,23 +310,10 @@ def discount_rewards(r, gamma, done, normalize=True):
 
     return discounted_r
 
-def discount_rewards(r, gamma, normalize=True):
-    """ take 1D float array of rewards and compute discounted reward.
-        if normalize is True: subtract mean and divide by std dev
-    """
-    discounted_r = np.zeros_like(r)
-    running_add = 0
-    for t in reversed(xrange(0, r.size)):
-        if r[t] != 0: running_add = 0 # reset the sum, since this was a game boundary (pong specific!)
-        running_add = running_add * gamma + r[t]
-        discounted_r[t] = running_add
-
-    if normalize:
-# standardize the rewards to be unit normal (helps control the gradient estimator variance)
-        discounted_r -= np.mean(discounted_r)
-        discounted_r /= np.std(discounted_r)
-
-    return discounted_r
+def softmax_batch(x):
+    probs = np.exp(x - np.max(x, axis=1, keepdims=True))
+    probs /= np.sum(probs, axis=1, keepdims=True)
+    return probs
 
 def make_epsilon_greedy_policy(estimator, epsilon, nA):
     """
@@ -530,11 +517,13 @@ def train_one(env, hparams, options):
     else:
         clip_error = True
 
-    target = initializeModel( options.model_name, num_actions, input_dim=(4,1) )
-    target.reg = hparams[10]
-    target.params["W1"] *= 0.1
-    behavior = copy.deepcopy(target)
-    optim = Optimizer( "rmsprop", behavior, learning_rate=learning_rate, decay_rate=0.99, upd_frequency=update_freq)
+    critic = initializeModel( options.model_name, 1, input_dim=(4,1) )
+    actor = initializeModel( options.model_name, num_actions, input_dim=(4,1) )
+    actor.reg = hparams[10]
+    critic.reg = hparams[10]
+    #target.params["W1"] *= 0.1
+    optim_critic = Optimizer( "rmsprop", critic, learning_rate=learning_rate, decay_rate=0.99, upd_frequency=update_freq)
+    optim_actor = Optimizer( "rmsprop", actor, learning_rate=learning_rate, decay_rate=0.99, upd_frequency=update_freq)
 
     reward_sum = 0
     reward_100 = deque(maxlen=100)
@@ -548,11 +537,11 @@ def train_one(env, hparams, options):
 
     with open( os.path.join( options.game + ".txt" ), 'a+') as f:
         f.write( "%s = %s\n" % ('Start',time.strftime("%Y-%m-%d %H:%M:%S")) )
-        f.write( "%s = %s\n" % ('Model Name',target.name) )
+        f.write( "%s = %s\n" % ('Model Name',actor.name) )
         if options.initialize:
             f.write( "Weights initialized\n" )
-            f.write( str(target.layers) + "\n" )
-            f.write( str(target.layer_params) + "\n" )
+            f.write( str(actor.layers) + "\n" )
+            f.write( str(actor.layer_params) + "\n" )
         f.write( "%s = %d\n" % ('batch_size',batch_size) )
         f.write( "%s = %d\n" % ('update_rate',update_rate) )
         f.write( "%s = %f\n" % ('gamma',gamma) )
@@ -563,20 +552,25 @@ def train_one(env, hparams, options):
         f.write( "%s = %f\n" % ('learning_rate_decay',learning_rate_decay) )
         f.write( "%s = %f\n" % ('lr_decay_on_best',lr_decay_on_best) )
         f.write( "%s = %s\n" % ('clip_error',str(clip_error)) )
-        f.write( "Optimizer %s\n" % (optim.optim_type,) )
-        f.write( "   %s = %f\n" % ('learning rate',optim.learning_rate) )
-        f.write( "   %s = %f\n" % ('decay rate',optim.decay_rate) )
-        f.write( "   %s = %f\n" % ('epsilon',optim.epsilon) )
-        f.write( "   %s = %f\n" % ('update frequency',optim.upd_frequency) )
+        f.write( "Optimizer Critic %s\n" % (optim_critic.optim_type,) )
+        f.write( "   %s = %f\n" % ('learning rate',optim_critic.learning_rate) )
+        f.write( "   %s = %f\n" % ('decay rate',optim_critic.decay_rate) )
+        f.write( "   %s = %f\n" % ('epsilon',optim_critic.epsilon) )
+        f.write( "   %s = %f\n" % ('update frequency',optim_critic.upd_frequency) )
+        f.write( "Optimizer Actor %s\n" % (optim_actor.optim_type,) )
+        f.write( "   %s = %f\n" % ('learning rate',optim_actor.learning_rate) )
+        f.write( "   %s = %f\n" % ('decay rate',optim_actor.decay_rate) )
+        f.write( "   %s = %f\n" % ('epsilon',optim_actor.epsilon) )
+        f.write( "   %s = %f\n" % ('update frequency',optim_actor.upd_frequency) )
         f.write( "\n" )
 
     while (options.max_episodes == 0) or (episode_number < options.max_episodes):
       if options.render: env.render()
 
-      action = choose_epsilon_greedy( behavior, state, epsilon, num_actions )
-      #action = np.random.randint(num_actions)
+      actions_raw, _ = actor.forward( state.reshape(1,4), mode="test")
+      action_probs = softmax_batch(actions_raw)
+      action = np.random.choice(num_actions, p=action_probs[0])
 
-      # step the environment once, or ksteps times
       reward = 0
       done = False
       for k in range(ksteps):
@@ -590,39 +584,44 @@ def train_one(env, hparams, options):
       steps += ksteps
       episode_steps += ksteps
 
-      exp_history.save( state, action, reward, done, next_state )
+      exp_history.save( state, action, reward, done, next_state, action_probs )
       state = next_state
 
       if (exp_history.size() > (batch_size * 5)):
-          states, actions, rewards, batch_done, new_states, _ = exp_history.batch( batch_size )
+          states, actions, rewards, batch_done, new_states, batch_probs = exp_history.batch( batch_size )
 
           actions = actions.astype(np.int)
 
-          target_values, _ = target.forward( new_states, mode='test' )
+          next_values, cache = critic.forward( states, mode='train', verbose=False )
+          state_values, _ = critic.forward( new_states, mode='test' )
 
-          double_dqn = True
-          if double_dqn:
-              behavior_values, _ = behavior.forward( new_states, mode='test' )
-              best_actions = np.argmax(behavior_values,axis=1)
-              q_target = rewards + batch_done * gamma * target_values[np.arange(batch_size), best_actions]
-          else:
-              q_target = rewards + batch_done * gamma * np.max(target_values, axis=1)
+          td_error = rewards + (batch_done * gamma * next_values) - state_values
 
-          action_values, cache = behavior.forward(states, mode='train', verbose=False)
-
-          q_error = np.zeros( action_values.shape )
-          #q_error[ np.arange(batch_size), actions ] = q_target - action_values[ np.arange(batch_size), actions ]
-          q_error[ np.arange(batch_size), actions ] = action_values[ np.arange(batch_size), actions ] - q_target
-          dx = q_error
+          dx = td_error
           dx /= batch_size
           if clip_error:
               np.clip( dx, -1.0, 1.0, dx )
 
-          q_error = np.sum( np.square( q_error ) )
+          q_error = 0.0
+          _, grad = critic.backward(cache, q_error, dx )
+          optim_critic.update( grad, check_ratio=False )
 
-          # dx needs to have shape(batch_size,num_actions), e.g. (32,6)
-          _, grad = behavior.backward(cache, q_error, dx )
-          optim.update( grad, check_ratio=False )
+          actions_raw, acache = actor.forward( states, mode="train", verbose=False )
+          action_probs = softmax_batch(actions_raw)
+          p = action_probs / batch_probs
+
+          y = np.zeros(action_probs.shape)
+          y[range(action_probs.shape[0]),actions] = 1.0
+          gradients = y - action_probs
+          gradients *= np.reshape(td_error, [td_error.shape[0],1])
+          dx = -gradients
+
+          dx *= p
+          dx /= batch_size
+          if clip_error:
+              np.clip( dx, -1.0, 1.0, dx )
+          _, agrad = actor.backward(acache, q_error, dx )
+          optim_actor.update( grad, check_ratio=False )
 
       if done: # an episode finished
         episode_number += 1
@@ -631,30 +630,28 @@ def train_one(env, hparams, options):
 
         if episode_number % update_rate == 0:
 
-            target = copy.deepcopy(behavior)
-
             treward = np.mean(reward_100) # test(target, env, options)
 
             print
             print 'Ep %d' % ( episode_number, )
             print 'Reward       : %0.2f  %0.2f' % ( reward_sum, np.mean(reward_100) )
             print "Test reward  : %0.2f vs %0.2f" % (treward, best_test)
-            print "Learning rate: %g" % (optim.learning_rate,)
+            print "Learning rate: %g" % (optim_critic.learning_rate,)
             print "Epsilon      : %g" % (epsilon,)
 
             if treward > best_test:
                 best_test = treward
 
                 if treward > 195.0:
-                    print "Final Learning rate: %f" % (optim.learning_rate,)
+                    print "Final Learning rate: %f" % (optim_critic.learning_rate,)
                     print "WON! In %d episodes" % (episode_number,)
                     break
 
-                if optim.learning_rate > 0.00001:
-                    optim.learning_rate *= lr_decay_on_best
+                if optim_critic.learning_rate > 0.00001:
+                    optim_critic.learning_rate *= lr_decay_on_best
 
-        if optim.learning_rate > 0.00001:
-            optim.learning_rate *= learning_rate_decay
+        if optim_critic.learning_rate > 0.00001:
+            optim_critic.learning_rate *= learning_rate_decay
         if epsilon > 0.1:
             epsilon *= epsilon_decay
         reward_sum = 0
@@ -668,7 +665,7 @@ def train_one(env, hparams, options):
 
     with open( os.path.join( options.game + ".txt" ), 'a+') as f:
         f.write( "%s = %f\n" % ('Final epsilon', epsilon) )
-        f.write( "%s = %f\n" % ('Final learning rate', optim.learning_rate) )
+        f.write( "%s = %f\n" % ('Final learning rate', optim_critic.learning_rate) )
         f.write( "%s = %f\n" % ('Best test score', best_test) )
         f.write( "%s = %d\n" % ('Episodes', episode_number) )
         f.write( "\n\n" )

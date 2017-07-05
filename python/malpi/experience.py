@@ -1,8 +1,9 @@
 import numpy as np
-from collections import namedtuple
+from collections import deque, namedtuple
 import random
 
 class Experience(object):
+    Transition = namedtuple("Transition", ["state", "action", "reward", "done", "next_state", "action_probs"])
     
     def __init__( self, maxN, state_dim ):
         self.N = maxN
@@ -70,44 +71,32 @@ class Experience(object):
 
 class Experience2(object):
 
-    Transition = namedtuple("Transition", ["state", "action", "reward", "done", "next_state"])
+    Transition = namedtuple("Transition", ["state", "action", "reward", "done", "next_state", "action_probs"])
 
-    def __init__( self, maxN, stateDim=None, max_priority=0  ):
+    def __init__( self, maxN, stateDim=None ):
         # stateDim is only for compatibility with Experience
         self.maxN = maxN
-        self.memory = [] # TODO Switch this to a deque
-        self.maxP = max_priority
+        self.memory = deque(maxlen=maxN)
         self.priority = []
 
     def size( self ):
         return len(self.memory)
 
-    def save( self, state, action, reward, done, next_state ):
-        if len(self.memory) == self.maxN:
-            self.memory.pop(0)
-
+    def save( self, state, action, reward, done, next_state, action_probs=None ):
         if done:
             done = 0.0
         else:
             done = 1.0
 
-        self.memory.append(self.Transition(state, action, reward, done, next_state))
-
-        batch_size = 32 # need to get this up-front
-        if (self.maxP > 0) and (reward > 0) and (len(self.memory) > batch_size):
-            if len(self.priority) == self.maxP:
-                self.priority.pop(0)
-            samples = self.memory[-batch_size]
-            states_batch, action_batch, reward_batch, done_batch, next_states_batch = map(np.array, zip(*samples))
-            self.priority.append( (states_batch, action_batch, reward_batch, done_batch, next_states_batch) )
+        self.memory.append(self.Transition(state, action, reward, done, next_state, action_probs))
 
     def batch( self, batch_size ):
         if batch_size >= len(self.memory):
-            return (None,None,None,None,None)
+            return (None,None,None,None,None,None)
 
         samples = random.sample(self.memory, batch_size)
-        states_batch, action_batch, reward_batch, done_batch, next_states_batch = map(np.array, zip(*samples))
-        return (states_batch, action_batch, reward_batch, done_batch, next_states_batch)
+        states_batch, action_batch, reward_batch, done_batch, next_states_batch, probs_batch = map(np.array, zip(*samples))
+        return (states_batch, action_batch, reward_batch, done_batch, next_states_batch, probs_batch)
 
     def all( self, max_size=200 ):
         if len(self.memory) > max_size:
@@ -116,11 +105,8 @@ class Experience2(object):
             states_batch, action_batch, reward_batch, done_batch, next_states_batch = map(np.array, zip(*self.memory))
         return (states_batch, action_batch, reward_batch, done_batch, next_states_batch)
 
-    def priority_batch( self ):
-        return random.sample(self.priority, 1)
-
     def clear( self ):
-        self.memory = []
+        self.memory.clear()
 
     @staticmethod
     def test():
@@ -130,7 +116,7 @@ class Experience2(object):
         e.save( s, 2, -4, True, s )
         e.save( s, 3, -5, False, s )
         e.save( s, 4, -6, True, s )
-        s1, a, r, d, n = e.batch( 2 )
+        s1, a, r, d, n, probs = e.batch( 2 )
         print s1.shape # (2, 20, 20)
         print a # e.g. [ 1.  2.]
         print r # e.g. [-3. -4.]
