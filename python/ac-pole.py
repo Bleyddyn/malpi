@@ -523,7 +523,7 @@ def train_one(env, hparams, options):
     critic.reg = hparams[10]
     #target.params["W1"] *= 0.1
     optim_critic = Optimizer( "rmsprop", critic, learning_rate=learning_rate, decay_rate=0.99, upd_frequency=update_freq)
-    optim_actor = Optimizer( "rmsprop", actor, learning_rate=learning_rate, decay_rate=0.99, upd_frequency=update_freq)
+    optim_actor = Optimizer( "rmsprop", actor, learning_rate=learning_rate/10.0, decay_rate=0.99, upd_frequency=update_freq)
 
     reward_sum = 0
     reward_100 = deque(maxlen=100)
@@ -569,7 +569,8 @@ def train_one(env, hparams, options):
 
       actions_raw, _ = actor.forward( state.reshape(1,4), mode="test")
       action_probs = softmax_batch(actions_raw)
-      action = np.random.choice(num_actions, p=action_probs[0])
+      action_probs = action_probs[0]
+      action = np.random.choice(num_actions, p=action_probs)
 
       reward = 0
       done = False
@@ -592,10 +593,10 @@ def train_one(env, hparams, options):
 
           actions = actions.astype(np.int)
 
-          next_values, cache = critic.forward( states, mode='train', verbose=False )
-          state_values, _ = critic.forward( new_states, mode='test' )
+          state_values, cache = critic.forward( states, mode='train', verbose=False )
+          next_values, _ = critic.forward( new_states, mode='test' )
 
-          td_error = rewards + (batch_done * gamma * next_values) - state_values
+          td_error = np.reshape(rewards,(batch_size,1)) + (np.reshape(batch_done,(batch_size,1)) * gamma * next_values) - state_values
 
           dx = td_error
           dx /= batch_size
@@ -603,6 +604,7 @@ def train_one(env, hparams, options):
               np.clip( dx, -1.0, 1.0, dx )
 
           q_error = 0.0
+
           _, grad = critic.backward(cache, q_error, dx )
           optim_critic.update( grad, check_ratio=False )
 
@@ -616,7 +618,7 @@ def train_one(env, hparams, options):
           gradients *= np.reshape(td_error, [td_error.shape[0],1])
           dx = -gradients
 
-          dx *= p
+          #dx *= p
           dx /= batch_size
           if clip_error:
               np.clip( dx, -1.0, 1.0, dx )
