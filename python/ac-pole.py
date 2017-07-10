@@ -208,7 +208,7 @@ def readParams():
     hparams = []
     y = []
 
-    with open('CartPole-v0_dqn_won.txt', 'r') as f:
+    with open('CartPole-v0_ac_won.txt', 'r') as f:
         for line in f:
             resd = ast.literal_eval(line)
             if isinstance(resd,dict):
@@ -266,8 +266,8 @@ def initializeModel( name, number_actions, input_dim=(4,84,84), verbose=False ):
 #        {'filter_size':4, 'stride':2, 'pad':2},
 #        {'filter_size':3, 'stride':1, 'pad':1},
 #        {}, {'relu':False} ]
-    layers = ["FC-200", output]
-    layer_params = [ {}, {'relu':False} ]
+    layers = ["FC-200", "FC-10", output]
+    layer_params = [ {}, {}, {'relu':False} ]
     model = MalpiModel(layers, layer_params, input_dim=input_dim, reg=0.005, dtype=np.float32, verbose=verbose)
     model.name = name
 
@@ -432,25 +432,34 @@ def train(env, options):
                                         normalize_y=True)
 
     #x_list,y_list = readParams()
-    good_list = [ [48.76090415229852, 1.6927175081103532, 223.02341007066963, 0.5678010007909667, 0.5549954432648416, 0.9933886373603302, 0.04461187669276121, 0.9911454128640629, 0.9563065642076264, 0.8080555822008355, 0.0015395898545990808, 165.0, 5000.0],
-                [44.05077224914717, 4.581278696929539, 567.454951740726, 0.872342953950116, 0.18049877148475657, 0.990163709408304, 0.062370916712252866, 0.9944033072903318, 0.9963371399648688, 0.6395886294825446, 0.0010001848382758618, 117.75, 5000.0],
-                [36.3723209296144, 17.13540920146732, 649.2612028561178, 0.13224300863461783, 0.543166266140875, 0.9943310250757145, 0.08187568538373177, 0.9966047176258499, 0.996227517495977, 0.4472571272004753, 0.00832929196043553, 105.12, 5000.0],
-                [10.916692091321929, 1.7197588754360758, 859.5984930832783, 0.9928960793644326, 0.1274628002990129, 0.9905321890913572, 0.08505446936131436, 0.9954039819492306, 0.9393970414024277, 0.20165955117569845, 0.00393562696555546, 184.0, 5000.0],
-                [24.61024966623437, 2.3382317127384797, 125.6807628925593, 0.7513928228888437, 0.2758971455651426, 0.9928318138327047, 0.013857939559698086, 0.9927166247992542, 0.9609541841323385, 0.4939770517123132, 0.004033141328968626, 127.14, 5000.0],
-                [48.414647941793945, 29.60459215462402, 929.5659155100193, 0.22797686540871967, 0.29012857317101626, 0.9902589981938963, 0.048126323473176816, 0.999365668290878, 0.9537590730846931, 0.3837955994859634, 0.0046700024476340925, 131.60344827586206, 5000.0],
-                [11.625857336308801, 1.7992254729400174, 834.250910881173, 0.9904487770340547, 0.1441466452323528, 0.99, 0.08112103123697603, 0.9967248247150776, 0.9628560158758284, 0.64953096598099, 0.005206558865528496, 134.0, 5000.0],
-                [ 32, 20, 100, 0.99, 0.7, 0.9995, 0.01, 0.9999, 0.95,True, 0.0005, 195.0, 2000.0 ]
+    good_list = [ [23.340196200330446, 18.426717649734194, 178.07255602508624, 0.7990357090570114, 0.16688324033056118, 0.9905963391714904, 0.03524833293276269, 0.05939441539529462, 0.9956861994954972, 0.9763933734764478, 0.33400766580083163, 0.004430241369412115, 26.666666666666668, 5000.0],
+                [10.276446163132253, 12.435459917804994, 119.30590834158372, 0.9121093138098636, 0.7875334518969497, 0.9945361865748139, 0.011331579642998644, 0.0025054777813486033, 0.9989733546107127, 0.9067326720938281, 0.4576533479674808, 0.0037295921980938724, 26.958333333333332, 5000.0],
+                [27.007648601947984, 18.75359281177364, 675.4262008739635, 0.5691263762216419, 0.8445587945099962, 0.9927956243527859, 0.07030658268708469, 0.04828685229893327, 0.9917829795648488, 0.9194134366153146, 0.8375126401849714, 0.004967363028241878, 64.73, 5000.0],
+                [17.42689641224394, 47.28918448834897, 744.267536490151, 0.28059281185507123, 0.4373006837667275, 0.992495933569012, 0.019211131399413123, 0.01595612412913279, 0.9933495988828666, 0.9781257836228259, 0.9722126291339528, 0.008975627480399618, 65.41, 5000.0],
+                [44.04887320072804, 33.554250268284946, 775.5173105065776, 0.17765025083380784, 0.9606582419963694, 0.9903554748387935, 0.008295683537970886, 0.09010262287587999, 0.997277395695992, 0.9654243508645045, 0.5550579463811872, 0.0055565770468103785, 68.45, 5000.0],
+                [26.56352921274522, 40.13541367281061, 995.0880787880953, 0.45978952564236475, 0.4301437202861471, 0.9906657267644838, 0.060571519508156126, 0.0249653125505251, 0.9909584004632724, 0.9520254711858818, 0.8964431731970871, 0.0047504951574772695, 69.44, 5000.0],
+                [19.586427059082595, 26.211694959180615, 413.9505704766981, 0.5208372024345419, 0.6192989362545387, 0.9958122849439359, 0.03618793566619191, 0.02158805653510352, 0.9990611335592744, 0.9312345907989031, 0.3717199984111006, 0.0033164839715240403, 74.28, 5000.0],
+                [22.59380472875382, 11.886240509901699, 170.0875291071794, 0.9391425468910439, 0.9979165851827189, 0.9962405605497712, 0.009317125763345927, 0.03522970292839874, 0.9957571507279825, 0.9195469164439867, 0.08871230898849924, 0.000632138324552585, 83.0909090909091, 5000.0],
+                [27.97956451805241, 30.135238813527952, 350.0094346129264, 0.5589083762648425, 0.5685609346154955, 0.9958779312028968, 0.08566386582166127, 0.0031856641961572926, 0.9929776152753645, 0.9231558555026396, 0.5342441054724908, 0.004148801201156731, 65.38, 5000.0],
+                [18.380834564473368, 14.74329441403842, 915.559967955713, 0.26963901302871734, 0.2044518227711943, 0.9982213686390632, 0.0818049884181244, 0.012295487773194154, 0.9900026929391116, 0.9839457223366842, 0.09788677320716188, 0.0022379195949262876, 68.83, 5000.0],
+                [20.54665454661402, 31.012386506483864, 992.1131106671777, 0.5999433764885325, 0.7762317417991472, 0.9902311257433152, 0.0799869319547378, 0.09906507255406764, 0.9935522200929677, 0.988456835252586, 0.6214137263799936, 0.0030906952349194594, 71.44, 5000.0],
+                [47.71865493953634, 14.542698966108425, 419.1344944782061, 0.6069906700503067, 0.320869899660591, 0.9915572366441369, 0.016810969484469453, 0.09620603959296849, 0.9912094726047148, 0.9489708359582449, 0.6544337653081576, 0.007866050380497489, 78.15, 5000.0],
+                [38.229976456480955, 48.47066047715183, 686.3588132378926, 0.8353798119705711, 0.2649869598083907, 0.9935968519289818, 0.03708808074715178, 0.0429595518985683, 0.9935220277753516, 0.9089872987165971, 0.6482258849422382, 0.00964655210536633, 78.59, 5000.0],
+                [12.459090411810735, 49.12739564643488, 904.921234861817, 0.10765397478164848, 0.6688146642325103, 0.9977229726995528, 0.07356704565788433, 0.08973856244962768, 0.9912440816904323, 0.9723164556769576, 0.13532836187265795, 0.005965588965022035, 79.41, 5000.0],
+                [34.44567005668526, 13.825122663036545, 552.6374624512412, 0.44202631148007987, 0.6074182331538652, 0.9931460008659315, 0.03546329798344794, 0.07158502209822663, 0.9963861263581173, 0.9050455304807379, 0.6133957327849292, 0.009249487190831424, 50.56, 5000.0],
+                [12.614825390523304, 3.84851395277031, 538.3693748930893, 0.9305870381232436, 0.7816138680270287, 0.9906644389024635, 0.024400372069052746, 0.08368791740079828, 0.9964748805240022, 0.9164141231051132, 0.7408933100725549, 0.007066903657365587, 63.333333333333336, 5000.0],
+                [33, 18, 398, 0.234, 0.816, 0.9927, 0.09566, 0.068559, 0.9947474003083921, 0.9119493725198208, 0.8487692210894097, 0.0007508126038156526, 100.41, 5000.0],
                 ]
     x_list = []
     y_list = []
     for param in good_list:
-        x_list.append( param[0:11] )
-        y_list.append( param[11] )
+        x_list.append( param[0:12] )
+        y_list.append( param[12] )
     xp = np.array(x_list)
     yp = np.array(y_list)
-# batch_size update_rate update_freq gamma epsilon epsilon_decay learning_rate learning_rate_decay lr_decay_on_best clip_error behavior.reg
-    bounds = np.array( [ [10, 50], [1,50], [100,1000], [0.1,1.0], [0.1,1.0], [0.99,1.0], [0.0001,0.1], [0.99,1.0], [0.9,1.0],[0.0,1.0], [0.0005,0.01] ] )
-    do_bayes = False
+# batch_size update_rate update_freq gamma epsilon epsilon_decay learning_rate-actor learning-rate-critic learning_rate_decay lr_decay_on_best clip_error behavior.reg
+    bounds = np.array( [ [10, 50], [1,50], [100,1000], [0.1,1.0], [0.1,1.0], [0.99,1.0], [0.0001,0.1], [0.0001,0.1], [0.99,1.0], [0.9,1.0], [0.0,1.0], [0.0005,0.01] ] )
+    do_bayes = True
     do_uniform = False
     do_normal = False
     next_sample = np.array( [ 32, 20, 100, 0.99, 0.7, 0.9995, 0.01, 0.9999, 0.95,True, 0.0005 ] )
@@ -486,7 +495,7 @@ def train(env, options):
                     next_sample.append( np.random.uniform( b[0], b[1] ) )
             elif do_normal:
                 next_sample = []
-                stddev = [ 5.0, 0.1, 50, 0.01, 0.01, 0.01, 0.01, 0.01, 0.1, 0.5, 0.001 ]
+                stddev = [ 5.0, 0.1, 50, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.1, 0.5, 0.001 ]
                 stdi = 0
                 for b in good_list[3][0:11]:
                     next_sample.append( np.random.normal( b, stddev[stdi] ) )
@@ -509,21 +518,23 @@ def train_one(env, hparams, options):
     gamma = hparams[3]
     epsilon = hparams[4]
     epsilon_decay = hparams[5]
-    learning_rate = hparams[6]
-    learning_rate_decay = hparams[7]
-    lr_decay_on_best = hparams[8]
-    if hparams[9] < 0.5:
+    learning_rate_actor = hparams[6]
+    learning_rate_critic = hparams[7]
+    learning_rate_decay = hparams[8]
+    lr_decay_on_best = hparams[9]
+    if hparams[10] < 0.5:
         clip_error = False
     else:
         clip_error = True
 
     critic = initializeModel( options.model_name, 1, input_dim=(4,1) )
     actor = initializeModel( options.model_name, num_actions, input_dim=(4,1) )
-    actor.reg = hparams[10]
-    critic.reg = hparams[10]
-    #target.params["W1"] *= 0.1
-    optim_critic = Optimizer( "rmsprop", critic, learning_rate=learning_rate, decay_rate=0.99, upd_frequency=update_freq)
-    optim_actor = Optimizer( "rmsprop", actor, learning_rate=learning_rate/10.0, decay_rate=0.99, upd_frequency=update_freq)
+    actor.reg = hparams[11]
+    critic.reg = hparams[11]
+    #actor.params["W1"] *= 0.1
+    #critic.params["W1"] *= 0.1
+    optim_critic = Optimizer( "rmsprop", critic, learning_rate=learning_rate_critic, decay_rate=0.99, upd_frequency=update_freq)
+    optim_actor = Optimizer( "rmsprop", actor, learning_rate=learning_rate_actor, decay_rate=0.99, upd_frequency=update_freq)
 
     reward_sum = 0
     reward_100 = deque(maxlen=100)
@@ -548,7 +559,6 @@ def train_one(env, hparams, options):
         f.write( "%s = %f\n" % ('epsilon',epsilon) )
         f.write( "%s = %f\n" % ('epsilon_decay',epsilon_decay) )
         f.write( "%s = %d\n" % ('k-steps',ksteps) )
-        f.write( "%s = %f\n" % ('learning_rate',learning_rate) )
         f.write( "%s = %f\n" % ('learning_rate_decay',learning_rate_decay) )
         f.write( "%s = %f\n" % ('lr_decay_on_best',lr_decay_on_best) )
         f.write( "%s = %s\n" % ('clip_error',str(clip_error)) )
@@ -654,6 +664,8 @@ def train_one(env, hparams, options):
 
         if optim_critic.learning_rate > 0.00001:
             optim_critic.learning_rate *= learning_rate_decay
+        if optim_actor.learning_rate > 0.00001:
+            optim_actor.learning_rate *= learning_rate_decay
         if epsilon > 0.1:
             epsilon *= epsilon_decay
         reward_sum = 0
@@ -661,7 +673,7 @@ def train_one(env, hparams, options):
         steps = 0
         state = env.reset()
 
-    with open( os.path.join( options.game + "_dqn_won.txt" ), 'a+') as f:
+    with open( os.path.join( options.game + "_ac_won.txt" ), 'a+') as f:
         hparams = np.append( hparams, [best_test, episode_number] )
         f.write( "%s\n" % (hparams.tolist(),) )
 
@@ -676,7 +688,7 @@ def train_one(env, hparams, options):
 
 
 def getOptions():
-    usage = "Usage: python pg-pong [options] <model name>"
+    usage = "Usage: python ac-pole.py [options] <model name>"
     parser = OptionParser( usage=usage )
     parser.add_option("-i","--initialize", action="store_true", default=False, help="Initialize model, save to <model name>.pickle, then start training.");
     parser.add_option("-d","--dir_model", default="", help="Directory for finding/initializing model files. Defaults to current directory.");
@@ -692,15 +704,13 @@ def getOptions():
 
     (options, args) = parser.parse_args()
 
-    options.model_name = "HyperParamSearch"
+    if len(args) != 1:
+        print usage
+        exit()
 
-    if options.desc or options.test_only:
-        if len(args) != 1:
-            print usage
-            exit()
-        if args[0].endswith('.pickle'):
-            args[0] = args[0][:-7]
-        options.model_name = args[0]
+    if args[0].endswith('.pickle'):
+        args[0] = args[0][:-7]
+    options.model_name = args[0]
 
     if options.k_steps != 1 and options.k_steps != 4:
         print "Game step sizes other than 1 and 4 are not currently supported."
