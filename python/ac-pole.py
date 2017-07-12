@@ -433,12 +433,13 @@ def train(env, options):
 
     #x_list,y_list = readParams()
     good_list = [
-        [0.6446561089130665, 0.06046061159126818, 0.09588931227894128, 0.9992560442935121, 0.006033105622814174, 34.7, 5000.0],
-        [0.6549877946173427, 0.05354343002970501, 0.09019863568961246, 0.9944573754000142, 0.000522511675236535, 35.3, 5000.0],
-        [0.23377722007137053, 0.002736209258112209, 0.025713601734550798, 0.9914875689902841, 0.006327266685728193, 35.35, 5000.0],
-        [0.12808195259766536, 0.08808979544935433, 0.05439368493796421, 0.9924426758557818, 0.006397166984984734, 35.75, 5000.0],
-        [0.34255947871455333, 0.03243046684799391, 0.07787323565507584, 0.9974843340534448, 0.0050319482239008315, 36.4, 5000.0],
-        [0.33484933741620265, 0.006688188505796275, 0.030742125241153058, 0.9978378903916743, 0.006973945737999572, 40.6, 5000.0]
+        [0.22136026231898764, 0.03435418156855076, 0.014258056717745918, 0.9932171398308102, 0.004031326729049222, 60.1, 5000.0],
+        [0.8393075532448522, 0.05341277570972287, 0.03782414246524008, 0.9999393627274482, 0.006904643159300169, 63.28, 5000.0],
+        [0.8165787628717937, 0.09427020466780384, 0.020845128577212314, 0.9992466981106534, 0.003885223951761664, 103.5, 5000.0],
+        [0.47918425726181, 0.03429596907213825, 0.032978392062649034, 0.9915616675283389, 0.007389434048353167, 52.6875, 5000.0],
+        [0.2449330437218338, 0.0947400634523504, 0.02914330566301235, 0.9908877396055589, 0.009001180405105197, 52.71, 5000.0],
+        [0.7574053941509864, 0.022851358621574128, 0.02933848823742234, 0.9942378278140936, 0.0058316089556126535, 54.74, 5000.0],
+        [0.5621275494548085, 0.07959943392424593, 0.06102889525003826, 0.9991853126845361, 0.005376755258427058, 65.56, 5000.0]
                 ]
     x_list = []
     y_list = []
@@ -457,7 +458,7 @@ def train(env, options):
     next_sample = np.array( [ 32, 20, 100, 0.99, 0.7, 0.9995, 0.01, 0.9999, 0.95,True, 0.0005 ] )
     scores = []
 
-    for i in range(100):
+    for i in range(300):
         if do_bayes:
             model.fit(xp, yp)
 
@@ -512,6 +513,9 @@ def train_one(env, hparams, options):
     learning_rate_critic = hparams[2]
     learning_rate_decay = hparams[3]
     clip_error = True
+    off_line = False # Train on-line or off-line
+    min_history = batch_size
+    if off_line: min_history *= 5
 
     critic = initializeModel( options.model_name, 1, input_dim=(4,1) )
     actor = initializeModel( options.model_name, num_actions, input_dim=(4,1) )
@@ -579,7 +583,7 @@ def train_one(env, hparams, options):
       exp_history.save( state, action, reward, done, next_state, action_probs )
       state = next_state
 
-      if (exp_history.size() > (batch_size * 5)):
+      if (exp_history.size() >= min_history):
           states, actions, rewards, batch_done, new_states, batch_probs = exp_history.batch( batch_size )
 
           actions = actions.astype(np.int)
@@ -601,7 +605,7 @@ def train_one(env, hparams, options):
 
           actions_raw, acache = actor.forward( states, mode="train", verbose=False )
           action_probs = softmax_batch(actions_raw)
-          p = action_probs / batch_probs
+          #p = action_probs / batch_probs
 
           y = np.zeros(action_probs.shape)
           y[range(action_probs.shape[0]),actions] = 1.0
@@ -615,6 +619,9 @@ def train_one(env, hparams, options):
               np.clip( dx, -5.0, 5.0, dx )
           _, agrad = actor.backward(acache, q_error, dx )
           optim_actor.update( grad, check_ratio=False )
+
+          if not off_line:
+              exp_history.clear()
 
       if done: # an episode finished
         episode_number += 1

@@ -91,7 +91,7 @@ class Experience2(object):
         self.memory.append(self.Transition(state, action, reward, done, next_state, action_probs))
 
     def batch( self, batch_size ):
-        if batch_size >= len(self.memory):
+        if batch_size > len(self.memory):
             return (None,None,None,None,None,None)
 
         samples = random.sample(self.memory, batch_size)
