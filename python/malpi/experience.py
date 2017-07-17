@@ -100,10 +100,10 @@ class Experience2(object):
 
     def all( self, max_size=200 ):
         if len(self.memory) > max_size:
-            states_batch, action_batch, reward_batch, done_batch, next_states_batch = map(np.array, zip(*self.memory[-200:]))
+            states_batch, action_batch, reward_batch, done_batch, next_states_batch, probs_batch = map(np.array, zip(*self.memory[-200:]))
         else:
-            states_batch, action_batch, reward_batch, done_batch, next_states_batch = map(np.array, zip(*self.memory))
-        return (states_batch, action_batch, reward_batch, done_batch, next_states_batch)
+            states_batch, action_batch, reward_batch, done_batch, next_states_batch, probs_batch = map(np.array, zip(*self.memory))
+        return (states_batch, action_batch, reward_batch, done_batch, next_states_batch, probs_batch)
 
     def clear( self ):
         self.memory.clear()

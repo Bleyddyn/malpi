@@ -433,16 +433,20 @@ def train(env, options):
 
     #x_list,y_list = readParams()
     good_list = [
-        [0.22136026231898764, 0.03435418156855076, 0.014258056717745918, 0.9932171398308102, 0.004031326729049222, 60.1, 5000.0],
-        [0.8393075532448522, 0.05341277570972287, 0.03782414246524008, 0.9999393627274482, 0.006904643159300169, 63.28, 5000.0],
-        [0.8165787628717937, 0.09427020466780384, 0.020845128577212314, 0.9992466981106534, 0.003885223951761664, 103.5, 5000.0],
-        [0.47918425726181, 0.03429596907213825, 0.032978392062649034, 0.9915616675283389, 0.007389434048353167, 52.6875, 5000.0],
-        [0.2449330437218338, 0.0947400634523504, 0.02914330566301235, 0.9908877396055589, 0.009001180405105197, 52.71, 5000.0],
-        [0.7574053941509864, 0.022851358621574128, 0.02933848823742234, 0.9942378278140936, 0.0058316089556126535, 54.74, 5000.0],
-        [0.5621275494548085, 0.07959943392424593, 0.06102889525003826, 0.9991853126845361, 0.005376755258427058, 65.56, 5000.0],
-        [0.32766650813843246, 0.09480885483374826, 0.03755095774951028, 0.9999700099781811, 0.005773840526607081, 59.89, 5000.0],
-        [0.1053632893621644, 0.0907205025340792, 0.05893026484434313, 0.9930640791847445, 0.007035403842994652, 64.43, 5000.0],
-        [0.6247863467456647, 0.014985903772974544, 0.016187006929511142, 0.990875873073826, 0.006745025167885216, 65.72, 5000.0]
+        [0.25890188930863467, 0.025165268427210785, 0.07059429383145621, 0.9947961724373526, 0.0013475007222291603, 40.65, 5000.0],
+        [0.42120877545226554, 0.09365111800441413, 0.09232895070155722, 0.9922897352718261, 0.006208964042027894, 44.65, 5000.0],
+        [0.8905750710977413, 0.09710195421873571, 0.09664194435418888, 0.9900805321413448, 0.004540541146965149, 47.36, 5000.0],
+        [0.27278770528857893, 0.021528018695321668, 0.001865975094502563, 0.9939534061827264, 0.007997277519049694, 48.0, 5000.0],
+        [0.8529460105543061, 0.08585496418123147, 0.03936205837025779, 0.9970964618810706, 0.006675774621939766, 45.86, 5000.0],
+        [0.40318243585466984, 0.09642644469810352, 0.07898041870703179, 0.9962852644429262, 0.008358858950383574, 47.44, 5000.0],
+        [0.8380200931993487, 0.06399535810122893, 0.09475613229612918, 0.9996377190886346, 0.006878693982777904, 70.73, 5000.0],
+        [0.5842684909863118, 0.08574971470872933, 0.06731913426916163, 0.9968176317802278, 0.00965146237656445, 52.29, 5000.0],
+        [0.987378065897815, 0.08411234374183062, 0.0697660072544278, 0.9994384772521688, 0.005947149062638293, 91.47, 5000.0],
+        [0.9495086190376701, 0.08878325758404317, 0.08329295859467326, 0.9911848236646286, 0.004004767379915331, 60.79, 5000.0],
+        [0.3548625525374759, 0.09729161360016818, 0.07819513678867897, 0.9989154151141918, 0.0055804658030165575, 73.3, 5000.0],
+        [0.4029251412295074, 0.055997740163132054, 0.018679900439621068, 0.9997812798898397, 0.00960207858012477, 76.83, 5000.0],
+        [0.28107662970651576, 0.011800827240235536, 0.09710377425667911, 0.9995643986277883, 0.006559267254104502, 69.37, 5000.0],
+        [0.7281139060355525, 0.08673594896324398, 0.0217669686679185, 0.9989093475138568, 0.0055661938116126075, 70.04, 5000.0]
                 ]
     x_list = []
     y_list = []
@@ -504,7 +508,7 @@ def train(env, options):
         with open( 'current_run.txt', 'w+') as f:
             f.write( "%s Iteration  %d\n" % (options.model_name,i) )
 
-    print "100 iterations: %f / %f" % (np.mean(scores), np.std(scores))
+    print "%d iterations: %f / %f" % (i+1,np.mean(scores), np.std(scores))
 
 def train_one(env, hparams, options):
     ksteps = options.k_steps # number of frames to skip before selecting a new action
@@ -515,9 +519,11 @@ def train_one(env, hparams, options):
     update_freq = 500
     gamma = hparams[0]
     learning_rate_actor = hparams[1]
-    learning_rate_critic = hparams[2]
+    learning_rate_critic = hparams[2] / 5.0
     learning_rate_decay = hparams[3]
     clip_error = True
+
+    monty_carlo = True
     off_line = False # Train on-line or off-line
     min_history = batch_size
     if off_line: min_history *= 5
@@ -588,79 +594,47 @@ def train_one(env, hparams, options):
       exp_history.save( state, action, reward, done, next_state, action_probs )
       state = next_state
 
-      if (exp_history.size() >= min_history):
-          states, actions, rewards, batch_done, new_states, batch_probs = exp_history.batch( batch_size )
-
-          actions = actions.astype(np.int)
-
-          state_values, cache = critic.forward( states, mode='train', verbose=False )
-          next_values, _ = critic.forward( new_states, mode='test' )
-
-          td_error = np.reshape(rewards,(batch_size,1)) + (np.reshape(batch_done,(batch_size,1)) * ((gamma * next_values) - state_values))
-
-          dx = td_error
-          dx /= batch_size
-          if clip_error:
-              np.clip( dx, -5.0, 5.0, dx )
-
-          q_error = 0.0
-
-          _, grad = critic.backward(cache, q_error, dx )
-          optim_critic.update( grad, check_ratio=False )
-
-          actions_raw, acache = actor.forward( states, mode="train", verbose=False )
-          action_probs = softmax_batch(actions_raw)
-          #p = action_probs / batch_probs
-
-          y = np.zeros(action_probs.shape)
-          y[range(action_probs.shape[0]),actions] = 1.0
-          gradients = y - action_probs
-          gradients *= np.reshape(td_error, [td_error.shape[0],1])
-          dx = -gradients
-
-          #dx *= p
-          dx /= batch_size
-          if clip_error:
-              np.clip( dx, -5.0, 5.0, dx )
-          _, agrad = actor.backward(acache, q_error, dx )
-          optim_actor.update( grad, check_ratio=False )
-
-          if not off_line:
-              exp_history.clear()
+      if not monty_carlo and (exp_history.size() >= min_history):
+          train_one_batch( actor, critic, optim_actor, optim_critic, gamma, exp_history, batch_size, monty_carlo, off_line, clip_error )
 
       if done: # an episode finished
-        episode_number += 1
+          if monty_carlo:
+              if exp_history.size() > 200:
+                  print "History too large, lost data"
+              train_one_batch( actor, critic, optim_actor, optim_critic, gamma, exp_history, batch_size, monty_carlo, off_line, clip_error )
 
-        reward_100.append(reward_sum)
-
-        if episode_number % update_rate == 0:
-
-            treward = np.mean(reward_100) # test(target, env, options)
-
-            print
-            print 'Ep %d' % ( episode_number, )
-            print 'Reward       : %0.2f  %0.2f' % ( reward_sum, np.mean(reward_100) )
-            print "Test reward  : %0.2f vs %0.2f" % (treward, best_test)
-            print "Actor LR     : %g" % (optim_actor.learning_rate,)
-            print "Critic LR    : %g" % (optim_critic.learning_rate,)
-
-            if treward > best_test:
-                best_test = treward
-
-                if treward > 195.0:
-                    print "Final Actor LR : %f" % (optim_actor.learning_rate,)
-                    print "Final Critic LR: %f" % (optim_critic.learning_rate,)
-                    print "WON! In %d episodes" % (episode_number,)
-                    break
-
-        if optim_critic.learning_rate > 0.00001:
-            optim_critic.learning_rate *= learning_rate_decay
-        if optim_actor.learning_rate > 0.00001:
-            optim_actor.learning_rate *= learning_rate_decay
-        reward_sum = 0
-        episode_steps = 0
-        steps = 0
-        state = env.reset()
+          episode_number += 1
+  
+          reward_100.append(reward_sum)
+  
+          if episode_number % update_rate == 0:
+  
+              treward = np.mean(reward_100) # test(target, env, options)
+  
+              print
+              print 'Ep %d' % ( episode_number, )
+              print 'Reward       : %0.2f  %0.2f' % ( reward_sum, np.mean(reward_100) )
+              print "Test reward  : %0.2f vs %0.2f" % (treward, best_test)
+              print "Actor LR     : %g" % (optim_actor.learning_rate,)
+              print "Critic LR    : %g" % (optim_critic.learning_rate,)
+  
+              if treward > best_test:
+                  best_test = treward
+  
+                  if treward > 195.0:
+                      print "Final Actor LR : %f" % (optim_actor.learning_rate,)
+                      print "Final Critic LR: %f" % (optim_critic.learning_rate,)
+                      print "WON! In %d episodes" % (episode_number,)
+                      break
+  
+          if optim_critic.learning_rate > 0.00001:
+              optim_critic.learning_rate *= learning_rate_decay
+          if optim_actor.learning_rate > 0.00001:
+              optim_actor.learning_rate *= learning_rate_decay
+          reward_sum = 0
+          episode_steps = 0
+          steps = 0
+          state = env.reset()
 
     with open( os.path.join( options.game + "_ac_won.txt" ), 'a+') as f:
         hparams = np.append( hparams, [best_test, episode_number] )
@@ -675,6 +649,51 @@ def train_one(env, hparams, options):
 
     return best_test
 
+
+def train_one_batch( actor, critic, optim_actor, optim_critic, gamma, exp_history, batch_size, monty_carlo, off_line, clip_error ):
+    if monty_carlo:
+        states, actions, rewards, batch_done, new_states, batch_probs = exp_history.all()
+        rewards = discount_rewards( rewards, gamma, batch_done, normalize=True )
+        batch_size = states.shape[0]
+    else:
+        states, actions, rewards, batch_done, new_states, batch_probs = exp_history.batch( batch_size )
+
+    actions = actions.astype(np.int)
+
+    state_values, cache = critic.forward( states, mode='train', verbose=False )
+    next_values, _ = critic.forward( new_states, mode='test' )
+
+    td_error = np.reshape(rewards,(batch_size,1)) + (np.reshape(batch_done,(batch_size,1)) * ((gamma * next_values) - state_values))
+
+    dx = td_error
+#dx /= batch_size
+    if clip_error:
+        np.clip( dx, -5.0, 5.0, dx )
+
+    q_error = 0.0
+
+    _, grad = critic.backward(cache, q_error, dx )
+    optim_critic.update( grad, check_ratio=False )
+
+    actions_raw, acache = actor.forward( states, mode="train", verbose=False )
+    action_probs = softmax_batch(actions_raw)
+#p = action_probs / batch_probs
+
+    y = np.zeros(action_probs.shape)
+    y[range(action_probs.shape[0]),actions] = 1.0
+    gradients = y - action_probs
+    gradients *= np.reshape(td_error, [td_error.shape[0],1])
+    dx = -gradients
+
+#dx *= p
+#dx /= batch_size
+    if clip_error:
+        np.clip( dx, -5.0, 5.0, dx )
+    _, agrad = actor.backward(acache, q_error, dx )
+    optim_actor.update( grad, check_ratio=False )
+
+    if not off_line:
+        exp_history.clear()
 
 def getOptions():
     usage = "Usage: python ac-pole.py [options] <model name>"
