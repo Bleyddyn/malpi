@@ -523,7 +523,7 @@ def train_one(env, hparams, options):
     learning_rate_decay = hparams[3]
     clip_error = True
 
-    monty_carlo = True
+    monte_carlo = True
     off_line = False # Train on-line or off-line
     min_history = batch_size
     if off_line: min_history *= 5
@@ -594,14 +594,14 @@ def train_one(env, hparams, options):
       exp_history.save( state, action, reward, done, next_state, action_probs )
       state = next_state
 
-      if not monty_carlo and (exp_history.size() >= min_history):
-          train_one_batch( actor, critic, optim_actor, optim_critic, gamma, exp_history, batch_size, monty_carlo, off_line, clip_error )
+      if not monte_carlo and (exp_history.size() >= min_history):
+          train_one_batch( actor, critic, optim_actor, optim_critic, gamma, exp_history, batch_size, monte_carlo, off_line, clip_error )
 
       if done: # an episode finished
-          if monty_carlo:
+          if monte_carlo:
               if exp_history.size() > 200:
                   print "History too large, lost data"
-              train_one_batch( actor, critic, optim_actor, optim_critic, gamma, exp_history, batch_size, monty_carlo, off_line, clip_error )
+              train_one_batch( actor, critic, optim_actor, optim_critic, gamma, exp_history, batch_size, monte_carlo, off_line, clip_error )
 
           episode_number += 1
   
@@ -650,8 +650,10 @@ def train_one(env, hparams, options):
     return best_test
 
 
-def train_one_batch( actor, critic, optim_actor, optim_critic, gamma, exp_history, batch_size, monty_carlo, off_line, clip_error ):
-    if monty_carlo:
+def train_one_batch( actor, critic, optim_actor, optim_critic, gamma, exp_history, batch_size, monte_carlo, off_line, clip_error ):
+    clip_value = 5.0
+
+    if monte_carlo:
         states, actions, rewards, batch_done, new_states, batch_probs = exp_history.all()
         rewards = discount_rewards( rewards, gamma, batch_done, normalize=True )
         batch_size = states.shape[0]
@@ -660,24 +662,27 @@ def train_one_batch( actor, critic, optim_actor, optim_critic, gamma, exp_histor
 
     actions = actions.astype(np.int)
 
-    state_values, cache = critic.forward( states, mode='train', verbose=False )
-    next_values, _ = critic.forward( new_states, mode='test' )
-
-    td_error = np.reshape(rewards,(batch_size,1)) + (np.reshape(batch_done,(batch_size,1)) * ((gamma * next_values) - state_values))
-
-    dx = td_error
-#dx /= batch_size
-    if clip_error:
-        np.clip( dx, -5.0, 5.0, dx )
-
-    q_error = 0.0
-
-    _, grad = critic.backward(cache, q_error, dx )
-    optim_critic.update( grad, check_ratio=False )
-
     actions_raw, acache = actor.forward( states, mode="train", verbose=False )
     action_probs = softmax_batch(actions_raw)
-#p = action_probs / batch_probs
+
+    actor_critic = True
+    q_error = 0.0
+
+    if actor_critic:
+        state_values, cache = critic.forward( states, mode='train', verbose=False )
+        next_values, _ = critic.forward( new_states, mode='test' )
+
+        td_error = np.reshape(rewards,(batch_size,1)) + (np.reshape(batch_done,(batch_size,1)) * ((gamma * next_values) - state_values))
+
+        dx = td_error
+        if clip_error:
+            np.clip( dx, -clip_value, clip_value, dx )
+
+        _, grad = critic.backward(cache, q_error, dx )
+        optim_critic.update( grad, check_ratio=False )
+    else:
+# Assume policy gradient for now
+        td_error = rewards
 
     y = np.zeros(action_probs.shape)
     y[range(action_probs.shape[0]),actions] = 1.0
@@ -685,12 +690,10 @@ def train_one_batch( actor, critic, optim_actor, optim_critic, gamma, exp_histor
     gradients *= np.reshape(td_error, [td_error.shape[0],1])
     dx = -gradients
 
-#dx *= p
-#dx /= batch_size
     if clip_error:
-        np.clip( dx, -5.0, 5.0, dx )
+        np.clip( dx, -clip_value, clip_value, dx )
     _, agrad = actor.backward(acache, q_error, dx )
-    optim_actor.update( grad, check_ratio=False )
+    optim_actor.update( agrad, check_ratio=False )
 
     if not off_line:
         exp_history.clear()
