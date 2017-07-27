@@ -67,7 +67,10 @@ class MalpiModel(object):
             num_filters = int( layer.split("-",1)[1] )
             w, h = self.get_conv_filter_sizes(params)
             pad, stride = self.get_conv_stride(params, w, h, output_dim[-2], output_dim[-1])
+# This is the He init. Should only be used for Relu activations
             self.params['W'+layer_num_str] = np.sqrt( 2.0 / np.prod(output_dim)) * np.random.randn(num_filters,output_dim[0],w,h)
+# Xavier init: np.random.uniform( -1/np.sqrt(np.prod(output_dim)), 1/np.sqrt(np.prod(output_dim)), size=(num_filers,output_dim[0],w,h))
+# From: http://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf
             self.params['b'+layer_num_str] = np.zeros(num_filters)
             w = (output_dim[-2]-w+2*pad)/stride+1
             h = (output_dim[-1]-h+2*pad)/stride+1

@@ -208,7 +208,7 @@ def readParams():
     hparams = []
     y = []
 
-    with open('CartPole-v0_won.txt', 'r') as f:
+    with open('CartPole-v0_pg_won.txt', 'r') as f:
         for line in f:
             resd = ast.literal_eval(line)
             if isinstance(resd,dict):
@@ -267,8 +267,8 @@ def initializeModel( name, number_actions, input_dim=(4,84,84), verbose=False ):
 #        {'filter_size':4, 'stride':2, 'pad':2},
 #        {'filter_size':3, 'stride':1, 'pad':1},
 #        {}, {'relu':False} ]
-    layers = ["FC-200", output]
-    layer_params = [ {}, {'relu':False} ]
+    layers = ["FC-20", "FC-20", output]
+    layer_params = [ {}, {}, {'relu':False} ]
     model = MalpiModel(layers, layer_params, input_dim=input_dim, reg=0.005, dtype=np.float32, verbose=verbose)
     model.name = name
 
@@ -498,6 +498,8 @@ def train(env, options):
         else:
             cv_score = train_one(env, next_sample, options)
             scores.append(cv_score)
+        with open( 'current_run.txt', 'w+') as f:
+            f.write( "%s Iteration  %d\n" % (options.model_name,i) )
 
     print "100 iterations: %f / %f" % (np.mean(scores), np.std(scores))
 
@@ -584,7 +586,7 @@ def train_one(env, hparams, options):
         state = next_state
   
         if done: # an episode finished
-            states, actions, rewards, batch_done, new_states = exp_history.all()
+            states, actions, rewards, batch_done, new_states, batch_probs = exp_history.all()
   
             actions = actions.astype(np.int)
             rewards = discount_rewards( rewards, gamma, batch_done, normalize=True )
@@ -666,7 +668,7 @@ def train_one(env, hparams, options):
             steps = 0
             state = env.reset()
 
-    with open( os.path.join( options.game + "_won.txt" ), 'a+') as f:
+    with open( os.path.join( options.game + "_pg_won.txt" ), 'a+') as f:
         hparams = np.append( hparams, [best_test, episode_number] )
         f.write( "%s\n" % (hparams.tolist(),) )
 

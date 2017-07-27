@@ -79,6 +79,9 @@ class Experience2(object):
         self.memory = deque(maxlen=maxN)
         self.priority = []
 
+    def __len__(self):
+        return len(self.memory)
+
     def size( self ):
         return len(self.memory)
 
