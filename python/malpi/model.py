@@ -21,7 +21,7 @@ class MalpiModel(object):
   
   def __init__(self, layers, layer_params, input_dim=(3, 32, 32),
                weight_scale=1e-3, reg=0.0,
-               dtype=np.float32, dropout=0.0, verbose=True):
+               dtype=np.float32, verbose=True):
     """
     Initialize a new network.
     
@@ -42,12 +42,10 @@ class MalpiModel(object):
     self.lstm_prev = {}
     self.reg = reg
     self.dtype = dtype
-    self.use_dropout = dropout > 0
     self.name = ""
     self.validation_accuracy = 0.0
     self.input_dim = input_dim
     self.hyper_parameters = {}
-    self.dropout_param = {'mode': 'train', 'p': dropout}
 
     self.layers = layers
     self.layer_params = layer_params
@@ -111,6 +109,10 @@ class MalpiModel(object):
             output_dim[-1] = h
             if verbose:
                 print "pool"
+        elif layer.startswith(("dropout","Dropout")):
+            # output_dim remains the same
+            if verbose:
+                print "dropout"
         if verbose:
             print "  params: ", params
             print "  outdim: ", output_dim
@@ -187,6 +189,11 @@ class MalpiModel(object):
             inputs, pool_cache = max_pool_forward_fast( inputs, layer_params, mode=mode )
             layer_caches.append(pool_cache)
 
+        elif layer.startswith(("dropout","Dropout")):
+            layer_params = self.layer_params[layer_num-1]
+            inputs, drop_cache = dropout_forward( inputs, layer_params, mode=mode )
+            layer_caches.append(drop_cache)
+
     scores = inputs
 
     return scores, layer_caches
@@ -254,6 +261,10 @@ class MalpiModel(object):
         elif layer.startswith(("maxpool","Maxpool")):
             cache = layer_caches[layer_num-1]
             dx = max_pool_backward_fast( dx, cache )
+
+        elif layer.startswith(("dropout","Dropout")):
+            cache = layer_caches[layer_num-1]
+            dx = dropout_backward( dx, cache )
 
     loss = data_loss + reg_loss
 
@@ -388,6 +399,10 @@ class MalpiModel(object):
             output_dim[-1] = h
             print "    " + str(params)
             print "   Dim: " + str(output_dim)
+
+        elif layer.startswith(("dropout","Dropout")):
+            print layer
+            print "    " + str(params)
 
     print "Total # params: " + "{:,}".format(total_num_param)
 
