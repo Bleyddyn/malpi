@@ -45,8 +45,8 @@ def initializeModel( model_name ):
 #    layer_params = [{'filter_size':3, 'stride':1, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
 #        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
 #        {'filter_size':3}, {'relu':False} ]
-    layers = ["conv-32", "conv-64", "conv-64", "FC-512", "FC-10"]
-    layer_params = [{'filter_size':8, 'stride':2, 'pad':4 },
+    layers = ["dropout", "conv-32", "conv-64", "conv-64", "FC-512", "FC-10"]
+    layer_params = [{p:0.5}, {'filter_size':8, 'stride':2, 'pad':4 },
         {'filter_size':4, 'stride':2, 'pad':2},
         {'filter_size':3, 'stride':1, 'pad':1},
         {}, {'relu':False} ]
@@ -81,8 +81,9 @@ def train():
 #    layer_params = [{'filter_size':3, 'stride':1, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
 #        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
 #        {'filter_size':3}, {'relu':False} ]
-    layers = ["conv-32", "conv-64", "conv-64", "FC-512", "FC-10"]
-    layer_params = [{'filter_size':8, 'stride':2, 'pad':1 },
+    layers = ["dropout", "conv-32", "dropout", "conv-64", "conv-64", "FC-512", "FC-10"]
+    layer_params = [{'p':1.0}, {'filter_size':8, 'stride':2, 'pad':1 },
+        {'p':1.0},
         {'filter_size':4, 'stride':2, 'pad':2},
         {'filter_size':3, 'stride':1, 'pad':1},
         {}, {'relu':False} ]
