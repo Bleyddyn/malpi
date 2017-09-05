@@ -8,10 +8,12 @@
 
 from time import sleep
 from time import time
+import signal
 import socket
 import pickle
 import datetime
 from threading import Thread
+import argparse
 #import numpy as np
 
 from adxl345 import ADXL345
@@ -25,6 +27,9 @@ class Accelerometer:
         self.t_start = time()
         self.count = 0
         self.elapsed = 0
+        signal.signal(signal.SIGINT, self.stop)
+        signal.signal(signal.SIGTERM, self.stop)
+
 
     def __enter__(self):
         return self
@@ -59,7 +64,7 @@ class Accelerometer:
     def read(self):
         return self.results
 
-    def stop(self):
+    def stop(self,signum=0,frame=0):
         # indicate that the thread should be stopped
         self.stopped = True
 
@@ -98,7 +103,7 @@ def _crashes():
         sleep(1)
         _sendMotorCommand('stop')
 
-if __name__ == "__main__":
+def _test():
     accel = Accelerometer()
     print "ADXL345 on address 0x%x:" % (accel.adxl345.address)
     t_start = time()
@@ -128,3 +133,20 @@ if __name__ == "__main__":
     print results[1]
     print results[2]
     print results[3]
+
+def parseArguments():
+    parser = argparse.ArgumentParser(description='Record accelerometer data until interrupted, then save to file.')
+    parser.add_argument('filename', metavar='Filename', help='Filename to save pickled data')
+    parser.add_argument('--count', dest='count', type=int, action='store', default=0, help='Maximum number of samples to record (Not yet implemented)')
+
+    args = parser.parse_args()
+    return args
+
+if __name__ == "__main__":
+    args = parseArguments()
+    accel = Accelerometer()
+    accel.update()
+# wait for ctrl-c
+    data = accel.read()
+    with open(args.filename, 'wb') as f:
+        pickle.dump( data, f, pickle.HIGHEST_PROTOCOL)
