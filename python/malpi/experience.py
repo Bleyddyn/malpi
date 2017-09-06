@@ -55,19 +55,19 @@ class Experience(object):
         e.save( s, 2, -4, False, s )
         e.save( s, 3, -5, False, s )
         e.save( s, 4, -6, False, s )
-        print e.max_batch # 4
+        print( e.max_batch ) # 4
         s1, a, r, d, n = e.batch( 2 )
-        print s1.shape # (2, 20, 20)
-        print a # e.g. [ 1.  2.]
-        print r # e.g. [-3. -4.]
+        print( s1.shape ) # (2, 20, 20)
+        print( a ) # e.g. [ 1.  2.]
+        print( r ) # e.g. [-3. -4.]
         for _ in range(2):
             e.save( s, 5, -7, False, s )
             e.save( s, 6, -8, False, s )
             e.save( s, 7, -9, True, s )
             e.save( s, 8, -10, False, s )
-        print e.max_batch # 10
-        print e.actions[0:2]
-        print e.rewards[0:2]
+        print( e.max_batch ) # 10
+        print( e.actions[0:2] )
+        print( e.rewards[0:2] )
 
 class Experience2(object):
 
@@ -120,10 +120,10 @@ class Experience2(object):
         e.save( s, 3, -5, False, s )
         e.save( s, 4, -6, True, s )
         s1, a, r, d, n, probs = e.batch( 2 )
-        print s1.shape # (2, 20, 20)
-        print a # e.g. [ 1.  2.]
-        print r # e.g. [-3. -4.]
-        print d
+        print( s1.shape ) # (2, 20, 20)
+        print( a ) # e.g. [ 1.  2.]
+        print( r ) # e.g. [-3. -4.]
+        print( d )
         for _ in range(2):
             e.save( s, 5, -7, False, s )
             e.save( s, 6, -8, False, s )
