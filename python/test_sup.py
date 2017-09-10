@@ -60,14 +60,14 @@ def hyperparameterGenerator( oneRun = False ):
         reguls = [3.37091767808e-05]
         lrs = [0.0002006801544726]
     else:
-        reguls = np.array([3.37091767808e-05]) * variations
-        lrs = np.array([0.0002006801544726]) * variations
-#reguls = 10 ** np.random.uniform(-5, -4, 2) #[0.0001, 0.001, 0.01]
-#lrs = 10 ** np.random.uniform(-6, -3, 5) #[1e-4, 1e-3, 1e-2]
+        #reguls = np.array([3.37091767808e-05]) * variations
+        #lrs = np.array([0.0002006801544726]) * variations
+        reguls = 10 ** np.random.uniform(-5, -4, 3) #[0.0001, 0.001, 0.01]
+        lrs = 10 ** np.random.uniform(-6, -3, 3) #[1e-4, 1e-3, 1e-2]
 #reguls = np.append([3.37091767808e-05],reguls)
 #lrs = np.append([0.000182436504066],lrs)
 
-    decays = [1.0]
+    decays = [0.999,1.0]
 
     for reg in reguls:
         for lr in lrs:
@@ -82,8 +82,8 @@ def train():
 #        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
 #        {'filter_size':3}, {'relu':False} ]
     layers = ["dropout", "conv-32", "dropout", "conv-64", "conv-64", "FC-512", "FC-10"]
-    layer_params = [{'p':1.0}, {'filter_size':8, 'stride':2, 'pad':1 },
-        {'p':1.0},
+    layer_params = [{'p':0.3}, {'filter_size':8, 'stride':2, 'pad':1 },
+        {'p':0.5},
         {'filter_size':4, 'stride':2, 'pad':2},
         {'filter_size':3, 'stride':1, 'pad':1},
         {}, {'relu':False} ]
@@ -101,7 +101,7 @@ def train():
     if best_model:
         best_val_acc = best_model.validation_accuracy
 
-    for hparams in hyperparameterGenerator(oneRun=True):
+    for hparams in hyperparameterGenerator(oneRun=False):
         model = MalpiModel(layers, layer_params, input_dim=(3, 32, 32), reg=hparams['reg'], dtype=np.float32, verbose=True)
         model.name = model_name
         model.hyper_parameters = hparams

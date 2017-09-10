@@ -17,10 +17,11 @@ from scipy.misc import imresize
 #from malpi.layers import *
 #from malpi.model import *
 #from malpi.optimizer import Optimizer
-#from malpi.experience import Experience2
+from malpi.experience import Experience2
 
-from model_keras import make_model
-
+from model_keras import make_model, read_model, save_model
+from keras.models import clone_model
+ 
 #np.seterr(all='raise')
 np.seterr(under='ignore')
 
@@ -34,12 +35,7 @@ def stats(arr, msg=""):
     ma_abs = np.max(abs_arr)
     print( "%sMin/Max/Mean/Stdev abs(Min/Max): %g/%g/%g/%g %g/%g" % (msg,mi,ma,av,std,mi_abs,ma_abs) )
             
-def saveModel( model, options ):
-    filename = os.path.join( options.dir_model, options.model_name + ".hdf5" )
-    model.save_weights(filename)
-
 def initializeModel( name, number_actions, input_dim=(84,84,4) ):
-    output = "FC-%d" % (number_actions,)
     model = make_model( number_actions, input_dim )
     model.name = name
     return model
@@ -76,33 +72,11 @@ def discount_rewards(r, gamma, normalize=True):
 
     return discounted_r
 
-def make_epsilon_greedy_policy(estimator, epsilon, nA):
-    """
-    Creates an epsilon-greedy policy based on a given Q-function approximator and epsilon.
-    
-    Args:
-        estimator: An estimator that returns q values for a given state
-        epsilon: The probability to select a random action . float between 0 and 1.
-        nA: Number of actions in the environment.
-    
-    Returns:
-        A function that takes the observation as an argument and returns
-        the probabilities for each action in the form of a numpy array of length nA.
-    
-    """
-    def policy_fn(observation):
-        A = np.ones(nA, dtype=float) * epsilon / nA
-        q_values,_ = estimator.forward(observation, mode="test")
-        best_action = np.argmax(q_values[0])
-        A[best_action] += (1.0 - epsilon)
-        return A
-    return policy_fn
-
 def choose_epsilon_greedy( estimator, observation, epsilon, nA ):
     if np.random.random() < epsilon:
         return np.random.randint(nA)
     else:
-        q_values,_ = estimator.forward(observation, mode="test")
+        q_values = estimator.predict_on_batch( observation )
         return np.argmax(q_values[0])
 
 def check_weights( model ):
@@ -130,11 +104,7 @@ def test(tmodel, env, options):
         steps = 0
         while not done:
             if options.render: env.render()
-            if np.random.random() < epsilon:
-                action = np.random.randint( nA )
-            else:
-                q_values = tmodel.predict_on_batch( state.reshape(1,84,84,4) )
-                action = np.argmax(q_values[0])
+            action = choose_epsilon_greedy( tmodel, state.reshape(1,84,84,4), epsilon, nA )
             if options.k_steps > 1:
                 reward = 0
                 done = False
@@ -175,8 +145,9 @@ def train(target, env, options):
 
     target.reg = 0.005
 
-    behavior = copy.deepcopy(target)
-    optim = Optimizer( "rmsprop", behavior, learning_rate=learning_rate, decay_rate=0.99, upd_frequency=5000)
+    behavior = target
+    #behavior = clone_model(target)
+    #behavior.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 
     running_reward = None
     reward_sum = 0
@@ -205,10 +176,6 @@ def train(target, env, options):
         with open( os.path.join( options.game + ".txt" ), 'a+') as f:
             f.write( "%s = %s\n" % ('Start',time.strftime("%Y-%m-%d %H:%M:%S")) )
             f.write( "%s = %s\n" % ('Model Name',target.name) )
-            if options.initialize:
-                f.write( "Weights initialized\n" )
-                f.write( str(target.layers) + "\n" )
-                f.write( str(target.layer_params) + "\n" )
             f.write( "%s = %d\n" % ('batch_size',batch_size) )
             f.write( "%s = %d\n" % ('update_rate',update_rate) )
             f.write( "%s = %f\n" % ('gamma',gamma) )
@@ -219,17 +186,12 @@ def train(target, env, options):
             f.write( "%s = %f\n" % ('learning_rate_decay',learning_rate_decay) )
             f.write( "%s = %f\n" % ('lr_decay_on_best',lr_decay_on_best) )
             f.write( "%s = %s\n" % ('clip_error',str(clip_error)) )
-            f.write( "Optimizer %s\n" % (optim.optim_type,) )
-            f.write( "   %s = %f\n" % ('learning rate',optim.learning_rate) )
-            f.write( "   %s = %f\n" % ('decay rate',optim.decay_rate) )
-            f.write( "   %s = %f\n" % ('epsilon',optim.epsilon) )
-            f.write( "   %s = %f\n" % ('update frequency',optim.upd_frequency) )
             f.write( "\n" )
 
     while (options.max_episodes == 0) or (episode_number < options.max_episodes):
         if options.render: env.render()
   
-        action = choose_epsilon_greedy( behavior, state.reshape(1,4,84,84), epsilon, num_actions )
+        action = choose_epsilon_greedy( behavior, state.reshape(1,84,84,4), epsilon, num_actions )
         #action = np.random.randint(num_actions)
         action_counts[action] += 1
   
@@ -259,47 +221,27 @@ def train(target, env, options):
         episode_steps += ksteps
  
         if not options.play: 
-            exp_history.save( state, action, reward, done, next_state )
+            exp_history.save( state.reshape(84,84,4), action, reward, done, next_state.reshape(84,84,4) )
         state = next_state
   
         if not options.play and (exp_history.size() > (batch_size * 5)):
-            states, actions, rewards, batch_done, new_states = exp_history.batch( batch_size )
+            states, actions, rewards, batch_done, new_states, _ = exp_history.batch( batch_size )
             actions = actions.astype(np.int)
   
-            #onehot = np.zeros( (batch_size,actions.shape[0]) )
-            #onehot[np.arange(batch_size),actions] = 1.0
-            #print( np.mean(onehot, axis=0)[0:6] )
-  
-            #stats(states,"states ")
-            #stats(actions,"actions ")
-            #stats(rewards,"rewards ")
-            #stats(batch_done,"batch_done ")
-            #stats(new_states,"new_states ")
-  
-            # Save one mini-batch for testing
-            #with open('one_experience.pickle', 'wb') as pf:
-            #    one = (states,actions,rewards,batch_done,new_states)
-            #    pickle.dump( one, pf, pickle.HIGHEST_PROTOCOL)
-  
-            target_values, _ = target.forward( new_states, mode='test' )
+            target_values = target.predict_on_batch( states )
   
             double_dqn = True
             if double_dqn:
-                behavior_values, _ = behavior.forward( new_states, mode='test' )
+                behavior_values = behavior.predict_on_batch( new_states )
                 best_actions = np.argmax(behavior_values,axis=1)
                 q_target = rewards + batch_done * gamma * target_values[np.arange(batch_size), best_actions]
             else:
                 q_target = rewards + batch_done * gamma * np.max(target_values, axis=1)
   
-            action_values, cache = behavior.forward(states, mode='train', verbose=False)
+            action_values = behavior.predict_on_batch(states)
   
             q_error = np.zeros( action_values.shape )
-            #q_error[ np.arange(batch_size), 2 ] = -batch_size
-            # Only update values for actions taken
-            #q_error[ np.arange(batch_size), actions ] = q_target - action_values[ np.arange(batch_size), actions ]
             q_error[ np.arange(batch_size), actions ] = action_values[ np.arange(batch_size), actions ] - q_target
-            #q_error /= batch_size
-            # See: https://zhuanlan.zhihu.com/p/25771039
             dx = q_error
             dx /= batch_size
             if clip_error:
@@ -314,12 +256,9 @@ def train(target, env, options):
             #print( "q_error : %s" % (q_error[1:5,:],) )
   
             q_error = np.sum( np.square( q_error ) )
-  
-            # dx needs to have shape(batch_size,num_actions), e.g. (32,6)
-            #check_weights( behavior )
-            _, grad = behavior.backward(cache, q_error, dx ) # 2.37275421e-01 seconds
-            optim.update( grad, check_ratio=False ) # 1.85747565e-01 seconds
-  
+ 
+            loss = behavior.train_on_batch(states, q_error)[0]
+                         
             #stats(states,"states " )
             #stats(reward, "reward " )
             #stats(values, "target " )
@@ -344,31 +283,26 @@ def train(target, env, options):
                     with open( os.path.join( options.dir_model, target.name+ ".txt" ), 'a+') as f:
                         f.write( "%d,%f\n" % (episode_number, np.mean(reward_100) ) )
 
-                    target = copy.deepcopy(behavior)
-                    saveModel( target, options )
+                    #target = clone_model(behavior)
+                    #target.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+                    save_model( target, options.dir_model, options.model_name )
 
                     treward = np.mean(reward_100) # test(target, env, options)
 
-                    print
+                    print('')
                     print( 'Ep %d' % ( episode_number, ) )
                     print( 'Reward       : %0.2f  %0.2f' % ( reward_sum, np.mean(reward_100) ) )
                     print( "Test reward  : %0.2f vs %0.2f" % (treward, best_test) )
-                    print( "Learning rate: %f" % (optim.learning_rate,) )
                     print( "Epsilon      : %f" % (epsilon,) )
 
                     if treward > best_test:
                         best_test = treward
-                        with open(os.path.join( options.dir_model, options.model_name + "_best.pickle" ), 'wb') as f:
-                            pickle.dump( target, f, pickle.HIGHEST_PROTOCOL)
+                        save_model( target, options.dir_model, options.model_name + "_best" )
                         print( "Saving current best model." )
 
                         if treward > 20.5:
-                            print( "Final Learning rate: %f" % (optim.learning_rate,) )
                             print( "WON! In %d episodes" % (episode_number,) )
                             break
-                if optim.learning_rate > 0.00001:
-                    optim.learning_rate *= learning_rate_decay
-
                 if epsilon > 0.1:
                     epsilon *= epsilon_decay
 
@@ -387,7 +321,6 @@ def train(target, env, options):
     if not options.play:
         with open( os.path.join( options.game + ".txt" ), 'a+') as f:
             f.write( "%s = %f\n" % ('Final epsilon', epsilon) )
-            f.write( "%s = %f\n" % ('Final learning rate', optim.learning_rate) )
             f.write( "%s = %f\n" % ('Best test score', best_test) )
             f.write( "%s = %d\n" % ('Episodes', episode_number) )
             f.write( "\n\n" )
@@ -444,12 +377,10 @@ if __name__ == "__main__":
         print( "Initializing model with %d actions..." % (nA,) )
         model = initializeModel( options.model_name, nA )
         model.env = options.game
-        saveModel( model, options )
+        save_model( model, options.dir_model, options.model_name )
     else:
         print( "Reading model..." )
-        filename = os.path.join( options.dir_model, options.model_name+'.hdf5')
-        model = initializeModel( options.model_name, nA )
-        model.load_weights( filename )
+        model = read_model( options.dir_model, options.model_name )
         model.name = options.model_name
         model.env = options.game
         if not hasattr(model, 'env'):
