@@ -36,5 +36,8 @@ def make_model_1( num_actions=4, input_dim=(84,84,4), l2_reg=0.005 ):
 
     return model
 
+model = make_model_1()
+model.summary()
+
 model = make_model()
 model.summary()

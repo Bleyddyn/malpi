@@ -13,6 +13,7 @@ import time
 from collections import deque
 import copy
 from scipy.misc import imresize
+import tensorflow as tf
 
 #from malpi.layers import *
 #from malpi.model import *
@@ -131,7 +132,7 @@ def test(tmodel, env, options):
         reward_100 += episode_reward
     return (reward_100 / count)
 
-def train(target, env, options):
+def train(behavior, env, options):
     batch_size = 32 # backprop batch size
     update_rate = 10 # every how many episodes to copy behavior model to target
     gamma = 0.99 # discount factor for reward
@@ -143,11 +144,20 @@ def train(target, env, options):
     lr_decay_on_best = 0.95
     clip_error = True
 
-    target.reg = 0.005
+    #target.reg = 0.005
 
-    behavior = target
-    #behavior = clone_model(target)
-    #behavior.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+    target = initializeModel( options.model_name, env.action_space.n )
+    target_weights = target.trainable_weights
+    behavior_weights = behavior.trainable_weights
+
+    # Define target network update operation
+    update_target = [target_weights[i].assign(behavior_weights[i]) for i in range(len(target_weights))]
+
+    sess = tf.InteractiveSession()
+    sess.run(tf.global_variables_initializer())
+
+    # Initialize target network
+    sess.run(update_target)
 
     running_reward = None
     reward_sum = 0
@@ -256,8 +266,8 @@ def train(target, env, options):
             #print( "q_error : %s" % (q_error[1:5,:],) )
   
             q_error = np.sum( np.square( q_error ) )
- 
-            loss = behavior.train_on_batch(states, q_error)[0]
+
+            loss = behavior.train_on_batch(states, dx)
                          
             #stats(states,"states " )
             #stats(reward, "reward " )
@@ -283,8 +293,7 @@ def train(target, env, options):
                     with open( os.path.join( options.dir_model, target.name+ ".txt" ), 'a+') as f:
                         f.write( "%d,%f\n" % (episode_number, np.mean(reward_100) ) )
 
-                    #target = clone_model(behavior)
-                    #target.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+                    sess.run(update_target)
                     save_model( target, options.dir_model, options.model_name )
 
                     treward = np.mean(reward_100) # test(target, env, options)
