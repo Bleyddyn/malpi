@@ -7,15 +7,16 @@ import cStringIO
 import io
 import shutil
 from subprocess import Popen, PIPE, STDOUT
+import signal
+import pickle
+import socket
 
 import numpy as np
 from scipy import ndimage
 from scipy import misc
 
-from malpi.model import *
 from accelerometer import accelerometer
 from PiVideoStream import PiVideoStream
-from motors import Motors
 
 try:
     import config
@@ -23,36 +24,6 @@ except:
     print "Failed to load config file config.py."
     print "Try copying config_empty.py to config.py and re-running."
     exit()
-
-def initializeModel( options ):
-    imsize = 79
-    layers = ["conv-8", "maxpool", "conv-16", "maxpool", "conv-32", "lstml", "FC-5"]
-    layer_params = [{'filter_size':3, 'stride':2, 'pad':1 }, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-        {'filter_size':3}, {'pool_stride':2, 'pool_width':2, 'pool_height':2},
-        {'filter_size':3}, {'hidden':500}, {} ]
-    model = MalpiModel(layers, layer_params, input_dim=(3,imsize,imsize), reg=.005, dtype=np.float32, verbose=True)
-    model.name = options.model_name
-
-    print
-    model.describe()
-    print
-
-    model.params['b7'][0] += 1 # Bias the output of the final layer to move the robot forward
-
-    filename = os.path.join( options.dir_model, options.model_name + ".pickle" )
-    with open(filename, 'wb') as f:
-        pickle.dump( model, f, pickle.HIGHEST_PROTOCOL)
-
-def loadModel( options, verbose=True ):
-    """ Will return a model from the pickle file, or None if the load failed.  """
-    filename = os.path.join( options.dir_model, options.model_name + ".pickle" )
-    try:
-        with open(filename, 'rb') as f:
-            return pickle.load(f)
-    except IOError as err:
-        if verbose:
-            print("IO error: {0}".format(err))
-        return None
 
 def log( message, options ):
     logFileName = os.path.join(options.dir_ep, options.episode) + ".log"
@@ -99,50 +70,68 @@ def preprocessOneImage(image, imsize):
 misc.imsave('frame2.jpeg', images[2,:,:,:])
 misc.imsave('frame5.jpeg', images[5,:,:,:])
 """
+def sendCommand( command ):
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        host ="127.0.0.1"
+        port = 12345
+        s.connect((host,port))
+        s.send(command.encode()) 
+        s.close()
+    except Exception as inst:
+        return False
 
-commands = ["forward","backward","left","right","stop"]
-def actionToCommand(action):
-    return commands[action]
+    return True
 
-def softmax(x):
-  probs = np.exp(x - np.max(x))
-  probs /= np.sum(probs )
-  return probs
+class Drive:
+    def __init__(self):
+        self.stopped = False
+        signal.signal(signal.SIGINT, self.stop)
+        signal.signal(signal.SIGTERM, self.stop)
 
-def runEpisode( options ):
-    if not os.path.exists(options.dir_ep):
-        os.makedirs(options.dir_ep)
-    video_path = os.path.join( config.directories['video'], options.episode+".h264" )
+    def __enter__(self):
+        return self
 
-    images = []
-    actions = []
-    action_times = []
+    def __exit__(self, exc_type, exc_value, traceback):
+        # I'm not 100% sure this will result in everything being closed. Best to also call stop().
+        self.stopped = True
 
-    motorSpeed = 230
-    framerate = 32
-    brightness = 60
-    imsize = model.input_dim[1]
-    log( 'Motor Speed: ' + str(motorSpeed), options )
-    log( 'Camera framerate: ' + str(framerate), options )
-    log( 'Camera brightness: ' + str(brightness), options )
+    def stop(self,signum=0,frame=0):
+        # indicate that the thread should be stopped
+        self.stopped = True
 
-    # Launch this as a subprocess
-# Start recording vide
-# Tell the user to start moving the car
-# Or run through pre-set motor commands and delays
-    accel = Popen(['./accelerometer/accelerometer.py', 'path/to/accel/file')
-    accel = accelerometer.Accelerometer()
+    def startDriving( self, options ):
+        if not os.path.exists(options.dir_ep):
+            os.makedirs(options.dir_ep)
+        video_path = os.path.join( config.directories['video'], options.episode+".h264" )
 
-    with Motors() as motors:
-        motors.setSpeed(motorSpeed)
+        images = []
+        actions = []
+        action_times = []
+
+        framerate = 32
+        brightness = 60
+        imsize = 120
+        log( 'Camera framerate: ' + str(framerate), options )
+        log( 'Camera brightness: ' + str(brightness), options )
+
+        actions_path = os.path.abspath( os.path.join( options.dir_ep, options.episode+"_actions.text" ) )
+
+        accel_path = os.path.join( options.dir_ep, options.episode+".accel" )
+        accel = Popen(['./accelerometer/accelerometer.py', accel_path])
+
         with PiVideoStream( resolution=(480,480), imsize=imsize, framerate=framerate, brightness=brightness ) as vs:
             vs.start()
-            accel.start()
             sleep(1) # Let the camera warm up
 
-            log( "Start episode", options )
+            log( "Start drive", options )
+
             if options.video:
                 vs.startVideo(video_path)
+
+            sendCommand( 'record ' + actions_path )
+
+            print( "Start driving!!!" )
 
             t_start = time()
             time_steps = options.steps
@@ -150,125 +139,71 @@ def runEpisode( options ):
                 (full,image) = vs.read()
                 if full is not None:
                     images.append( full )
-                    if image is None:
-                        image = preprocessOneImage(full, imsize)
-                    action_probs = model.loss(image)
-                    action_probs = action_probs[0]
-                    action_probs = softmax(action_probs)
-                    action = np.random.choice(np.arange(len(action_probs)), p=action_probs) # Sample an action
-                    actions.append(action)
-                    action_times.append(time())
-                    command = actionToCommand(action)
-                    motors.command( command )
-                    if options.video:
-                        vs.camera.annotate_text = command
-                    print "Action %d: %s" % (x,actionToCommand(action))
-                    #print "%f - %f - %f" % ( (t2 - t1), (t3 - t2), (t4 - t3))
+                sleep(0.1)
 
-    accel.stop()
+                if self.stopped:
+                    break
+            vs.stop()
 
-    log( "Stop episode", options )
-    print "Episode elapsed time: %f" % ((time() - t_start),)
-    sleep(1)
+        accel.terminate()
+        sendCommand( 'record' )
+
+        log( "Stop drive", options )
+        print "Drive elapsed time: %f" % ((time() - t_start),)
+        sleep(2)
 
 # Move the video file to the episode directory
-    if options.video:
-        if os.path.exists(video_path):
-            shutil.move( video_path, os.path.join(options.dir_ep, options.episode+".h264") )
-        else:
-            print "Video file is missing: %s" % (video_path,)
+        if options.video:
+            if os.path.exists(video_path):
+                shutil.move( video_path, os.path.join(options.dir_ep, options.episode+".h264") )
+            else:
+                print "Video file is missing: %s" % (video_path,)
 
-    print "Writing Episode Data"    
-    pkg = packageImages( images, actions, action_times, accel.read(), options )
-    images_filename = os.path.join( options.dir_ep, options.episode + "_episode.pickle" )
-    with open(images_filename, 'wb') as f:
-        pickle.dump( pkg, f, pickle.HIGHEST_PROTOCOL)
-    print "Finished Writing Episode Data"    
+        accel_data = []
+        with open(accel_path, 'rb') as f:
+            accel_data = pickle.load( f )
 
-def packageImages( images, actions, action_times, accel_data, options ):
-    image_pkg = { }
-    image_pkg["episode"] = options.episode
-    image_pkg["format"] = options.im_format
-    image_pkg["date"] = datetime.datetime.now()
-    image_pkg["model"] = options.model_name
-    image_pkg["actions"] = actions
-    image_pkg["action_times"] = action_times
-    image_pkg["accelerometer"] = accel_data
-    if options.im_format == "numpy":
-        image_pkg["images"] = images
-    elif options.im_format == "jpeg":
-        jpegs = []
-        for image in images:
-            output = cStringIO.StringIO()
-            jpeg = misc.imsave(output, image, format='jpeg')
-            jpegs.append(jpeg)
-        image_pkg["images"] = jpegs
-    return image_pkg
+        print "Writing Episode Data"    
+        pkg = self.packageImages( images, actions, action_times, accel_data, options )
+        images_filename = os.path.join( options.dir_ep, options.episode + "_episode.pickle" )
+        with open(images_filename, 'wb') as f:
+            pickle.dump( pkg, f, pickle.HIGHEST_PROTOCOL)
+        print "Finished Writing Episode Data"    
 
-def testImages( options ):
-    with PiVideoStream( resolution=(480,480), imsize=79 ) as vs:
-        vs.start()
-        sleep(1) # seems to be necessary
-
-#        vs.startVideo("")
-#        sleep(2)
-        vs.camera.annotate_text = "Text 1"
-
-        images = []
-        for x in range(options.steps):
-            (image, pre) = vs.read()
-            if image is not None:
-                images.append( image )
-        print vs.camera.recording
-        print "Collected %d images" % (len(images),)
-#        sleep(2)
-#        vs.camera.annotate_text = "Text 2"
-#        sleep(6)
-#        vs.stopVideo("")
-
-        fnameFormat = "test/image_%d.jpeg"
-        for idx, image in enumerate(images):
-            fname = fnameFormat % (idx,)
-            jpeg = misc.imsave( fname, image, format='jpeg')
-
-#    #vs.stop()
-#    print "Collected images"
-#
-#    if not os.path.exists(options.dir_ep):
-#        os.makedirs(options.dir_ep)
-#
-#    options.im_format = "numpy"
-#    t_start = time()
-#    pkg = packageImages( images, [], options )
-#    t1 = time()
-#    print "Writing images"    
-#    images_filename = os.path.join( options.dir_ep, options.episode + "_episode.pickle" )
-#    with open(images_filename, 'wb') as f:
-#        pickle.dump( pkg, f, pickle.HIGHEST_PROTOCOL)
-#    t2 = time()
-#    print "Finished Writing %d images" % (len(images),)
-#    print "prepare: %f\n  write: %f" % (t1 - t_start, t2 - t1)
+    def packageImages(self, images, actions, action_times, accel_data, options ):
+        image_pkg = { }
+        image_pkg["episode"] = options.episode
+        image_pkg["format"] = options.im_format
+        image_pkg["date"] = datetime.datetime.now()
+        image_pkg["model"] = "Manual Drive"
+        image_pkg["actions"] = actions
+        image_pkg["action_times"] = action_times
+        image_pkg["accelerometer"] = accel_data
+        if options.im_format == "numpy":
+            image_pkg["images"] = images
+        elif options.im_format == "jpeg":
+            jpegs = []
+            for image in images:
+                output = cStringIO.StringIO()
+                jpeg = misc.imsave(output, image, format='jpeg')
+                jpegs.append(jpeg)
+            image_pkg["images"] = jpegs
+        return image_pkg
 
 def getOptions():
-    usage = "Usage: python ./episode.py [--name=<ep name>] <model name>"
+    usage = "Usage: python ./drive.py [options]"
     parser = OptionParser()
     parser.add_option("-e","--episode", help="Episode Name. Used for episode related file names. Defaults to date/time.");
-    parser.add_option("-i","--initialize", action="store_true", default=False, help="Initialize cnn and lstm models, save them to <model name>.pickle, then exit.");
     parser.add_option("--dir_ep", help="Directory for saving all episode related files. Defaults to episode name.");
-    parser.add_option("-d","--dir_model", default="", help="Directory for finding/initializing model files. Defaults to current directory.");
-    parser.add_option("-s","--steps", type="int", default=30, help="Number of steps to run. Defaults to 30.");
     parser.add_option("--test_only", action="store_true", default=False, help="Run tests, then exit.");
     parser.add_option("--video", action="store_true", default=False, help="Record video during an episode.");
+    parser.add_option("-s","--steps", type="int", default=300, help="Number of steps to run. Defaults to 300.");
 
     (options, args) = parser.parse_args()
 
-    if len(args) != 1:
-        print usage
-        exit()
-
     if not options.episode:
         n = datetime.datetime.now()
-        options.episode = n.strftime('%Y%m%d_%H%M%S') 
+        options.episode = n.strftime('drive_%Y%m%d_%H%M%S') 
 
     if not options.dir_ep:
         options.dir_ep = options.episode
@@ -276,12 +211,6 @@ def getOptions():
         options.dir_ep = os.path.join( options.dir_ep, options.episode )
 
     options.dir_ep = os.path.expanduser(options.dir_ep)
-    options.dir_model = os.path.expanduser(options.dir_model)
-
-    if args[0].endswith('.pickle'):
-        args[0] = args[0][:-7]
-
-    options.model_name = args[0]
 
     # Hard code this for now
     options.im_format = "numpy"
@@ -289,16 +218,12 @@ def getOptions():
     return (options, args)
 
 def test(options):
-    #print options.dir_ep
-    #print options.dir_model
-    if options.video:
-        print "Video"
-    else:
-        print "No video"
-    #testImages( options )
-    #accel = accelerometer.Accelerometer()
-    #with Motors() as motor:
-    #    motor.stop()
+    cwd = os.getcwd()
+    print( cwd )
+    actions_path = os.path.join( options.dir_ep, options.episode+"_actions.text" )
+    print( actions_path )
+    actions_path = os.path.abspath(actions_path)
+    print( actions_path )
     exit()
 
 if __name__ == "__main__":
@@ -307,9 +232,5 @@ if __name__ == "__main__":
     if options.test_only:
         test(options)
 
-    if options.initialize:
-        print "Initializing cnn and lstm models..."
-        initializeModel( options )
-        exit()
-
-    runEpisode( options )
+    with Drive() as adrive:
+        adrive.startDriving( options )
