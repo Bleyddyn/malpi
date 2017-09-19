@@ -100,7 +100,6 @@ def test(tmodel, env, options):
         episode_reward = 0
         state = env.reset()
         state = prepro(state)
-        state = np.stack([state] * 4, axis=0)
         done = False
         steps = 0
         while not done:
@@ -115,15 +114,11 @@ def test(tmodel, env, options):
                     reward += r
                     if d: done = True
                     observation = prepro(observation)
-                    next_state[i,:,:] = observation
+                    next_state = observation
             else:
                 observation, reward, done, info = env.step(action)
                 observation = prepro(observation)
-                next_state = copy.deepcopy(state)
-                next_state[0,:,:] = next_state[1,:,:]
-                next_state[1,:,:] = next_state[2,:,:]
-                next_state[2,:,:] = next_state[3,:,:]
-                next_state[3,:,:] = observation # 2.22372381e-05 seconds for all four
+                next_state = observation
 
             state = next_state
             episode_reward += reward
@@ -178,7 +173,6 @@ def train(behavior, env, options):
 
     observation = env.reset()
     state = prepro(observation)
-    state = np.stack([state] * 4, axis=0)
 
     exp_history = Experience2( 2000, state.shape )
 
@@ -198,9 +192,10 @@ def train(behavior, env, options):
             f.write( "%s = %s\n" % ('clip_error',str(clip_error)) )
             f.write( "\n" )
 
+    ep_start = time.time()
     while (options.max_episodes == 0) or (episode_number < options.max_episodes):
         if options.render: env.render()
-  
+ 
         action = choose_epsilon_greedy( behavior, state.reshape(1,84,84,4), epsilon, num_actions )
         #action = np.random.randint(num_actions)
         action_counts[action] += 1
@@ -216,16 +211,12 @@ def train(behavior, env, options):
                 reward += r
                 if d: done = True
                 observation = prepro(observation) #  1.22250773e-03 seconds
-                next_state[i,:,:] = observation
+                next_state = observation
         else:
             observation, reward, done, info = env.step(action)
             observation = prepro(observation) #  1.22250773e-03 seconds
-            next_state = copy.deepcopy(state) # 5.87693955e-05 seconds
-            next_state[0,:,:] = next_state[1,:,:]
-            next_state[1,:,:] = next_state[2,:,:]
-            next_state[2,:,:] = next_state[3,:,:]
-            next_state[3,:,:] = observation # 2.22372381e-05 seconds for all four
-  
+            next_state = observation
+ 
         reward_sum += reward
         steps += ksteps
         episode_steps += ksteps
@@ -281,20 +272,26 @@ def train(behavior, env, options):
             #print( "========" )
   
         if done: # an episode finished
+            ep_start = time.time()
+
             episode_number += 1
             point = 0
    
             reward_100.append(reward_sum)
-  
+
             print( 'Reward for Ep %d %0.2f  %0.2f' % ( episode_number, reward_sum, np.mean(reward_100) ) )
                                                                                 
             if not options.play:
                 if episode_number % update_rate == 0:
+                    print( "Time 9 {}".format( time.time() - ep_start ) ) 
                     with open( os.path.join( options.dir_model, target.name+ ".txt" ), 'a+') as f:
                         f.write( "%d,%f\n" % (episode_number, np.mean(reward_100) ) )
+                    print( "Time 10 {}".format( time.time() - ep_start ) ) 
 
                     sess.run(update_target)
+                    print( "Time 11 {}".format( time.time() - ep_start ) ) 
                     save_model( target, options.dir_model, options.model_name )
+                    print( "Time 12 {}".format( time.time() - ep_start ) ) 
 
                     treward = np.mean(reward_100) # test(target, env, options)
 
@@ -315,19 +312,19 @@ def train(behavior, env, options):
                 if epsilon > 0.1:
                     epsilon *= epsilon_decay
 
+            print( "Time 13 {}".format( time.time() - ep_start ) ) 
             action_counts = np.zeros(env.action_space.n)
             reward_sum = 0
             episode_steps = 0
             observation = env.reset()
             state = prepro(observation)
-            state = np.stack([state] * 4, axis=0)
+            print( "Time 14 {}".format( time.time() - ep_start ) ) 
+        
+        print( "Time end {}".format( time.time() - ep_start ) ) 
+        ep_start = time.time()
   
-#        if reward != 0: # Pong has either +1 or -1 reward exactly when game ends.
-#          point += 1
-#          print( ('ep %d, points %d, steps %d, reward: %f' % (episode_number, point, steps, reward)) )
-#          steps = 0
-
     if not options.play:
+        print( "Writing final test scores." )
         with open( os.path.join( options.game + ".txt" ), 'a+') as f:
             f.write( "%s = %f\n" % ('Final epsilon', epsilon) )
             f.write( "%s = %f\n" % ('Best test score', best_test) )
@@ -383,6 +380,10 @@ if __name__ == "__main__":
             print( "Model already exists at " + filename )
             print( "Delete the existing file or don't use the --initialize/-i flag." )
             exit()
+
+        if not os.path.exists(options.dir_model):
+            os.makedirs(options.dir_model)
+
         print( "Initializing model with %d actions..." % (nA,) )
         model = initializeModel( options.model_name, nA )
         model.env = options.game
