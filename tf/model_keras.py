@@ -27,17 +27,13 @@ def make_model( num_actions, input_dim, l2_reg=0.005, model_name="orig" ):
         print( "Invalid model name. Options are: lstm, flat, orig" )
         return None
 
-def make_model_lstm( num_actions, input_dim, batch_size, timesteps, l2_reg=0.005 ):
+def make_model_lstm( num_actions, input_dim, timesteps, l2_reg=0.005 ):
+    input_shape=(timesteps,) + input_dim
     model = Sequential()
-    model.add( Flatten(input_shape=input_dim) )
-    model.add( LSTM(50, input_shape=(1,1,np.prod(input_dim)), stateful=False, return_sequences=True) )
-    #model.add( LSTM(50, input_shape=(1,np.prod(input_dim))) )
-    #model.add( TimeDistributed( LSTM(50), input_shape=(batch_size,timesteps,input_dim[0],input_dim[1]) ) )
-    model.add( Dense(num_actions, activation='softmax', kernel_regularizer=regularizers.l2(l2_reg)) )
-
-    model.compile(loss='categorical_crossentropy',
-                  optimizer='adam' )
-#                  metrics=['accuracy'])
+    model.add(TimeDistributed(Flatten(),input_shape=input_shape))
+    model.add(LSTM(200, activation='relu'))
+    model.add(Dense(num_actions, activation='softmax', kernel_regularizer=regularizers.l2(l2_reg)))
+    model.compile(loss='categorical_crossentropy', optimizer='adam' )
 
     return model
 
@@ -65,11 +61,20 @@ def make_model_orig( num_actions, input_dim, l2_reg=0.005 ):
     model.add(Dropout(0.5))
     model.add(Dense(num_actions, activation='softmax', kernel_regularizer=regularizers.l2(l2_reg)))
 
-    model.compile(loss='categorical_crossentropy',
-                  optimizer='adam' )
-#                  metrics=['accuracy'])
+    model.compile(loss='categorical_crossentropy', optimizer='adam' )
 
     return model
+
+def make_model_doom(num_actions, timesteps, input_dim, l2_reg=0.005 ):
+    input_shape=(timesteps,) + input_dim
+    print( input_shape )
+    model = Sequential()
+    model.add(TimeDistributed( Convolution2D(16, (3, 3), strides=(2,2), activation='relu', kernel_regularizer=regularizers.l2(l2_reg) ), input_shape=input_shape) )
+    model.add(TimeDistributed( Convolution2D(32, (3, 3), strides=(2,2), activation='relu', kernel_regularizer=regularizers.l2(l2_reg)) ))
+    model.add(TimeDistributed(Flatten()))
+    model.add(LSTM(512, activation='relu', unroll=True))
+    model.add(Dense(num_actions, activation='softmax', kernel_regularizer=regularizers.l2(l2_reg)))
+    model.compile(loss='categorical_crossentropy', optimizer='adam' )
 
 def build_policy_and_value_networks(num_actions, agent_history_length, resized_width, resized_height):
     with tf.device("/cpu:0"):
@@ -114,10 +119,12 @@ def read_model( model_dir, model_name ):
     return model
 
 if __name__ == "__main__":
-#    model = make_model( 6, (84,84,4), model_name="flat")
-#    model.summary()
-#    print("")
-#    model = make_model( 6, (84,84,4), model_name="orig")
-#    model.summary()
-    model = make_model_lstm( 6, (84,84), 32, 10 )
+    model = make_model( 6, (84,84,4), model_name="flat")
     model.summary()
+#    print("")
+    model = make_model( 6, (84,84,4), model_name="orig")
+    model.summary()
+    model = make_model_lstm( 6, (84,84), 10 )
+    model.summary()
+    #model = make_model_doom( 6, 10, (84,84,3) )
+    #model.summary()
