@@ -3,20 +3,18 @@ from time import time
 from time import sleep
 import datetime
 from optparse import OptionParser
-import cStringIO
 import io
 import shutil
 from subprocess import Popen, PIPE, STDOUT
 import signal
 import pickle
 import socket
+from threading import Thread, Lock
 
 import numpy as np
-from scipy import ndimage
-from scipy import misc
 
 from accelerometer import accelerometer
-from PiVideoStream import PiVideoStream
+#from PiVideoStream import PiVideoStream
 
 try:
     import config
@@ -33,61 +31,26 @@ def log( message, options ):
     with open(logFileName,'a') as outf:
         outf.write(datestr + ": " + message + "\n")
 
-def getOneTestImage(imsize):
-    image = ndimage.imread('test_data/image.jpeg')
-#image.shape (480, 720, 3)
-    image = image.transpose(2,1,0)
-    # shape = (3, 720, 480)
-    min = (720 - 480) / 2
-    image = image[:,min:min+480,:]
-    image = misc.imresize(image,(imsize,imsize))
-    # shape = (3, 480, 480)
-    image = image.reshape(1,3,imsize,imsize)
-    image = image.astype(np.float32)
-    return image
-
-def crop_center( img, cropx, cropy):
-    y,x = img.shape
-    startx = x//2-(cropx//2)
-    starty = y//2-(cropy//2)    
-    return img[starty:starty+cropy,startx:startx+cropx]
-
-def preprocessOneImage(image, imsize):
-#image.shape (480, 720, 3)
-    image = image.transpose(2,1,0)
-#    width = image.shape[1]
-    # shape = (3, 720, 480)
-#    if width > 480:
-#        min = (width - 480) / 2
-#        image = image[:,min:min+480,:]
-#    image = misc.imresize(image,(imsize,imsize))
-    # shape = (3, imsize, imsize)
-    image = image.reshape(1,3,imsize,imsize)
-    image = image.astype(np.float32)
-    return image
-
-""" To save non-preprocessed images as jpeg:
-misc.imsave('frame2.jpeg', images[2,:,:,:])
-misc.imsave('frame5.jpeg', images[5,:,:,:])
-"""
-def sendCommand( command ):
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        host ="127.0.0.1"
-        port = 12345
-        s.connect((host,port))
-        s.send(command.encode()) 
-        s.close()
-    except Exception as inst:
-        return False
-
-    return True
-
 class Drive:
-    def __init__(self):
+    def __init__(self, drive_dir, video_path=None, camera=None, image_delay=None):
+        """ drive_dir: directory where all data will be saved
+            video_path: location of the saved video file, e.g. /var/ramdrive/video.h264. Will be moved into drive_dir
+            camera: A instance of PiVideoStream
+            image_delay: time between capturing images, in seconds
+        """
         self.stopped = False
-        signal.signal(signal.SIGINT, self.stop)
-        signal.signal(signal.SIGTERM, self.stop)
+        self.drive_dir = drive_dir
+        self.video_path = video_path
+        self.camera = camera
+        self.image_delay = image_delay
+
+        self.images = []
+        self.image_times = []
+        self.actions = []
+        self.action_times = []
+
+    def setVideoFilename(filename):
+        self.video_path = filename
 
     def __enter__(self):
         return self
@@ -99,95 +62,73 @@ class Drive:
     def stop(self,signum=0,frame=0):
         # indicate that the thread should be stopped
         self.stopped = True
+        if self.accel:
+            self.accel.terminate()
+            self.accel = None
+        if self.camera:
+            self.camera.stopVideo()
 
-    def startDriving( self, options ):
-        if not os.path.exists(options.dir_ep):
-            os.makedirs(options.dir_ep)
-        video_path = os.path.join( config.directories['video'], options.episode+".h264" )
+    def addAction(self,action):
+        self.actions.append(action)
+        self.action_times.append(time())
 
-        images = []
-        actions = []
-        action_times = []
+    def addImage(self,image,format='numpy'):
+        if format == 'jpeg':
+            #convert to numpy
+            pass
+        self.images.append(image)
+        self.image_times.append(time())
 
-        framerate = 32
-        brightness = 60
-        imsize = 120
-        log( 'Camera framerate: ' + str(framerate), options )
-        log( 'Camera brightness: ' + str(brightness), options )
-
-        actions_path = os.path.abspath( os.path.join( options.dir_ep, options.episode+"_actions.text" ) )
-
-        accel_path = os.path.join( options.dir_ep, options.episode+".accel" )
-        accel = Popen(['./accelerometer/accelerometer.py', accel_path])
-
-        with PiVideoStream( resolution=(480,480), imsize=imsize, framerate=framerate, brightness=brightness ) as vs:
-            vs.start()
-            sleep(1) # Let the camera warm up
-
-            log( "Start drive", options )
-
-            if options.video:
-                vs.startVideo(video_path)
-
-            sendCommand( 'record ' + actions_path )
-
-            print( "Start driving!!!" )
-
-            t_start = time()
-            time_steps = options.steps
-            for x in range(time_steps):
-                (full,image) = vs.read()
+    def captureImage( self ):
+        while not self.stopped:
+            sleep(self.image_delay)
+            if self.camera and not self.stopped:
+                (full,_) = self.camera.read()
                 if full is not None:
-                    images.append( full )
-                sleep(0.1)
-
-                if self.stopped:
-                    break
-            vs.stop()
-
-        accel.terminate()
-        sendCommand( 'record' )
-
-        log( "Stop drive", options )
-        print "Drive elapsed time: %f" % ((time() - t_start),)
-        sleep(2)
-
-# Move the video file to the episode directory
-        if options.video:
-            if os.path.exists(video_path):
-                shutil.move( video_path, os.path.join(options.dir_ep, options.episode+".h264") )
+                    self.images.append( full )
+                    self.image_times.append( time() )
             else:
-                print "Video file is missing: %s" % (video_path,)
+                return
 
+    def startDriving( self ):
+        if not os.path.exists(self.drive_dir):
+            os.makedirs(self.drive_dir)
+
+        self.accel_path = os.path.join( self.drive_dir, "accel.pkl" )
+        self.accel = Popen([config.directories['accelerometer_script'], self.accel_path])
+        if self.camera:
+            if self.image_delay and self.image_delay > 0.0:
+                Thread(target=self.captureImage, args=()).start()
+            self.camera.startVideo(self.video_path)
+
+    def endDriving( self ):
+        self.stop()
         accel_data = []
-        with open(accel_path, 'rb') as f:
-            accel_data = pickle.load( f )
+        sleep(1) 
+        try:
+            with open(self.accel_path, 'rb') as f:
+                accel_data = pickle.load( f )
+        except:
+            pass
+        self.accel_path = None
 
-        print "Writing Episode Data"    
-        pkg = self.packageImages( images, actions, action_times, accel_data, options )
-        images_filename = os.path.join( options.dir_ep, options.episode + "_episode.pickle" )
+        print( "Images {}".format( len(self.images) ) )
+        pkg = self.packageImages( self.images, self.image_times, self.actions, self.action_times, accel_data )
+        images_filename = os.path.join( self.drive_dir, "drive.pickle" )
         with open(images_filename, 'wb') as f:
             pickle.dump( pkg, f, pickle.HIGHEST_PROTOCOL)
-        print "Finished Writing Episode Data"    
+        if os.path.exists(self.video_path):
+            shutil.move( self.video_path, os.path.join( self.drive_dir, "drive_video.h264") )
 
-    def packageImages(self, images, actions, action_times, accel_data, options ):
+    def packageImages(self, images, image_times, actions, action_times, accel_data ):
         image_pkg = { }
-        image_pkg["episode"] = options.episode
-        image_pkg["format"] = options.im_format
         image_pkg["date"] = datetime.datetime.now()
         image_pkg["model"] = "Manual Drive"
         image_pkg["actions"] = actions
         image_pkg["action_times"] = action_times
         image_pkg["accelerometer"] = accel_data
-        if options.im_format == "numpy":
-            image_pkg["images"] = images
-        elif options.im_format == "jpeg":
-            jpegs = []
-            for image in images:
-                output = cStringIO.StringIO()
-                jpeg = misc.imsave(output, image, format='jpeg')
-                jpegs.append(jpeg)
-            image_pkg["images"] = jpegs
+        image_pkg["images"] = images
+        image_pkg["image_times"] = image_times
         return image_pkg
 
 def getOptions():

@@ -81,7 +81,7 @@ def _sendMotorCommand(command):
         s.close()
     except Exception as inst:
         error_string = "Error in sendMotorCommand: %s" % str(inst)
-        print error_string
+        print( error_string )
 
         Thread(target=self.update, args=()).start()
         return self
@@ -107,7 +107,7 @@ def _crashes():
 
 def _test():
     accel = Accelerometer()
-    print "ADXL345 on address 0x%x:" % (accel.adxl345.address)
+    print( "ADXL345 on address 0x%x:" % (accel.adxl345.address) )
     t_start = time()
     accel.start()
     t1 = time()
@@ -127,14 +127,14 @@ def _test():
     with open(filename, 'wb') as f:
         pickle.dump( results, f, pickle.HIGHEST_PROTOCOL)
 
-    print "Per second: %d/%f = %f" % ( accel.count, accel.elapsed, accel.count / accel.elapsed )
-    print "Timing: %f - %f - %f - %f - %f" % (t1-t_start, t2-t1, t3-t2, t4-t3, t5-t4)
-    print "%f %f" % (t3, accel.t_end)
-#Timing: 2.580505 - 3.181781 - 0.000015 - 0.100149 - 0.000010
-    print results[0]
-    print results[1]
-    print results[2]
-    print results[3]
+    print( "Per second: %d/%f = %f" % ( accel.count, accel.elapsed, accel.count / accel.elapsed ) )
+    print( "Timing: %f - %f - %f - %f - %f" % (t1-t_start, t2-t1, t3-t2, t4-t3, t5-t4) )
+    print( "%f %f" % (t3, accel.t_end) )
+#Timing: 2.580505 - 3.181781 - 0.000015 - 0.100149 - 0.000010 )
+    print( results[0] )
+    print( results[1] )
+    print( results[2] )
+    print( results[3] )
 
 def parseArguments():
     parser = argparse.ArgumentParser(description='Record accelerometer data until interrupted, then save to file.')

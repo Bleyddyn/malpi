@@ -101,6 +101,6 @@ class PiVideoStream:
 
         self.camera.start_recording(filename)
 
-    def stopVideo(self, filename):
+    def stopVideo(self, filename=None):
         if self.camera.recording:
             self.camera.stop_recording()
