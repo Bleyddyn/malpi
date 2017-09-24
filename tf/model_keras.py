@@ -7,6 +7,7 @@ Keras examples: https://github.com/fchollet/keras/tree/master/examples
 import os
 import numpy as np
 import json
+import time
 
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation, Flatten, Input
@@ -67,14 +68,15 @@ def make_model_orig( num_actions, input_dim, l2_reg=0.005 ):
 
 def make_model_doom(num_actions, timesteps, input_dim, l2_reg=0.005 ):
     input_shape=(timesteps,) + input_dim
-    print( input_shape )
     model = Sequential()
-    model.add(TimeDistributed( Convolution2D(16, (3, 3), strides=(2,2), activation='relu', kernel_regularizer=regularizers.l2(l2_reg) ), input_shape=input_shape) )
+    model.add(TimeDistributed( Convolution2D(8, (3, 3), strides=(2,2), activation='relu', kernel_regularizer=regularizers.l2(l2_reg) ), input_shape=input_shape) )
+    model.add(TimeDistributed( Convolution2D(16, (3, 3), strides=(2,2), activation='relu', kernel_regularizer=regularizers.l2(l2_reg)) ))
     model.add(TimeDistributed( Convolution2D(32, (3, 3), strides=(2,2), activation='relu', kernel_regularizer=regularizers.l2(l2_reg)) ))
     model.add(TimeDistributed(Flatten()))
     model.add(LSTM(512, activation='relu', unroll=True))
     model.add(Dense(num_actions, activation='softmax', kernel_regularizer=regularizers.l2(l2_reg)))
     model.compile(loss='categorical_crossentropy', optimizer='adam' )
+    return model
 
 def build_policy_and_value_networks(num_actions, agent_history_length, resized_width, resized_height):
     with tf.device("/cpu:0"):
@@ -119,12 +121,40 @@ def read_model( model_dir, model_name ):
     return model
 
 if __name__ == "__main__":
-    model = make_model( 6, (84,84,4), model_name="flat")
-    model.summary()
-#    print("")
-    model = make_model( 6, (84,84,4), model_name="orig")
-    model.summary()
-    model = make_model_lstm( 6, (84,84), 10 )
-    model.summary()
+    #model = make_model( 6, (84,84,4), model_name="flat")
+    #model.summary()
+    #model = make_model( 6, (84,84,4), model_name="orig")
+    #model.summary()
     #model = make_model_doom( 6, 10, (84,84,3) )
     #model.summary()
+
+    model_name = "test_speed"
+    t_start = time.time()
+    if os.path.exists( model_name + ".hdf5" ):
+        print( "Reading model" )
+        model = read_model( ".", model_name )
+    else:
+        print( "Making model" )
+        #model = make_model_lstm( 6, (84,84), 10 )
+        model = make_model_doom( 6, 10, (84,84,3) )
+        save_model( model, ".", model_name )
+    print( "   {} seconds".format( time.time() - t_start ) )
+
+    model.summary()
+
+    batch = np.random.uniform( low=0, high=255, size=(1,10,84,84,3) )
+    pred = model.predict( batch, batch_size=1 )
+    print( pred )
+
+    t_start = time.time()
+    batch = np.random.uniform( low=0, high=255, size=(1,10,84,84,3) )
+    for i in range(10):
+        pred = model.predict( batch, batch_size=1 )
+
+    print( "10 cycles in {} seconds".format( time.time() - t_start ) )
+
+    # lstm with 200 nodes: 10 cycles in 1.6962685585021973 seconds
+# lstm with 2 conv layers (strides 2): 10 cycles in 8.055421829223633 seconds
+# lstm with 3 conv layers (strides 2): 10 cycles in 2.724311590194702 seconds
+
+

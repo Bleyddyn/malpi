@@ -6,7 +6,6 @@ from optparse import OptionParser
 import io
 import shutil
 from subprocess import Popen, PIPE, STDOUT
-import signal
 import pickle
 import socket
 from threading import Thread, Lock
@@ -112,7 +111,6 @@ class Drive:
             pass
         self.accel_path = None
 
-        print( "Images {}".format( len(self.images) ) )
         pkg = self.packageImages( self.images, self.image_times, self.actions, self.action_times, accel_data )
         images_filename = os.path.join( self.drive_dir, "drive.pickle" )
         with open(images_filename, 'wb') as f:

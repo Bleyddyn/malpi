@@ -56,9 +56,8 @@ class PiVideoStream:
             self.rawCapture.truncate(0)
 
             # if the thread indicator variable is set, stop the thread
-            # and resource camera resources
             if self.stopped:
-                print "Stopping PiVideoStream"
+                print( "Stopping PiVideoStream" )
                 self.stream.close()
                 self.rawCapture.close()
                 if self.camera.recording:
