@@ -241,7 +241,11 @@ def train(target, env, options):
             f.write( "   %s = %f\n" % ('update frequency',optim.upd_frequency) )
             f.write( "\n" )
 
+    ep_start = time.time()
     while (options.max_episodes == 0) or (episode_number < options.max_episodes):
+        print( "Time step {}".format( time.time() - ep_start ) )
+        ep_start = time.time()
+
         if options.render: env.render()
   
         action = choose_epsilon_greedy( behavior, state.reshape(1,4,84,84), epsilon, num_actions )
@@ -278,7 +282,7 @@ def train(target, env, options):
         state = next_state
   
         if not options.play and (exp_history.size() > (batch_size * 5)):
-            states, actions, rewards, batch_done, new_states = exp_history.batch( batch_size )
+            states, actions, rewards, batch_done, new_states, _ = exp_history.batch( batch_size )
             actions = actions.astype(np.int)
   
             #onehot = np.zeros( (batch_size,actions.shape[0]) )
