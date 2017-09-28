@@ -11,11 +11,12 @@ import time
 
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation, Flatten, Input
-from keras.layers import Convolution2D, MaxPooling2D
+from keras.layers import Convolution2D, MaxPooling2D, Reshape
 from keras.layers.recurrent import LSTM
 from keras import regularizers
 from keras.models import model_from_json
 from keras.layers.wrappers import TimeDistributed
+from keras.utils import to_categorical
 
 def make_model( num_actions, input_dim, l2_reg=0.005, model_name="orig" ):
     if model_name == "lstm":
@@ -67,13 +68,15 @@ def make_model_orig( num_actions, input_dim, l2_reg=0.005 ):
     return model
 
 def make_model_doom(num_actions, timesteps, input_dim, l2_reg=0.005 ):
+    # From https://github.com/itaicaspi/keras-dqn-doom/blob/833a56dd13266977c1b1d0083e3827027cd140fb/main.py
     input_shape=(timesteps,) + input_dim
     model = Sequential()
     model.add(TimeDistributed( Convolution2D(8, (3, 3), strides=(2,2), activation='relu', kernel_regularizer=regularizers.l2(l2_reg) ), input_shape=input_shape) )
     model.add(TimeDistributed( Convolution2D(16, (3, 3), strides=(2,2), activation='relu', kernel_regularizer=regularizers.l2(l2_reg)) ))
     model.add(TimeDistributed( Convolution2D(32, (3, 3), strides=(2,2), activation='relu', kernel_regularizer=regularizers.l2(l2_reg)) ))
-    model.add(TimeDistributed(Flatten()))
-    model.add(LSTM(512, activation='relu', unroll=True))
+    #model.add(TimeDistributed(Flatten()))
+    model.add( Reshape( (timesteps,(9*9*32)) ) )
+    model.add(LSTM(512, return_sequences=True, activation='relu', unroll=True))
     model.add(Dense(num_actions, activation='softmax', kernel_regularizer=regularizers.l2(l2_reg)))
     model.compile(loss='categorical_crossentropy', optimizer='adam' )
     return model
@@ -130,7 +133,7 @@ if __name__ == "__main__":
 
     model_name = "test_speed"
     t_start = time.time()
-    if os.path.exists( model_name + ".hdf5" ):
+    if False and os.path.exists( model_name + ".hdf5" ):
         print( "Reading model" )
         model = read_model( ".", model_name )
     else:
@@ -142,7 +145,21 @@ if __name__ == "__main__":
 
     model.summary()
 
+    batch = np.random.uniform( low=0, high=255, size=(16,10,84,84,3) )
+    y = np.random.randint( 0, high=5, size=(160) )
+    y = to_categorical( y, num_classes=6 )
+    y = y.reshape( 16, 10, 6 )
+# stateful should be false here
+    pred = model.train_on_batch( batch, y )
+
+    # This works, but...
     batch = np.random.uniform( low=0, high=255, size=(1,10,84,84,3) )
+    pred = model.predict( batch, batch_size=1 )
+    print( pred )
+
+    # This is what I would need to do on my robot, with the LSTM keeping state between calls
+# stateful should be true here
+    batch = np.random.uniform( low=0, high=255, size=(1,1,84,84,3) )
     pred = model.predict( batch, batch_size=1 )
     print( pred )
 
