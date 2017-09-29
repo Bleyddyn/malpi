@@ -39,7 +39,7 @@ def stats(arr, msg=""):
 def initializeModel( name, number_actions, input_dim=(84,84,4) ):
     #model = make_model( number_actions, input_dim )
     timesteps = 10
-    model = make_model_lstm( num_actions, input_dim, timesteps )
+    model = make_model_lstm( num_actions, input_dim )
     model.name = name
     return model
 
@@ -81,7 +81,7 @@ def choose_epsilon_greedy( estimator, observation, epsilon, nA ):
     if np.random.random() < epsilon:
         return np.random.randint(nA)
     else:
-        q_values = estimator.predict_on_batch( observation )
+        q_values = estimator.predict( observation, batch_size=1 )
         return np.argmax(q_values[0])
 
 def check_weights( model ):
@@ -200,7 +200,7 @@ def train(behavior, env, options):
     while (options.max_episodes == 0) or (episode_number < options.max_episodes):
         if options.render: env.render()
  
-        action = choose_epsilon_greedy( behavior, state.reshape(1,84,84,4), epsilon, num_actions )
+        action = choose_epsilon_greedy( behavior, state.reshape(1,1,84,84,3), epsilon, num_actions )
         #action = np.random.randint(num_actions)
         action_counts[action] += 1
   
@@ -226,14 +226,14 @@ def train(behavior, env, options):
         episode_steps += ksteps
  
         if not options.play: 
-            exp_history.save( state.reshape(84,84,4), action, reward, done, next_state.reshape(84,84,4) )
+            exp_history.save( state.reshape(84,84,3), action, reward, done, next_state.reshape(84,84,3) )
         state = next_state
   
         if not options.play and (exp_history.size() > (batch_size * 5)):
             states, actions, rewards, batch_done, new_states, _ = exp_history.batch( batch_size )
             actions = actions.astype(np.int)
   
-            target_values = target.predict_on_batch( states )
+            target_values = target.predict( states, batch_size=batch_size )
   
             double_dqn = True
             if double_dqn:

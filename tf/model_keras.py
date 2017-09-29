@@ -2,6 +2,11 @@
 From: https://elitedatascience.com/keras-tutorial-deep-learning-in-python
 DonkeyCar: https://github.com/wroscoe/donkey/blob/master/donkeycar/parts/ml/keras.py
 Keras examples: https://github.com/fchollet/keras/tree/master/examples
+
+https://machinelearningmastery.com/understanding-stateful-lstm-recurrent-neural-networks-python-keras/
+
+This looks good, except that he states it doesn't work :(
+https://github.com/dat-ai/steering-model/blob/master/model/DatNet.py
 """
 
 import os
@@ -29,11 +34,11 @@ def make_model( num_actions, input_dim, l2_reg=0.005, model_name="orig" ):
         print( "Invalid model name. Options are: lstm, flat, orig" )
         return None
 
-def make_model_lstm( num_actions, input_dim, timesteps, l2_reg=0.005 ):
-    input_shape=(timesteps,) + input_dim
+def make_model_lstm( num_actions, input_dim, l2_reg=0.005 ):
+    input_shape=(1, None) + input_dim
     model = Sequential()
-    model.add(TimeDistributed(Flatten(),input_shape=input_shape))
-    model.add(LSTM(200, activation='relu'))
+    model.add(TimeDistributed(Flatten(),batch_input_shape=input_shape))
+    model.add(LSTM(200, activation='relu', stateful=True))
     model.add(Dense(num_actions, activation='softmax', kernel_regularizer=regularizers.l2(l2_reg)))
     model.compile(loss='categorical_crossentropy', optimizer='adam' )
 
