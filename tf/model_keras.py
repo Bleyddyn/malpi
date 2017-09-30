@@ -2,6 +2,8 @@
 From: https://elitedatascience.com/keras-tutorial-deep-learning-in-python
 DonkeyCar: https://github.com/wroscoe/donkey/blob/master/donkeycar/parts/ml/keras.py
 Keras examples: https://github.com/fchollet/keras/tree/master/examples
+
+Possible method using for loops: https://stackoverflow.com/questions/42629530/obtain-output-at-each-timestep-in-keras-lstm
 """
 
 import os
