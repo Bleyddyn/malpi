@@ -20,7 +20,7 @@ import tensorflow as tf
 #from malpi.optimizer import Optimizer
 from malpi.experience import Experience2
 
-from model_keras import make_model, read_model, save_model
+from model_keras import make_model, make_model_lstm, read_model, save_model
 from keras.models import clone_model
  
 #np.seterr(all='raise')
@@ -37,21 +37,25 @@ def stats(arr, msg=""):
     print( "%sMin/Max/Mean/Stdev abs(Min/Max): %g/%g/%g/%g %g/%g" % (msg,mi,ma,av,std,mi_abs,ma_abs) )
             
 def initializeModel( name, number_actions, input_dim=(84,84,4) ):
-    model = make_model( number_actions, input_dim )
+    #model = make_model( number_actions, input_dim )
+    timesteps = 10
+    model = make_model_lstm( num_actions, input_dim )
     model.name = name
     return model
 
 def sigmoid(x): 
   return 1.0 / (1.0 + np.exp(-x)) # sigmoid "squashing" function to interval [0,1]
 
-def prepro(I):
+def prepro(I, gray=True):
   """ prepro 210x160x3 uint8 frame into (84x84) float 
   """
 
   rgb_weights = [0.2989, 0.5870, 0.1140]
   I = I[35:195] # crop
   I = imresize(I, (84,84), interp='nearest' )
-  I = np.sum( I * rgb_weights, axis=2) # Convert to grayscale, shape = (84,84)
+  if gray:
+      I = np.sum( I * rgb_weights, axis=2) # Convert to grayscale, shape = (84,84)
+# else shape should be (84,84,3)
   return I.astype(np.float) / 255.0
   #return I.astype(np.float)
 
@@ -77,7 +81,7 @@ def choose_epsilon_greedy( estimator, observation, epsilon, nA ):
     if np.random.random() < epsilon:
         return np.random.randint(nA)
     else:
-        q_values = estimator.predict_on_batch( observation )
+        q_values = estimator.predict( observation, batch_size=1 )
         return np.argmax(q_values[0])
 
 def check_weights( model ):
@@ -172,7 +176,7 @@ def train(behavior, env, options):
         print( "Starting test score: %f" % (best_test,) )
 
     observation = env.reset()
-    state = prepro(observation)
+    state = prepro(observation, gray=False)
 
     exp_history = Experience2( 2000, state.shape )
 
@@ -196,7 +200,7 @@ def train(behavior, env, options):
     while (options.max_episodes == 0) or (episode_number < options.max_episodes):
         if options.render: env.render()
  
-        action = choose_epsilon_greedy( behavior, state.reshape(1,84,84,4), epsilon, num_actions )
+        action = choose_epsilon_greedy( behavior, state.reshape(1,1,84,84,3), epsilon, num_actions )
         #action = np.random.randint(num_actions)
         action_counts[action] += 1
   
@@ -205,16 +209,16 @@ def train(behavior, env, options):
         if ksteps > 1:
             reward = 0
             done = False
-            next_state = copy.deepcopy(state) # 5.87693955e-05 seconds
+            next_state = copy.deepcopy(state)
             for i in range(ksteps):
                 observation, r, d, info = env.step(action)
                 reward += r
                 if d: done = True
-                observation = prepro(observation) #  1.22250773e-03 seconds
+                observation = prepro(observation, gray=False)
                 next_state = observation
         else:
             observation, reward, done, info = env.step(action)
-            observation = prepro(observation) #  1.22250773e-03 seconds
+            observation = prepro(observation, gray=False)
             next_state = observation
  
         reward_sum += reward
@@ -222,14 +226,14 @@ def train(behavior, env, options):
         episode_steps += ksteps
  
         if not options.play: 
-            exp_history.save( state.reshape(84,84,4), action, reward, done, next_state.reshape(84,84,4) )
+            exp_history.save( state.reshape(84,84,3), action, reward, done, next_state.reshape(84,84,3) )
         state = next_state
   
         if not options.play and (exp_history.size() > (batch_size * 5)):
             states, actions, rewards, batch_done, new_states, _ = exp_history.batch( batch_size )
             actions = actions.astype(np.int)
   
-            target_values = target.predict_on_batch( states )
+            target_values = target.predict( states, batch_size=batch_size )
   
             double_dqn = True
             if double_dqn:
@@ -317,7 +321,7 @@ def train(behavior, env, options):
             reward_sum = 0
             episode_steps = 0
             observation = env.reset()
-            state = prepro(observation)
+            state = prepro(observation, gray=False)
             print( "Time 14 {}".format( time.time() - ep_start ) ) 
         
         print( "Time end {}".format( time.time() - ep_start ) ) 
