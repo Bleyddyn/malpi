@@ -23,6 +23,8 @@ from keras import regularizers
 from keras.models import model_from_json
 from keras.layers.wrappers import TimeDistributed
 from keras.utils import to_categorical
+from keras import optimizers
+from keras import metrics
 
 def make_model( num_actions, input_dim, l2_reg=0.005, model_name="orig" ):
     if model_name == "lstm":
@@ -35,13 +37,23 @@ def make_model( num_actions, input_dim, l2_reg=0.005, model_name="orig" ):
         print( "Invalid model name. Options are: lstm, flat, orig" )
         return None
 
-def make_model_lstm( num_actions, input_dim, l2_reg=0.005 ):
-    input_shape=(1, None) + input_dim
+def make_model_lstm( num_actions, input_dim, batch_size=1, timesteps=None, l2_reg=0.005 ):
+    input_shape=(batch_size,timesteps) + input_dim
     model = Sequential()
-    model.add(TimeDistributed(Flatten(),batch_input_shape=input_shape))
-    model.add(LSTM(200, activation='relu', stateful=True))
-    model.add(Dense(num_actions, activation='softmax', kernel_regularizer=regularizers.l2(l2_reg)))
-    model.compile(loss='categorical_crossentropy', optimizer='adam' )
+    model.add(TimeDistributed( Dropout(0.25), batch_input_shape=input_shape, name="Dropout1") )
+    model.add(TimeDistributed( Convolution2D(16, (8, 8), padding='same', strides=(4,4), activation='relu', kernel_regularizer=regularizers.l2(l2_reg) ), name="Conv-8-16" ) )
+    model.add(TimeDistributed( Dropout(0.25), name="Dropout2" ))
+    model.add(TimeDistributed( Convolution2D(32, (4, 4), padding='same', strides=(2,2), activation='relu',  kernel_regularizer=regularizers.l2(l2_reg) ), name="Conv-4-32" ))
+    model.add(TimeDistributed( Dropout(0.25), name="Dropout3" ))
+    model.add(TimeDistributed( Convolution2D(64, (3, 3), padding='same', strides=(1,1), activation='relu',  kernel_regularizer=regularizers.l2(l2_reg)), name="Conv-3-64" ))
+    model.add(TimeDistributed( Dropout(0.25), name="Dropout4" ))
+    model.add(TimeDistributed(Flatten()))
+    model.add(LSTM(128, return_sequences=True, activation='tanh', stateful=True,  kernel_regularizer=regularizers.l2(l2_reg)))
+    model.add(TimeDistributed( Dropout(0.25), name="Dropout5" ))
+    model.add(Dense(num_actions, activation='softmax',  kernel_regularizer=regularizers.l2(l2_reg), name="Output" ))
+    
+    optim = optimizers.RMSprop(lr=0.003, rho=0.9, epsilon=1e-08, decay=0.005)
+    model.compile(loss='categorical_crossentropy', optimizer=optim, metrics=[metrics.categorical_accuracy] )
 
     return model
 
@@ -55,6 +67,27 @@ def make_model_flat( num_actions, input_dim, l2_reg=0.005 ):
     model.compile(loss='categorical_crossentropy',
                   optimizer='adam' )
 #                  metrics=['accuracy'])
+
+    return model
+
+def make_model_test( num_actions, input_dim, l2_reg=0.005 ):
+    model = Sequential()
+    model.add(Dropout(0.25, input_shape=input_dim))
+    model.add(Convolution2D(16, (8, 8), activation='relu', padding='same', strides=(4,4), kernel_regularizer=regularizers.l2(l2_reg)))
+    model.add(Dropout(0.25))
+    model.add(Convolution2D(32, (4, 4), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
+    model.add(Dropout(0.25))
+    model.add(Convolution2D(64, (3, 3), activation='relu', padding='same', strides=(1,1), kernel_regularizer=regularizers.l2(l2_reg)))
+    #model.add(MaxPooling2D(pool_size=(2,2)))
+    model.add(Dropout(0.25))
+    model.add(Flatten())
+    model.add(Dense(256, activation='relu', kernel_regularizer=regularizers.l2(l2_reg)))
+    model.add(Dropout(0.25))
+    model.add(Dense(num_actions, activation='softmax', kernel_regularizer=regularizers.l2(l2_reg)))
+
+    optim = optimizers.RMSprop(lr=0.003, rho=0.9, epsilon=1e-08, decay=0.005)
+
+    model.compile(loss='categorical_crossentropy', optimizer=optim, metrics=[metrics.categorical_accuracy] )
 
     return model
 
@@ -136,6 +169,13 @@ if __name__ == "__main__":
     #model.summary()
     #model = make_model_doom( 6, 10, (84,84,3) )
     #model.summary()
+
+    model = make_model_test( 6, (120,120,3), l2_reg=0.005 )
+    model.summary()
+
+    model = make_model_lstm( 6, (120,120,3), l2_reg=0.005 )
+    model.summary()
+    exit()
 
     model_name = "test_speed"
     t_start = time.time()

@@ -6,6 +6,7 @@ from keras.layers import Convolution2D
 from keras.layers.recurrent import LSTM
 from keras.layers.wrappers import TimeDistributed
 from keras.utils import to_categorical
+from keras.utils import plot_model
 
 def make_model(num_actions, timesteps, input_dim, l2_reg=0.005 ):
     input_shape=(1,None) + input_dim
@@ -24,6 +25,7 @@ timesteps = 10
 num_actions = 6
 model = make_model( num_actions, 1, (84,84,3) )
 model.summary()
+plot_model(model, to_file='keras_q.png', show_shapes=True)
 
 # Fake training batch. Would be pulled from a replay memory
 batch = np.random.uniform( low=0, high=255, size=(batch_size,timesteps,84,84,3) )
