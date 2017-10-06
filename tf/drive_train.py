@@ -36,8 +36,6 @@ def setCPUCores( cores ):
                             allow_soft_placement=True, device_count = {'CPU': cores})
     set_session(tf.Session(config=config))
 
-setCPUCores( 4 )
-
 def loadOneDrive( drive_dir ):
     drive_file = os.path.join( drive_dir, "drive.pickle" )
 
@@ -85,7 +83,7 @@ def plotHistory( loss, acc, val_loss, val_acc ):
 def loadData():
 #drive_dir = "/Users/Shared/Personal/ML/drive/drive_20170930_124550"
     dirs = [ "drive_20170930_124144", "drive_20170930_124230", "drive_20170930_124322", "drive_20170930_124407", "drive_20170930_124507", "drive_20170930_124550" ]
-    dirs = [ "drive_20170930_124144", "drive_20170930_124230"]
+    #dirs = [ "drive_20170930_124144", "drive_20170930_124230"]
 
     images = []
     actions = []
@@ -97,43 +95,49 @@ def loadData():
         actions.extend(dactions)
 
     images = np.array(images)
+    images = images.astype(np.float) / 255.0
 #images = np.array(data['images'])
 #actions = data['image_actions']
     y = embedActions( actions )
     y = to_categorical( y, num_classes=5 )
     return images, y
 
-def trainLSTM( images, y, epochs ):
+def trainLSTM( images, y, epochs, batch_size, timesteps=10 ):
     num_actions = len(y[0])
     input_dim = images[0].shape
     num_samples = len(images)
-    model = model_keras.make_model_lstm( num_actions, input_dim, batch_size=1, timesteps=10 )
-    timesteps = 10
-    num_batches = images.shape[0] / timesteps
+    model = model_keras.make_model_lstm( num_actions, input_dim, batch_size=batch_size, timesteps=timesteps )
+    bt_size = batch_size * timesteps
+    num_batches = images.shape[0] / bt_size
+    extra = num_samples - (bt_size * num_batches)
+    extra += bt_size
+    last_start = images.shape[0] - extra
+    X_val = images[-extra,:]
+    y_val = y[-extra,:]
     losses = []
     accs = []
     for epoch in range(epochs):
-        starts = range(0,images.shape[0],timesteps)
+        starts = range(0,last_start,bt_size)
         np.random.shuffle(starts)
         epoch_losses = []
         epoch_accs = []
         for start in starts:
-            end = start+timesteps
-            t_b = timesteps
+            end = start+bt_size
+            t_b = bt_size
             if end >= num_samples:
                 end = num_samples
                 t_b = end - start
 # Each of these is one batch of timesteps contiguous samples
             try:
-                X = np.reshape(images[start:end,:], (1,t_b)+input_dim)
-                y_batch = np.reshape( y[start:end,:], (1,t_b,num_actions))
+                X = np.reshape(images[start:end,:], (batch_size,timesteps)+input_dim)
+                y_batch = np.reshape( y[start:end,:], (batch_size,timesteps,num_actions))
             except ValueError as err:
                 print( err )
                 print( "Failed to reshape batch: {}:{}".format( start, end ) )
                 print( "   From: {}".format( images[start:end,:].shape ) )
-                print( "     To: {}".format( (1,timesteps)+input_dim ) )
+                print( "     To: {}".format( (batch_size,timesteps)+input_dim ) )
                 print( "   From: {}".format( y[start:end,:].shape ) )
-                print( "     To: {}".format( (1,timesteps,num_actions) ) )
+                print( "     To: {}".format( (batch_size,timesteps,num_actions) ) )
             (loss, acc) = model.train_on_batch( X, y_batch )
             model.reset_states() # Don't carry internal state between batches
             epoch_losses.append(loss)
@@ -147,18 +151,26 @@ def trainLSTM( images, y, epochs ):
 
 if __name__ == "__main__":
     K.set_learning_phase(True)
+    setCPUCores( 4 )
 
     images, y = loadData()
     input_dim = images[0].shape
     num_actions = len(y[0])
     num_samples = len(images)
     epochs = 100
-    recurrent = True
+    #model_type = "lstm_batch"
+    model_type = "recurrent"
+    #model_type = "forward"
     print( "Samples: {}   Input: {}  Output: {}".format( num_samples, input_dim, num_actions ) )
     print( "Shape of y: {}".format( y.shape ) )
-
-    if recurrent:
-        trainLSTM( images, y, epochs )
+    print( "Model Type: {}".format( model_type ) )
+    print( "Image 0 data: {} {}".format( np.min(images[0]), np.max(images[0]) ) )
+    print( "Images: {}".format( images.shape ) )
+    print( "Labels: {}".format( y.shape ) )
+    if model_type == "recurrent":
+        trainLSTM( images, y, epochs, batch_size=1 )
+    elif model_type == "lstm_batch":
+        trainLSTM( images, y, epochs, batch_size=5 )
     else:
         model = model_keras.make_model_test( num_actions, input_dim )
         history = model.fit( images, y, validation_split=0.25, epochs=epochs, callbacks=[SGDLearningRateTracker()] )
