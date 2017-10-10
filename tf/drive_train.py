@@ -81,7 +81,6 @@ def plotHistory( loss, acc, val_loss, val_acc ):
     plt.show()
 
 def loadData():
-#drive_dir = "/Users/Shared/Personal/ML/drive/drive_20170930_124550"
     dirs = [ "drive_20170930_124144", "drive_20170930_124230", "drive_20170930_124322", "drive_20170930_124407", "drive_20170930_124507", "drive_20170930_124550" ]
     #dirs = [ "drive_20170930_124144", "drive_20170930_124230"]
 
@@ -89,7 +88,7 @@ def loadData():
     actions = []
 
     for onedir in dirs:
-        ddir = os.path.join("/Users/Shared/Personal/ML/drive", onedir )
+        ddir = os.path.join("./drive", onedir )
         dimages, dactions = loadOneDrive( ddir )
         images.extend(dimages)
         actions.extend(dactions)
