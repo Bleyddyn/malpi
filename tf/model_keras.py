@@ -52,8 +52,8 @@ def make_model_lstm( num_actions, input_dim, batch_size=1, timesteps=None, l2_re
     model.add(TimeDistributed( Dropout(0.25), name="Dropout5" ))
     model.add(Dense(num_actions, activation='softmax',  kernel_regularizer=regularizers.l2(l2_reg), name="Output" ))
     
-    #optim = optimizers.RMSprop(lr=0.003, rho=0.9, epsilon=1e-08, decay=0.005)
-    optim = optimizers.Adam(lr=0.003)
+    optim = optimizers.RMSprop(lr=0.003, rho=0.9, epsilon=1e-08, decay=0.005)
+    #optim = optimizers.Adam(lr=0.003)
     model.compile(loss='categorical_crossentropy', optimizer=optim, metrics=[metrics.categorical_accuracy] )
 
     return model

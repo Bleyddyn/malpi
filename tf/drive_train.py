@@ -2,6 +2,7 @@ import os
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
+from time import time
 
 import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
@@ -81,7 +82,6 @@ def plotHistory( loss, acc, val_loss, val_acc ):
     plt.show()
 
 def loadData():
-#drive_dir = "/Users/Shared/Personal/ML/drive/drive_20170930_124550"
     dirs = [ "drive_20170930_124144", "drive_20170930_124230", "drive_20170930_124322", "drive_20170930_124407", "drive_20170930_124507", "drive_20170930_124550" ]
     #dirs = [ "drive_20170930_124144", "drive_20170930_124230"]
 
@@ -89,7 +89,7 @@ def loadData():
     actions = []
 
     for onedir in dirs:
-        ddir = os.path.join("/Users/Shared/Personal/ML/drive", onedir )
+        ddir = os.path.join("./drive", onedir )
         dimages, dactions = loadOneDrive( ddir )
         images.extend(dimages)
         actions.extend(dactions)
@@ -102,6 +102,12 @@ def loadData():
     y = to_categorical( y, num_classes=5 )
     return images, y
 
+def evaluate( num_actions, input_dim, X_val, y_val ):
+    model2 = model_keras.make_model_lstm( num_actions, input_dim, batch_size=X_val.shape[0], timesteps=1 )
+    model2.load_weights( 'best_model_weights.h5' )
+    return model2.test_on_batch( np.reshape(X_val,(X_val.shape[0],1,X_val.shape[1],X_val.shape[2],X_val.shape[3])),
+        np.reshape(y_val, (y_val.shape[0],1,y_val.shape[1]) ) )
+
 def trainLSTM( images, y, epochs, batch_size, timesteps=10 ):
     num_actions = len(y[0])
     input_dim = images[0].shape
@@ -111,16 +117,22 @@ def trainLSTM( images, y, epochs, batch_size, timesteps=10 ):
     num_batches = images.shape[0] / bt_size
     extra = num_samples - (bt_size * num_batches)
     extra += bt_size
-    last_start = images.shape[0] - extra
-    X_val = images[-extra,:]
-    y_val = y[-extra,:]
+    last_start = images.shape[0] - (2 * extra)
+    X_val = images[-extra:,:]
+    y_val = y[-extra:,:]
+    print( "Validation {}: {}".format( extra, X_val.shape ) )
     losses = []
     accs = []
+    best_accuracy = -10.0
+    full_start = time()
     for epoch in range(epochs):
+        epoch_start = time()
         starts = range(0,last_start,bt_size)
         np.random.shuffle(starts)
         epoch_losses = []
         epoch_accs = []
+        val_losses = []
+        val_accs = []
         for start in starts:
             end = start+bt_size
             t_b = bt_size
@@ -142,12 +154,22 @@ def trainLSTM( images, y, epochs, batch_size, timesteps=10 ):
             model.reset_states() # Don't carry internal state between batches
             epoch_losses.append(loss)
             epoch_accs.append(acc)
+            if acc > best_accuracy:
+                model.save( 'best_model.h5' )
+                model.save_weights('best_model_weights.h5')
+                best_accuracy = acc
         mloss = np.mean(epoch_losses)
         macc = np.mean(epoch_accs)
         losses.append( mloss )
         accs.append( macc )
         print( "Epoch {}: loss: {}  acc: {}".format( epoch+1, mloss, macc ) )
-    plotHistory( losses, accs, losses, accs )
+        (val_loss, val_acc) = evaluate( num_actions, input_dim, X_val, y_val )
+        val_losses.append(val_loss)
+        val_accs.append(val_acc)
+        print( "     val: loss: {}  acc: {}".format( val_loss, val_acc ) )
+        print( " seconds: {}".format( time() - epoch_start ) )
+    print( " Total seconds: {}".format( time() - full_start ) )
+    plotHistory( losses, accs, val_losses, val_accs )
 
 if __name__ == "__main__":
     K.set_learning_phase(True)
@@ -158,8 +180,8 @@ if __name__ == "__main__":
     num_actions = len(y[0])
     num_samples = len(images)
     epochs = 100
-    #model_type = "lstm_batch"
-    model_type = "recurrent"
+    model_type = "lstm_batch"
+    #model_type = "recurrent"
     #model_type = "forward"
     print( "Samples: {}   Input: {}  Output: {}".format( num_samples, input_dim, num_actions ) )
     print( "Shape of y: {}".format( y.shape ) )
