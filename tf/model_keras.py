@@ -40,19 +40,19 @@ def make_model( num_actions, input_dim, l2_reg=0.005, model_name="orig" ):
 def make_model_lstm( num_actions, input_dim, batch_size=1, timesteps=None, l2_reg=0.005 ):
     input_shape=(batch_size,timesteps) + input_dim
     model = Sequential()
-    model.add(TimeDistributed( Dropout(0.25), batch_input_shape=input_shape, name="Dropout1") )
+    model.add(TimeDistributed( Dropout(0.5), batch_input_shape=input_shape, name="Dropout1") )
     model.add(TimeDistributed( Convolution2D(16, (8, 8), padding='same', strides=(4,4), activation='relu', kernel_regularizer=regularizers.l2(l2_reg) ), name="Conv-8-16" ) )
-    model.add(TimeDistributed( Dropout(0.25), name="Dropout2" ))
+    model.add(TimeDistributed( Dropout(0.5), name="Dropout2" ))
     model.add(TimeDistributed( Convolution2D(32, (4, 4), padding='same', strides=(2,2), activation='relu',  kernel_regularizer=regularizers.l2(l2_reg) ), name="Conv-4-32" ))
-    model.add(TimeDistributed( Dropout(0.25), name="Dropout3" ))
+    model.add(TimeDistributed( Dropout(0.5), name="Dropout3" ))
     model.add(TimeDistributed( Convolution2D(64, (3, 3), padding='same', strides=(1,1), activation='relu',  kernel_regularizer=regularizers.l2(l2_reg)), name="Conv-3-64" ))
-    model.add(TimeDistributed( Dropout(0.25), name="Dropout4" ))
+    model.add(TimeDistributed( Dropout(0.5), name="Dropout4" ))
     model.add(TimeDistributed(Flatten()))
     model.add(LSTM(128, return_sequences=True, activation='tanh', stateful=True,  kernel_regularizer=regularizers.l2(l2_reg)))
-    model.add(TimeDistributed( Dropout(0.25), name="Dropout5" ))
+    model.add(TimeDistributed( Dropout(0.5), name="Dropout5" ))
     model.add(Dense(num_actions, activation='softmax',  kernel_regularizer=regularizers.l2(l2_reg), name="Output" ))
     
-    optim = optimizers.RMSprop(lr=0.003, rho=0.9, epsilon=1e-08, decay=0.005)
+    optim = optimizers.RMSprop(lr=0.003, rho=0.9, epsilon=1e-08, decay=0.002)
     #optim = optimizers.Adam(lr=0.003)
     model.compile(loss='categorical_crossentropy', optimizer=optim, metrics=[metrics.categorical_accuracy] )
 

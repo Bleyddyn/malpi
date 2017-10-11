@@ -51,6 +51,11 @@ def loadOneDrive( drive_dir ):
 
     return images, actions
 
+def printLearningRate(model):
+    optimizer = model.optimizer
+    lr = K.eval(optimizer.lr * (1. / (1. + optimizer.decay * tf.cast(optimizer.iterations, tf.float32) )))
+    print('\nLR: {:.6f}\n'.format(lr))
+    
 class SGDLearningRateTracker(Callback):
     def on_epoch_end(self, epoch, logs={}):
         optimizer = self.model.optimizer
@@ -113,6 +118,7 @@ def trainLSTM( images, y, epochs, batch_size, timesteps=10 ):
     input_dim = images[0].shape
     num_samples = len(images)
     model = model_keras.make_model_lstm( num_actions, input_dim, batch_size=batch_size, timesteps=timesteps )
+    printLearningRate(model)
     bt_size = batch_size * timesteps
     num_batches = images.shape[0] / bt_size
     extra = num_samples - (bt_size * num_batches)
@@ -123,6 +129,8 @@ def trainLSTM( images, y, epochs, batch_size, timesteps=10 ):
     print( "Validation {}: {}".format( extra, X_val.shape ) )
     losses = []
     accs = []
+    val_losses = []
+    val_accs = []
     best_accuracy = -10.0
     full_start = time()
     for epoch in range(epochs):
@@ -131,8 +139,6 @@ def trainLSTM( images, y, epochs, batch_size, timesteps=10 ):
         np.random.shuffle(starts)
         epoch_losses = []
         epoch_accs = []
-        val_losses = []
-        val_accs = []
         for start in starts:
             end = start+bt_size
             t_b = bt_size
@@ -167,6 +173,7 @@ def trainLSTM( images, y, epochs, batch_size, timesteps=10 ):
         val_losses.append(val_loss)
         val_accs.append(val_acc)
         print( "     val: loss: {}  acc: {}".format( val_loss, val_acc ) )
+        printLearningRate(model)
         print( " seconds: {}".format( time() - epoch_start ) )
     print( " Total seconds: {}".format( time() - full_start ) )
     plotHistory( losses, accs, val_losses, val_accs )
