@@ -54,7 +54,7 @@ def loadOneDrive( drive_dir ):
 def printLearningRate(model):
     optimizer = model.optimizer
     lr = K.eval(optimizer.lr * (1. / (1. + optimizer.decay * tf.cast(optimizer.iterations, tf.float32) )))
-    print('\nLR: {:.6f}\n'.format(lr))
+    print('      LR: {:.6f}'.format(lr))
     
 class SGDLearningRateTracker(Callback):
     def on_epoch_end(self, epoch, logs={}):
