@@ -37,7 +37,7 @@ def make_model( num_actions, input_dim, l2_reg=0.005, model_name="orig" ):
         print( "Invalid model name. Options are: lstm, flat, orig" )
         return None
 
-def make_model_lstm( num_actions, input_dim, batch_size=1, timesteps=None, l2_reg=0.005, optimizer=None, dropouts=[0.25,0.25,0.25,0.25,0.25] ):
+def make_model_lstm( num_actions, input_dim, batch_size=1, timesteps=None, stateful=True, l2_reg=0.005, optimizer=None, dropouts=[0.25,0.25,0.25,0.25,0.25] ):
     input_shape=(batch_size,timesteps) + input_dim
     model = Sequential()
     model.add(TimeDistributed( Dropout(dropouts[0]), batch_input_shape=input_shape, name="Dropout1") )
@@ -48,7 +48,28 @@ def make_model_lstm( num_actions, input_dim, batch_size=1, timesteps=None, l2_re
     model.add(TimeDistributed( Convolution2D(64, (3, 3), padding='same', strides=(1,1), activation='relu',  kernel_regularizer=regularizers.l2(l2_reg)), name="Conv-3-64" ))
     model.add(TimeDistributed( Dropout(dropouts[3]), name="Dropout4" ))
     model.add(TimeDistributed(Flatten()))
-    model.add(LSTM(128, return_sequences=True, activation='relu', stateful=True,  kernel_regularizer=regularizers.l2(l2_reg)))
+    model.add(LSTM(128, return_sequences=True, activation='relu', stateful=stateful,  kernel_regularizer=regularizers.l2(l2_reg)))
+    model.add(TimeDistributed( Dropout(dropouts[4]), name="Dropout5" ))
+    model.add(Dense(num_actions, activation='softmax',  kernel_regularizer=regularizers.l2(l2_reg), name="Output" ))
+    
+    if optimizer is None:
+        optimizer = optimizers.RMSprop(lr=0.003, rho=0.9, epsilon=1e-08, decay=0.005)
+    model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=[metrics.categorical_accuracy] )
+
+    return model
+
+def make_model_lstm_fit( num_actions, input_dim, batch_size=1, timesteps=None, stateful=False, l2_reg=0.005, optimizer=None, dropouts=[0.25,0.25,0.25,0.25,0.25] ):
+    input_shape=(timesteps,) + input_dim
+    model = Sequential()
+    model.add(TimeDistributed( Dropout(dropouts[0]), input_shape=input_shape, name="Dropout1") )
+    model.add(TimeDistributed( Convolution2D(16, (8, 8), padding='same', strides=(4,4), activation='relu', kernel_regularizer=regularizers.l2(l2_reg) ), name="Conv-8-16" ) )
+    model.add(TimeDistributed( Dropout(dropouts[1]), name="Dropout2" ))
+    model.add(TimeDistributed( Convolution2D(32, (4, 4), padding='same', strides=(2,2), activation='relu',  kernel_regularizer=regularizers.l2(l2_reg) ), name="Conv-4-32" ))
+    model.add(TimeDistributed( Dropout(dropouts[2]), name="Dropout3" ))
+    model.add(TimeDistributed( Convolution2D(64, (3, 3), padding='same', strides=(1,1), activation='relu',  kernel_regularizer=regularizers.l2(l2_reg)), name="Conv-3-64" ))
+    model.add(TimeDistributed( Dropout(dropouts[3]), name="Dropout4" ))
+    model.add(TimeDistributed(Flatten()))
+    model.add(LSTM(128, return_sequences=True, activation='relu', stateful=stateful,  kernel_regularizer=regularizers.l2(l2_reg)))
     model.add(TimeDistributed( Dropout(dropouts[4]), name="Dropout5" ))
     model.add(Dense(num_actions, activation='softmax',  kernel_regularizer=regularizers.l2(l2_reg), name="Output" ))
     

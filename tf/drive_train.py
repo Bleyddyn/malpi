@@ -107,8 +107,33 @@ def loadData():
     y = to_categorical( y, num_classes=5 )
     return images, y
 
+def fitLSTM( images, y, epochs ):
+    num_actions = len(y[0])
+    input_dim = images[0].shape
+    num_samples = len(images)
+    timesteps = 10
+    model = model_keras.make_model_lstm_fit( num_actions, input_dim, timesteps=timesteps, stateful=False )
+
+    hold_out = (num_samples % timesteps) + (5 * timesteps)
+    num_samples = num_samples - hold_out
+    X_val = images[num_samples:,:]
+    y_val = y[num_samples:,:]
+    images = images[0:num_samples,:]
+    images = np.reshape( images, (num_samples/timesteps, timesteps) + input_dim )
+    y = y[0:num_samples,:]
+    y = np.reshape( y, (num_samples/timesteps, timesteps, num_actions) )
+
+    history = model.fit( images, y, validation_split=0.25, epochs=epochs, shuffle=False, callbacks=[SGDLearningRateTracker()] )
+    model.save( 'best_model.h5' )
+    model.save_weights('best_model_weights.h5')
+    plotHistory( history.history['loss'], history.history['categorical_accuracy'],
+                 history.history['val_loss'], history.history['val_categorical_accuracy'] )
+
+    (val_loss, val_acc) = evaluate( num_actions, input_dim, X_val, y_val )
+    print( "Final Validation loss/acc: {}  {}".format( val_loss, val_acc) )
+
 def evaluate( num_actions, input_dim, X_val, y_val ):
-    model2 = model_keras.make_model_lstm( num_actions, input_dim, batch_size=X_val.shape[0], timesteps=1 )
+    model2 = model_keras.make_model_lstm( num_actions, input_dim, batch_size=X_val.shape[0], timesteps=1, stateful=True )
     model2.load_weights( 'best_model_weights.h5' )
     return model2.test_on_batch( np.reshape(X_val,(X_val.shape[0],1,X_val.shape[1],X_val.shape[2],X_val.shape[3])),
         np.reshape(y_val, (y_val.shape[0],1,y_val.shape[1]) ) )
@@ -117,7 +142,7 @@ def trainLSTM( images, y, epochs, batch_size, timesteps=10 ):
     num_actions = len(y[0])
     input_dim = images[0].shape
     num_samples = len(images)
-    model = model_keras.make_model_lstm( num_actions, input_dim, batch_size=batch_size, timesteps=timesteps )
+    model = model_keras.make_model_lstm( num_actions, input_dim, batch_size=batch_size, timesteps=timesteps, stateful=False )
     printLearningRate(model)
     bt_size = batch_size * timesteps
     num_batches = images.shape[0] / bt_size
@@ -187,19 +212,25 @@ if __name__ == "__main__":
     num_actions = len(y[0])
     num_samples = len(images)
     epochs = 100
-    model_type = "lstm_batch"
+
+    model_type = "fit"
+    #model_type = "lstm_batch"
     #model_type = "recurrent"
     #model_type = "forward"
+
     print( "Samples: {}   Input: {}  Output: {}".format( num_samples, input_dim, num_actions ) )
     print( "Shape of y: {}".format( y.shape ) )
     print( "Model Type: {}".format( model_type ) )
     print( "Image 0 data: {} {}".format( np.min(images[0]), np.max(images[0]) ) )
     print( "Images: {}".format( images.shape ) )
     print( "Labels: {}".format( y.shape ) )
+
     if model_type == "recurrent":
         trainLSTM( images, y, epochs, batch_size=1 )
     elif model_type == "lstm_batch":
         trainLSTM( images, y, epochs, batch_size=5 )
+    elif model_type == "fit":
+        fitLSTM( images, y, epochs )
     else:
         model = model_keras.make_model_test( num_actions, input_dim )
         history = model.fit( images, y, validation_split=0.25, epochs=epochs, callbacks=[SGDLearningRateTracker()] )
