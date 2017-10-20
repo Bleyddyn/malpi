@@ -79,6 +79,26 @@ def make_model_lstm_fit( num_actions, input_dim, batch_size=1, timesteps=None, s
 
     return model
 
+def make_model_lstm_simple( num_actions, input_dim, batch_size=1, timesteps=None, stateful=False ):
+    model = Sequential()
+
+    if stateful:
+        input_shape=(batch_size,timesteps) + input_dim
+        model.add(TimeDistributed( Convolution2D(16, (8, 8), strides=(4,4), activation='relu' ), batch_input_shape=input_shape, name="Conv-8-16") )
+    else:
+        input_shape=(timesteps,) + input_dim
+        model.add(TimeDistributed( Convolution2D(16, (8, 8), strides=(4,4), activation='relu' ), input_shape=input_shape, name="Conv-8-16") )
+
+    model.add(TimeDistributed( Convolution2D(32, (4, 4), strides=(2,2), activation='relu' ), name="Conv-4-32" ))
+    model.add(TimeDistributed( Convolution2D(64, (3, 3), strides=(1,1), activation='relu' ), name="Conv-3-64" ))
+    model.add(TimeDistributed(Flatten()))
+    model.add(LSTM(128, return_sequences=True, activation='relu', stateful=stateful ))
+    model.add(Dense(num_actions, activation='softmax', name="Output" ))
+    
+    model.compile(loss='categorical_crossentropy', optimizer='rmsprop', metrics=[metrics.categorical_accuracy] )
+
+    return model
+
 def make_model_flat( num_actions, input_dim, l2_reg=0.005 ):
     model = Sequential()
     model.add(Flatten(input_shape=input_dim))

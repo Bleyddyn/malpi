@@ -213,7 +213,8 @@ if __name__ == "__main__":
     num_samples = len(images)
     epochs = 100
 
-    model_type = "fit"
+    model_type = "simple"
+    #model_type = "fit"
     #model_type = "lstm_batch"
     #model_type = "recurrent"
     #model_type = "forward"
@@ -231,6 +232,38 @@ if __name__ == "__main__":
         trainLSTM( images, y, epochs, batch_size=5 )
     elif model_type == "fit":
         fitLSTM( images, y, epochs )
+    elif model_type == "simple":
+        timesteps = 10
+        hold_out = (num_samples % timesteps) + (5 * timesteps)
+        num_samples = num_samples - hold_out
+        X_val = images[num_samples:,:]
+        y_val = y[num_samples:,:]
+        images = images[0:num_samples,:]
+        images = np.reshape( images, (num_samples/timesteps, timesteps) + input_dim )
+        y = y[0:num_samples,:]
+        y = np.reshape( y, (num_samples/timesteps, timesteps, num_actions) )
+
+        model = model_keras.make_model_lstm_simple( num_actions, input_dim )
+        history = model.fit( images, y, validation_split=0.25, epochs=epochs, shuffle=False )
+        plotHistory( history.history['loss'], history.history['categorical_accuracy'],
+                     history.history['val_loss'], history.history['val_categorical_accuracy'] )
+        model.save_weights('best_model_weights.h5')
+
+        model2 = model_keras.make_model_lstm_simple( num_actions, input_dim, batch_size=1, timesteps=1, stateful=True )
+        model2.load_weights( 'best_model_weights.h5' )
+        total = 0
+        right = 0
+        for i in range(X_val.shape[0]):
+            obs = X_val[i,:]
+            obs = np.reshape( obs, (1,1)+input_dim )
+            action = model2.predict( obs, batch_size=1 )
+            total += 1
+            if y_val[i][np.argmax(action)] == 1:
+                right += 1
+#            print( "Action: {} {} {}".format( action, np.argmax(action), y_val[i] ) )
+# Action: [[[ 0.27729896  0.2531901   0.16409625  0.1798604   0.12555425]]] 0 [ 1.  0.  0.  0.  0.]
+        print( "{} / {} = {}%".format( right, total, (right * 100.0) / total ) )
+
     else:
         model = model_keras.make_model_test( num_actions, input_dim )
         history = model.fit( images, y, validation_split=0.25, epochs=epochs, callbacks=[SGDLearningRateTracker()] )
