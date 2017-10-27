@@ -9,6 +9,7 @@ from keras.backend.tensorflow_backend import set_session
 import model_keras
 from keras.utils import to_categorical
 from keras.callbacks import Callback
+from keras.callbacks import ModelCheckpoint
 import keras.backend as K
 
 def describeDriveData( data ):
@@ -87,7 +88,7 @@ def plotHistory( loss, acc, val_loss, val_acc ):
     plt.show()
 
 def loadData():
-    dirs = [ "drive_20170930_124144", "drive_20170930_124230", "drive_20170930_124322", "drive_20170930_124407", "drive_20170930_124507", "drive_20170930_124550" ]
+    dirs = [ "drive_20171024_191125", "drive_20171024_191512", "drive_20171024_191737" ] 
     #dirs = [ "drive_20170930_124144", "drive_20170930_124230"]
 
     images = []
@@ -123,7 +124,9 @@ def fitLSTM( images, y, epochs ):
     y = y[0:num_samples,:]
     y = np.reshape( y, (num_samples/timesteps, timesteps, num_actions) )
 
-    history = model.fit( images, y, validation_split=0.25, epochs=epochs, shuffle=False, callbacks=[SGDLearningRateTracker()] )
+    save_chk = ModelCheckpoint("weights_{epoch:02d}_{val_categorical_accuracy:.2f}.hdf5", monitor='val_loss', verbose=0, save_best_only=True, save_weights_only=False, mode='auto', period=1)
+
+    history = model.fit( images, y, validation_split=0.15, epochs=epochs, batch_size=5, shuffle=False, callbacks=[save_chk] )
     model.save( 'best_model.h5' )
     model.save_weights('best_model_weights.h5')
     plotHistory( history.history['loss'], history.history['categorical_accuracy'],
@@ -213,8 +216,8 @@ if __name__ == "__main__":
     num_samples = len(images)
     epochs = 100
 
-    model_type = "simple"
-    #model_type = "fit"
+    #model_type = "simple"
+    model_type = "fit"
     #model_type = "lstm_batch"
     #model_type = "recurrent"
     #model_type = "forward"
