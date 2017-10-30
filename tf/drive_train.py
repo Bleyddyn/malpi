@@ -88,7 +88,7 @@ def plotHistory( loss, acc, val_loss, val_acc ):
     plt.show()
 
 def loadData():
-    dirs = [ "drive_20171024_191125", "drive_20171024_191512", "drive_20171024_191737" ] 
+    dirs = [ "drive_20171024_191125", "drive_20171024_191512", "drive_20171024_191737", "drive_20171029_090219", "drive_20171029_090617" ] 
     #dirs = [ "drive_20170930_124144", "drive_20170930_124230"]
 
     images = []
@@ -108,12 +108,14 @@ def loadData():
     y = to_categorical( y, num_classes=5 )
     return images, y
 
-def fitLSTM( images, y, epochs ):
+def fitLSTM( images, y, epochs, verbose=1 ):
     num_actions = len(y[0])
     input_dim = images[0].shape
     num_samples = len(images)
     timesteps = 10
-    model = model_keras.make_model_lstm_fit( num_actions, input_dim, timesteps=timesteps, stateful=False )
+    dropouts=[0.25,0.25,0.25,0.25,0.25]
+
+    model = model_keras.make_model_lstm_fit( num_actions, input_dim, timesteps=timesteps, stateful=False, dropouts=dropouts )
 
     hold_out = (num_samples % timesteps) + (5 * timesteps)
     num_samples = num_samples - hold_out
@@ -124,19 +126,20 @@ def fitLSTM( images, y, epochs ):
     y = y[0:num_samples,:]
     y = np.reshape( y, (num_samples/timesteps, timesteps, num_actions) )
 
-    save_chk = ModelCheckpoint("weights_{epoch:02d}_{val_categorical_accuracy:.2f}.hdf5", monitor='val_loss', verbose=0, save_best_only=True, save_weights_only=False, mode='auto', period=1)
+#    save_chk = ModelCheckpoint("weights_{epoch:02d}_{val_categorical_accuracy:.2f}.hdf5", monitor='val_loss', verbose=0, save_best_only=True, save_weights_only=False, mode='auto', period=1)
 
-    history = model.fit( images, y, validation_split=0.15, epochs=epochs, batch_size=5, shuffle=False, callbacks=[save_chk] )
-    model.save( 'best_model.h5' )
-    model.save_weights('best_model_weights.h5')
-    plotHistory( history.history['loss'], history.history['categorical_accuracy'],
-                 history.history['val_loss'], history.history['val_categorical_accuracy'] )
+    history = model.fit( images, y, validation_split=0.15, epochs=epochs, verbose=verbose, batch_size=5, shuffle=False, callbacks=None )
+#    model.save( 'best_model.h5' )
+#    model.save_weights('best_model_weights.h5')
+#    plotHistory( history.history['loss'], history.history['categorical_accuracy'],
+#                 history.history['val_loss'], history.history['val_categorical_accuracy'] )
 
-    (val_loss, val_acc) = evaluate( num_actions, input_dim, X_val, y_val )
-    print( "Final Validation loss/acc: {}  {}".format( val_loss, val_acc) )
+#    (val_loss, val_acc) = evaluate( num_actions, input_dim, X_val, y_val, dropouts=dropouts )
+#    print( "Final Validation loss/acc: {}  {}".format( val_loss, val_acc) )
+    return history.history['val_categorical_accuracy'][-1]
 
-def evaluate( num_actions, input_dim, X_val, y_val ):
-    model2 = model_keras.make_model_lstm( num_actions, input_dim, batch_size=X_val.shape[0], timesteps=1, stateful=True )
+def evaluate( num_actions, input_dim, X_val, y_val, dropouts=[0.25,0.25,0.25,0.25,0.25] ):
+    model2 = model_keras.make_model_lstm( num_actions, input_dim, batch_size=X_val.shape[0], timesteps=1, stateful=True, dropouts=dropouts )
     model2.load_weights( 'best_model_weights.h5' )
     return model2.test_on_batch( np.reshape(X_val,(X_val.shape[0],1,X_val.shape[1],X_val.shape[2],X_val.shape[3])),
         np.reshape(y_val, (y_val.shape[0],1,y_val.shape[1]) ) )
@@ -214,7 +217,7 @@ if __name__ == "__main__":
     input_dim = images[0].shape
     num_actions = len(y[0])
     num_samples = len(images)
-    epochs = 100
+    epochs = 40
 
     #model_type = "simple"
     model_type = "fit"
@@ -231,10 +234,17 @@ if __name__ == "__main__":
 
     if model_type == "recurrent":
         trainLSTM( images, y, epochs, batch_size=1 )
+
     elif model_type == "lstm_batch":
         trainLSTM( images, y, epochs, batch_size=5 )
+
     elif model_type == "fit":
-        fitLSTM( images, y, epochs )
+        vals = []
+        for i in range(5):
+            val = fitLSTM( images, y, epochs, verbose=0 )
+            vals.append(val)
+        print( "Validation accuracy {} {} ({})".format( np.mean(vals), np.std(vals), vals ) )
+
     elif model_type == "simple":
         timesteps = 10
         hold_out = (num_samples % timesteps) + (5 * timesteps)
