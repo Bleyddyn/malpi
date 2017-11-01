@@ -113,14 +113,14 @@ def runningMean(x, N):
 
 def hparamsToArray( hparams ):
     out = []
-    out.append( hparams.get( "timesteps", 10 ) )
+    out.append( int(hparams.get( "timesteps", 10 )) )
     out.append( hparams.get( "l2_reg", 0.005 ) )
     out.append( hparams.get( "dropouts", [0.25,0.25,0.25,0.25,0.25] ) )
     out.append( hparams.get( "learning_rate", 0.003 ) )
-    out.append( hparams.get( "validation_split", 0.15 ) )
-    out.append( hparams.get( "batch_size", 5 ) )
+    out.append( hparams.get( "validation_split", 0.20 ) )
+    out.append( int(hparams.get( "batch_size", 5 )) )
     out.append( hparams.get( "optimizer", "RMSprop" ) )
-    out.append( hparams.get( "epochs", 40 ) )
+    out.append( int(hparams.get( "epochs", 40 )) )
     return out
 
 def hparamsToDict( hparams ):
@@ -225,8 +225,8 @@ if __name__ == "__main__":
     input_dim = images[0].shape
     num_actions = len(y[0])
     num_samples = len(images)
-    timesteps = 10
 
+#    timesteps = 10
 #    hold_out = (num_samples % timesteps) + (5 * timesteps)
 #    num_samples = num_samples - hold_out
 #    X_val = images[num_samples:,:]
