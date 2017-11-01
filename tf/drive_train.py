@@ -194,7 +194,7 @@ def getOptions():
 
     parser = argparse.ArgumentParser(description='Train on robot image/action data.')
     parser.add_argument('dirs', nargs='*', metavar="Directory", help='A directory containing recorded robot data')
-    parser.add_argument('--file', help='File with one directory per line')
+    parser.add_argument('-f', '--file', help='File with one directory per line')
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
 
     args = parser.parse_args()
