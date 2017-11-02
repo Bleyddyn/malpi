@@ -115,12 +115,29 @@ def hparamsToArray( hparams ):
     out = []
     out.append( int(hparams.get( "timesteps", 10 )) )
     out.append( hparams.get( "l2_reg", 0.005 ) )
-    out.append( hparams.get( "dropouts", [0.25,0.25,0.25,0.25,0.25] ) )
+
+    dropouts = hparams.get( "dropouts", [0.2,0.2,0.2,0.2,0.2] )
+    if "dropouts" in hparams:
+        dropouts = hparams["dropouts"]
+        if isinstance(dropouts, basestring):
+            if dropouts == "low":
+                dropouts = [0.2,0.2,0.2,0.2,0.2]
+            elif dropouts == "mid":
+                dropouts = [0.4,0.4,0.4,0.4,0.4]
+            elif dropouts == "high":
+                dropouts = [0.6,0.6,0.6,0.6,0.6]
+            elif dropouts == "up":
+                dropouts = [0.2,0.3,0.4,0.5,0.6]
+            elif dropouts == "down":
+                dropouts = [0.6,0.5,0.4,0.3,0.2]
+    out.append( dropouts )
+
     out.append( hparams.get( "learning_rate", 0.003 ) )
     out.append( hparams.get( "validation_split", 0.20 ) )
     out.append( int(hparams.get( "batch_size", 5 )) )
     out.append( hparams.get( "optimizer", "RMSprop" ) )
     out.append( int(hparams.get( "epochs", 40 )) )
+
     return out
 
 def hparamsToDict( hparams ):
@@ -189,6 +206,13 @@ def runTests(args):
         print( "round trip worked" )
     else:
         print( "{}".format( arr2 ) )
+    dict1["dropouts"] = "up"
+    dropouts = [0.2,0.3,0.4,0.5,0.6]
+    res = hparamsToArray(dict1)
+    if dropouts == res[2]:
+        print( "Dropouts with 'up' worked" )
+    else:
+        print( "Dropouts with 'up' did NOT work" )
 
 def getOptions():
 
