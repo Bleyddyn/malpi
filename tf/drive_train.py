@@ -12,6 +12,7 @@ import model_keras
 from keras.utils import to_categorical
 from keras.callbacks import Callback
 from keras.callbacks import ModelCheckpoint
+from keras import optimizers
 import keras.backend as K
 
 def describeDriveData( data ):
@@ -64,6 +65,21 @@ class SGDLearningRateTracker(Callback):
         optimizer = self.model.optimizer
         lr = K.eval(optimizer.lr * (1. / (1. + optimizer.decay * optimizer.iterations)))
         print('\nLR: {:.6f}\n'.format(lr))
+
+def step_decay(epoch):
+# Usage: lrate = LearningRateScheduler(step_decay)
+    initial_lrate = 0.1
+    drop = 0.5
+    epochs_drop = 10.0
+    lrate = initial_lrate * math.pow(drop,  math.floor((1+epoch)/epochs_drop))
+    return lrate
+
+def exp_decay(epoch):
+# Usage: lrate = LearningRateScheduler(exp_decay)
+    initial_lrate = 0.1
+    k = 0.1
+    lrate = initial_lrate * exp(-k*t)
+    return lrate
 
 def plotHistory( loss, acc, val_loss, val_acc ):
     #['val_categorical_accuracy', 'loss', 'categorical_accuracy', 'val_loss']
@@ -170,7 +186,17 @@ def fitLSTM( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.
         save_chk = ModelCheckpoint("weights_{epoch:02d}_{val_categorical_accuracy:.2f}.hdf5", monitor='val_loss', verbose=0, save_best_only=True, save_weights_only=False, mode='auto', period=1)
         callbacks = [save_chk]
 
-    model = model_keras.make_model_lstm_fit( num_actions, input_dim, timesteps=timesteps, stateful=False, dropouts=dropouts )
+    # See: https://medium.com/towards-data-science/learning-rate-schedules-and-adaptive-learning-rate-methods-for-deep-learning-2c8f433990d1
+    if optimizer == "RMSProp":
+        optimizer = optimizers.RMSprop(lr=learning_rate, rho=0.9, epsilon=1e-08, decay=0.005) # default lr=0.001
+    elif optimizer == "Adagrad":
+        optimizer = optimizers.Adagrad(lr=learning_rate, epsilon=1e-08, decay=0.0) # default lr=0.01
+    elif optimizer == "Adadelta":
+        optimizer = optimizers.Adadelta(lr=learning_rate, rho=0.95, epsilon=1e-08, decay=0.0) # default lr=1.0
+    elif optimizer == "Adam":
+        optimizer = optimizers.Adam(lr=learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0) # default lr=0.001
+
+    model = model_keras.make_model_lstm_fit( num_actions, input_dim, timesteps=timesteps, stateful=False, dropouts=dropouts, optimizer=optimizer )
 
     history = model.fit( images, y, validation_split=validation_split, epochs=epochs, verbose=verbose, batch_size=batch_size, shuffle=False, callbacks=callbacks )
 

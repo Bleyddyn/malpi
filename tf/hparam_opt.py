@@ -28,6 +28,10 @@ def runParamTests(args):
     best = {'timesteps': 7.0, 'learning_rate': 0.001306236693845287, 'batch_size': 8.0}
     best = {'timesteps': 11.0, 'learning_rate': 0.00013604608748078465, 'batch_size': 8.0}
     best = {'timesteps': 14.0, 'learning_rate': 0.0020131995908228796, 'batch_size': 11.0, 'l2_reg': 0.00016375804906962484}
+    best = {'timesteps': 7.0, 'learning_rate': 0.00044508575407987034, 'dropouts': 'mid', 'batch_size': 5.0, 'l2_reg': 0.0034300636132326367}
+    best = {'timesteps': 7.0, 'learning_rate': 0.001, 'dropouts': 'mid', 'batch_size': 5.0, 'l2_reg': 0.0034300636132326367, 'optimizer':"RMSProp"}
+    best = {'optimizer': 'Adam', 'learning_rate': 0.0006030677214875642, 'batch_size': 9.0, 'timesteps': 15.0, 'dropouts': 'down', 'l2_reg': 0.00012201080729945043}
+
 
     hparams = hparamsToDict( hparamsToArray( best ) )
     print( "Best params {}".format( hparams ) )
@@ -75,7 +79,9 @@ if __name__ == "__main__":
               'l2_reg': hp.loguniform('l2_reg', -10, -3 ),
               'timesteps': hp.quniform('timesteps', 5, 20, 1 ),
               'batch_size': hp.quniform('batch_size', 5, 20, 1),
-              'dropouts': hp.choice('dropouts', ["low","mid","high","up","down"]) }
+              'dropouts': hp.choice('dropouts', ["low","mid","high","up","down"]),
+              'optimizer': hp.choice('optimizer', ["RMSProp", "Adagrad", "Adadelta", "Adam"]) }
+
 
 #space = hp.choice('a',
 #     [
@@ -89,6 +95,7 @@ if __name__ == "__main__":
 
     best = fmin(fn=holder, space=space, algo=tpe.suggest, max_evals=100)
     print( "Best: {}".format( best ) )
+    print( "Val Accuracies: {}".format( holder.vals ) )
     plt.plot(holder.vals)
     plt.show()
 
