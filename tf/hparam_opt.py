@@ -31,6 +31,7 @@ def runParamTests(args):
     best = {'timesteps': 7.0, 'learning_rate': 0.00044508575407987034, 'dropouts': 'mid', 'batch_size': 5.0, 'l2_reg': 0.0034300636132326367}
     best = {'timesteps': 7.0, 'learning_rate': 0.001, 'dropouts': 'mid', 'batch_size': 5.0, 'l2_reg': 0.0034300636132326367, 'optimizer':"RMSProp"}
     best = {'optimizer': 'Adam', 'learning_rate': 0.0006030677214875642, 'batch_size': 9.0, 'timesteps': 15.0, 'dropouts': 'down', 'l2_reg': 0.00012201080729945043}
+    best = {'optimizer': 'RMSProp', 'learning_rate': 0.001256172795232224, 'batch_size': 7.0, 'timesteps': 6.0, 'dropouts': 'low', 'l2_reg': 0.00015871905806080338}
 
 
     hparams = hparamsToDict( hparamsToArray( best ) )
