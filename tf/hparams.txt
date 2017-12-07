@@ -1,8 +1,0 @@
-timesteps = 10
-l2_reg = 0.005
-dropouts = [0.25,0.25,0.25,0.25,0.25]
-learning_rate = 0.003
-optimizer = RMSprop(lr=0.003, rho=0.9, epsilon=1e-08, decay=0.005)
-validation_split=0.15
-epochs=100
-batch_size=5

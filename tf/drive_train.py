@@ -1,8 +1,10 @@
 import os
 import pickle
+from time import time
+import argparse
+
 import numpy as np
 import matplotlib.pyplot as plt
-from time import time
 
 import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
@@ -10,6 +12,7 @@ import model_keras
 from keras.utils import to_categorical
 from keras.callbacks import Callback
 from keras.callbacks import ModelCheckpoint
+from keras import optimizers
 import keras.backend as K
 
 def describeDriveData( data ):
@@ -63,6 +66,21 @@ class SGDLearningRateTracker(Callback):
         lr = K.eval(optimizer.lr * (1. / (1. + optimizer.decay * optimizer.iterations)))
         print('\nLR: {:.6f}\n'.format(lr))
 
+def step_decay(epoch):
+# Usage: lrate = LearningRateScheduler(step_decay)
+    initial_lrate = 0.1
+    drop = 0.5
+    epochs_drop = 10.0
+    lrate = initial_lrate * math.pow(drop,  math.floor((1+epoch)/epochs_drop))
+    return lrate
+
+def exp_decay(epoch):
+# Usage: lrate = LearningRateScheduler(exp_decay)
+    initial_lrate = 0.1
+    k = 0.1
+    lrate = initial_lrate * exp(-k*t)
+    return lrate
+
 def plotHistory( loss, acc, val_loss, val_acc ):
     #['val_categorical_accuracy', 'loss', 'categorical_accuracy', 'val_loss']
 
@@ -87,18 +105,16 @@ def plotHistory( loss, acc, val_loss, val_acc ):
     plt.savefig('metrics.png')
     plt.show()
 
-def loadData():
-    dirs = [ "drive_20171024_191125", "drive_20171024_191512", "drive_20171024_191737" ] 
-    #dirs = [ "drive_20170930_124144", "drive_20170930_124230"]
-
+def loadData( dirs ):
     images = []
     actions = []
 
     for onedir in dirs:
-        ddir = os.path.join("./drive", onedir )
-        dimages, dactions = loadOneDrive( ddir )
-        images.extend(dimages)
-        actions.extend(dactions)
+        if len(onedir) > 0:
+            #ddir = os.path.join("./drive", onedir )
+            dimages, dactions = loadOneDrive( onedir )
+            images.extend(dimages)
+            actions.extend(dactions)
 
     images = np.array(images)
     images = images.astype(np.float) / 255.0
@@ -108,13 +124,54 @@ def loadData():
     y = to_categorical( y, num_classes=5 )
     return images, y
 
-def fitLSTM( images, y, epochs ):
-    num_actions = len(y[0])
-    input_dim = images[0].shape
-    num_samples = len(images)
-    timesteps = 10
-    model = model_keras.make_model_lstm_fit( num_actions, input_dim, timesteps=timesteps, stateful=False )
+def runningMean(x, N):
+    return np.convolve(x, np.ones((N,))/N, mode='valid')
 
+def hparamsToArray( hparams ):
+    out = []
+    out.append( int(hparams.get( "timesteps", 10 )) )
+    out.append( hparams.get( "l2_reg", 0.005 ) )
+
+    dropouts = hparams.get( "dropouts", [0.2,0.2,0.2,0.2,0.2] )
+    if "dropouts" in hparams:
+        dropouts = hparams["dropouts"]
+        if isinstance(dropouts, basestring):
+            if dropouts == "low":
+                dropouts = [0.2,0.2,0.2,0.2,0.2]
+            elif dropouts == "mid":
+                dropouts = [0.4,0.4,0.4,0.4,0.4]
+            elif dropouts == "high":
+                dropouts = [0.6,0.6,0.6,0.6,0.6]
+            elif dropouts == "up":
+                dropouts = [0.2,0.3,0.4,0.5,0.6]
+            elif dropouts == "down":
+                dropouts = [0.6,0.5,0.4,0.3,0.2]
+    out.append( dropouts )
+
+    out.append( hparams.get( "learning_rate", 0.003 ) )
+    out.append( hparams.get( "validation_split", 0.20 ) )
+    out.append( int(hparams.get( "batch_size", 5 )) )
+    out.append( hparams.get( "optimizer", "RMSprop" ) )
+    out.append( int(hparams.get( "epochs", 40 )) )
+
+    return out
+
+def hparamsToDict( hparams ):
+    out = {}
+    out["timesteps"] = hparams[0]
+    out["l2_reg"] = hparams[1]
+    out["dropouts"] = hparams[2]
+    out["learning_rate"] = hparams[3]
+    out["validation_split"] = hparams[4]
+    out["batch_size"] = hparams[5]
+    out["optimizer"] = hparams[6]
+    out["epochs"] = hparams[7]
+    return out
+
+def fitLSTM( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.005, dropouts=[0.25,0.25,0.25,0.25,0.25],
+             learning_rate=0.003, validation_split=0.15, batch_size=5, optimizer="RMSprop" ):
+    num_actions = len(y[0])
+    num_samples = len(images)
     hold_out = (num_samples % timesteps) + (5 * timesteps)
     num_samples = num_samples - hold_out
     X_val = images[num_samples:,:]
@@ -124,153 +181,126 @@ def fitLSTM( images, y, epochs ):
     y = y[0:num_samples,:]
     y = np.reshape( y, (num_samples/timesteps, timesteps, num_actions) )
 
-    save_chk = ModelCheckpoint("weights_{epoch:02d}_{val_categorical_accuracy:.2f}.hdf5", monitor='val_loss', verbose=0, save_best_only=True, save_weights_only=False, mode='auto', period=1)
+    callbacks = None
+    if verbose:
+        save_chk = ModelCheckpoint("weights_{epoch:02d}_{val_categorical_accuracy:.2f}.hdf5", monitor='val_loss', verbose=0, save_best_only=True, save_weights_only=False, mode='auto', period=1)
+        callbacks = [save_chk]
 
-    history = model.fit( images, y, validation_split=0.15, epochs=epochs, batch_size=5, shuffle=False, callbacks=[save_chk] )
-    model.save( 'best_model.h5' )
-    model.save_weights('best_model_weights.h5')
-    plotHistory( history.history['loss'], history.history['categorical_accuracy'],
-                 history.history['val_loss'], history.history['val_categorical_accuracy'] )
+    # See: https://medium.com/towards-data-science/learning-rate-schedules-and-adaptive-learning-rate-methods-for-deep-learning-2c8f433990d1
+    if optimizer == "RMSProp":
+        optimizer = optimizers.RMSprop(lr=learning_rate, rho=0.9, epsilon=1e-08, decay=0.005) # default lr=0.001
+    elif optimizer == "Adagrad":
+        optimizer = optimizers.Adagrad(lr=learning_rate, epsilon=1e-08, decay=0.0) # default lr=0.01
+    elif optimizer == "Adadelta":
+        optimizer = optimizers.Adadelta(lr=learning_rate, rho=0.95, epsilon=1e-08, decay=0.0) # default lr=1.0
+    elif optimizer == "Adam":
+        optimizer = optimizers.Adam(lr=learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0) # default lr=0.001
 
-    (val_loss, val_acc) = evaluate( num_actions, input_dim, X_val, y_val )
-    print( "Final Validation loss/acc: {}  {}".format( val_loss, val_acc) )
+    model = model_keras.make_model_lstm_fit( num_actions, input_dim, timesteps=timesteps, stateful=False, dropouts=dropouts, optimizer=optimizer )
 
-def evaluate( num_actions, input_dim, X_val, y_val ):
-    model2 = model_keras.make_model_lstm( num_actions, input_dim, batch_size=X_val.shape[0], timesteps=1, stateful=True )
+    history = model.fit( images, y, validation_split=validation_split, epochs=epochs, verbose=verbose, batch_size=batch_size, shuffle=False, callbacks=callbacks )
+
+    if verbose:
+        model.save( 'best_model.h5' )
+        model.save_weights('best_model_weights.h5')
+        plotHistory( history.history['loss'], history.history['categorical_accuracy'],
+                     history.history['val_loss'], history.history['val_categorical_accuracy'] )
+
+        if X_val is not None and y_val is not None:
+            (val_loss, val_acc) = evaluate( num_actions, input_dim, X_val, y_val, dropouts=dropouts )
+            print( "Final Validation loss/acc: {}  {}".format( val_loss, val_acc) )
+
+    running = runningMean(history.history['val_categorical_accuracy'], 5)
+    max_running = np.max( running )
+    print( "Max validation (rmean=5, at {}): {}".format( np.argmax(running), max_running ) )
+    #print( "  val_accuracy: {}".format( history.history['val_categorical_accuracy'] ) )
+
+    return max_running
+
+def evaluate( num_actions, input_dim, X_val, y_val, dropouts=[0.25,0.25,0.25,0.25,0.25] ):
+    model2 = model_keras.make_model_lstm( num_actions, input_dim, batch_size=X_val.shape[0], timesteps=1, stateful=True, dropouts=dropouts )
     model2.load_weights( 'best_model_weights.h5' )
     return model2.test_on_batch( np.reshape(X_val,(X_val.shape[0],1,X_val.shape[1],X_val.shape[2],X_val.shape[3])),
         np.reshape(y_val, (y_val.shape[0],1,y_val.shape[1]) ) )
 
-def trainLSTM( images, y, epochs, batch_size, timesteps=10 ):
-    num_actions = len(y[0])
-    input_dim = images[0].shape
-    num_samples = len(images)
-    model = model_keras.make_model_lstm( num_actions, input_dim, batch_size=batch_size, timesteps=timesteps, stateful=False )
-    printLearningRate(model)
-    bt_size = batch_size * timesteps
-    num_batches = images.shape[0] / bt_size
-    extra = num_samples - (bt_size * num_batches)
-    extra += bt_size
-    last_start = images.shape[0] - (2 * extra)
-    X_val = images[-extra:,:]
-    y_val = y[-extra:,:]
-    print( "Validation {}: {}".format( extra, X_val.shape ) )
-    losses = []
-    accs = []
-    val_losses = []
-    val_accs = []
-    best_accuracy = -10.0
-    full_start = time()
-    for epoch in range(epochs):
-        epoch_start = time()
-        starts = range(0,last_start,bt_size)
-        np.random.shuffle(starts)
-        epoch_losses = []
-        epoch_accs = []
-        for start in starts:
-            end = start+bt_size
-            t_b = bt_size
-            if end >= num_samples:
-                end = num_samples
-                t_b = end - start
-# Each of these is one batch of timesteps contiguous samples
-            try:
-                X = np.reshape(images[start:end,:], (batch_size,timesteps)+input_dim)
-                y_batch = np.reshape( y[start:end,:], (batch_size,timesteps,num_actions))
-            except ValueError as err:
-                print( err )
-                print( "Failed to reshape batch: {}:{}".format( start, end ) )
-                print( "   From: {}".format( images[start:end,:].shape ) )
-                print( "     To: {}".format( (batch_size,timesteps)+input_dim ) )
-                print( "   From: {}".format( y[start:end,:].shape ) )
-                print( "     To: {}".format( (batch_size,timesteps,num_actions) ) )
-            (loss, acc) = model.train_on_batch( X, y_batch )
-            model.reset_states() # Don't carry internal state between batches
-            epoch_losses.append(loss)
-            epoch_accs.append(acc)
-            if acc > best_accuracy:
-                model.save( 'best_model.h5' )
-                model.save_weights('best_model_weights.h5')
-                best_accuracy = acc
-        mloss = np.mean(epoch_losses)
-        macc = np.mean(epoch_accs)
-        losses.append( mloss )
-        accs.append( macc )
-        print( "Epoch {}: loss: {}  acc: {}".format( epoch+1, mloss, macc ) )
-        (val_loss, val_acc) = evaluate( num_actions, input_dim, X_val, y_val )
-        val_losses.append(val_loss)
-        val_accs.append(val_acc)
-        print( "     val: loss: {}  acc: {}".format( val_loss, val_acc ) )
-        printLearningRate(model)
-        print( " seconds: {}".format( time() - epoch_start ) )
-    print( " Total seconds: {}".format( time() - full_start ) )
-    plotHistory( losses, accs, val_losses, val_accs )
+def runTests(args):
+    arr1 = hparamsToArray( {} )
+    print( "default hparams: {}".format( arr1 ) )
+    dict1 = hparamsToDict( arr1 )
+    arr2 = hparamsToArray( dict1 )
+    if arr1 == arr2:
+        print( "round trip worked" )
+    else:
+        print( "{}".format( arr2 ) )
+    dict1["dropouts"] = "up"
+    dropouts = [0.2,0.3,0.4,0.5,0.6]
+    res = hparamsToArray(dict1)
+    if dropouts == res[2]:
+        print( "Dropouts with 'up' worked" )
+    else:
+        print( "Dropouts with 'up' did NOT work" )
+
+def getOptions():
+
+    parser = argparse.ArgumentParser(description='Train on robot image/action data.')
+    parser.add_argument('dirs', nargs='*', metavar="Directory", help='A directory containing recorded robot data')
+    parser.add_argument('-f', '--file', help='File with one directory per line')
+    parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
+
+    args = parser.parse_args()
+
+    if args.file is not None:
+        with open(args.file, "r") as f:
+            tmp_dirs = f.read().split('\n')
+            args.dirs.extend(tmp_dirs)
+
+    if len(args.dirs) == 0 and not args.test_only:
+        parser.print_help()
+        print( "\nNo directories supplied" )
+        exit()
+
+    return args
 
 if __name__ == "__main__":
+    args = getOptions()
+
+    if args.test_only:
+        runTests(args)
+        exit()
+
     K.set_learning_phase(True)
     setCPUCores( 4 )
 
-    images, y = loadData()
+    images, y = loadData(args.dirs)
     input_dim = images[0].shape
     num_actions = len(y[0])
     num_samples = len(images)
-    epochs = 100
 
-    #model_type = "simple"
-    model_type = "fit"
-    #model_type = "lstm_batch"
-    #model_type = "recurrent"
-    #model_type = "forward"
+#    timesteps = 10
+#    hold_out = (num_samples % timesteps) + (5 * timesteps)
+#    num_samples = num_samples - hold_out
+#    X_val = images[num_samples:,:]
+#    y_val = y[num_samples:,:]
+#    images = images[0:num_samples,:]
+#    images = np.reshape( images, (num_samples/timesteps, timesteps) + input_dim )
+#    y = y[0:num_samples,:]
+#    y = np.reshape( y, (num_samples/timesteps, timesteps, num_actions) )
+#    epochs = 40
 
     print( "Samples: {}   Input: {}  Output: {}".format( num_samples, input_dim, num_actions ) )
     print( "Shape of y: {}".format( y.shape ) )
-    print( "Model Type: {}".format( model_type ) )
     print( "Image 0 data: {} {}".format( np.min(images[0]), np.max(images[0]) ) )
     print( "Images: {}".format( images.shape ) )
     print( "Labels: {}".format( y.shape ) )
 
-    if model_type == "recurrent":
-        trainLSTM( images, y, epochs, batch_size=1 )
-    elif model_type == "lstm_batch":
-        trainLSTM( images, y, epochs, batch_size=5 )
-    elif model_type == "fit":
-        fitLSTM( images, y, epochs )
-    elif model_type == "simple":
-        timesteps = 10
-        hold_out = (num_samples % timesteps) + (5 * timesteps)
-        num_samples = num_samples - hold_out
-        X_val = images[num_samples:,:]
-        y_val = y[num_samples:,:]
-        images = images[0:num_samples,:]
-        images = np.reshape( images, (num_samples/timesteps, timesteps) + input_dim )
-        y = y[0:num_samples,:]
-        y = np.reshape( y, (num_samples/timesteps, timesteps, num_actions) )
+    # Get default params
+    hparams = hparamsToDict( hparamsToArray( {} ) )
+    vals = []
+    count = 1
+    verbose = 0 if (count > 1) else 1
+    for i in range(count):
+        val = fitLSTM( input_dim, images, y, verbose=verbose, **hparams )
+        vals.append(val)
 
-        model = model_keras.make_model_lstm_simple( num_actions, input_dim )
-        history = model.fit( images, y, validation_split=0.25, epochs=epochs, shuffle=False )
-        plotHistory( history.history['loss'], history.history['categorical_accuracy'],
-                     history.history['val_loss'], history.history['val_categorical_accuracy'] )
-        model.save_weights('best_model_weights.h5')
-
-        model2 = model_keras.make_model_lstm_simple( num_actions, input_dim, batch_size=1, timesteps=1, stateful=True )
-        model2.load_weights( 'best_model_weights.h5' )
-        total = 0
-        right = 0
-        for i in range(X_val.shape[0]):
-            obs = X_val[i,:]
-            obs = np.reshape( obs, (1,1)+input_dim )
-            action = model2.predict( obs, batch_size=1 )
-            total += 1
-            if y_val[i][np.argmax(action)] == 1:
-                right += 1
-#            print( "Action: {} {} {}".format( action, np.argmax(action), y_val[i] ) )
-# Action: [[[ 0.27729896  0.2531901   0.16409625  0.1798604   0.12555425]]] 0 [ 1.  0.  0.  0.  0.]
-        print( "{} / {} = {}%".format( right, total, (right * 100.0) / total ) )
-
-    else:
-        model = model_keras.make_model_test( num_actions, input_dim )
-        history = model.fit( images, y, validation_split=0.25, epochs=epochs, callbacks=[SGDLearningRateTracker()] )
-
-        #print( history.history.keys() )
-        plotHistory( history.history['loss'], history.history['categorical_accuracy'],
-                     history.history['val_loss'], history.history['val_categorical_accuracy'] )
+    if count > 1:
+        print( "Validation accuracy {} {} ({})".format( np.mean(vals), np.std(vals), vals ) )
