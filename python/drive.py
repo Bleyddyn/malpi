@@ -14,6 +14,7 @@ import numpy as np
 
 from accelerometer import accelerometer
 #from PiVideoStream import PiVideoStream
+import led
 
 try:
     import config
@@ -31,7 +32,7 @@ def log( message, options ):
         outf.write(datestr + ": " + message + "\n")
 
 class Drive:
-    def __init__(self, drive_dir, video_path=None, camera=None, image_delay=None):
+    def __init__(self, drive_dir, video_path=None, camera=None, image_delay=None, drive_name=None):
         """ drive_dir: directory where all data will be saved
             video_path: location of the saved video file, e.g. /var/ramdrive/video.h264. Will be moved into drive_dir
             camera: A instance of PiVideoStream
@@ -42,10 +43,16 @@ class Drive:
         self.video_path = video_path
         self.camera = camera
         self.image_delay = image_delay
+        if drive_name is None:
+            drive_name = "Manual Drive"
+        self.drive_name = drive_name
 
         self.images = []
+        self.image_index = 1
+        self.max_images = 150
         self.image_times = []
-        self.actions = []
+        self.image_actions = []
+        self.actions = ["stop"]
         self.action_times = []
 
     def setVideoFilename(filename):
@@ -66,17 +73,21 @@ class Drive:
             self.accel = None
         if self.camera:
             self.camera.stopVideo()
+        led.turnAllLEDOn( False )
 
     def addAction(self,action):
         self.actions.append(action)
         self.action_times.append(time())
 
-    def addImage(self,image,format='numpy'):
+    def addImage(self,image,format='numpy', last_action=None):
+        # This method is no longer being used
         if format == 'jpeg':
             #convert to numpy
             pass
         self.images.append(image)
         self.image_times.append(time())
+        if last_action is not None:
+            self.image_actions.append(last_action)
 
     def captureImage( self ):
         while not self.stopped:
@@ -86,8 +97,19 @@ class Drive:
                 if full is not None:
                     self.images.append( full )
                     self.image_times.append( time() )
+                    self.image_actions.append( self.actions[-1] )
+                if len(self.images) >= self.max_images:
+                    self.saveImages()
             else:
                 return
+
+    def saveImages( self ):
+        # Save current image array and empty it.
+        images_filename = os.path.join( self.drive_dir, "images_{}.pickle".format(self.image_index) )
+        with open(images_filename, 'wb') as f:
+            pickle.dump( self.images, f, pickle.HIGHEST_PROTOCOL)
+        self.images = []
+        self.image_index += 1
 
     def startDriving( self ):
         if not os.path.exists(self.drive_dir):
@@ -99,6 +121,8 @@ class Drive:
             if self.image_delay and self.image_delay > 0.0:
                 Thread(target=self.captureImage, args=()).start()
             self.camera.startVideo(self.video_path)
+        led.turnLEDOn( True, 11 )
+
 
     def endDriving( self ):
         self.stop()
@@ -111,22 +135,26 @@ class Drive:
             pass
         self.accel_path = None
 
-        pkg = self.packageImages( self.images, self.image_times, self.actions, self.action_times, accel_data )
+        led.turnLEDOn( True, 12 )
+        self.saveImages()
+        pkg = self.packageImages( self.images, self.image_times, self.actions, self.action_times, accel_data, self.image_actions )
         images_filename = os.path.join( self.drive_dir, "drive.pickle" )
         with open(images_filename, 'wb') as f:
             pickle.dump( pkg, f, pickle.HIGHEST_PROTOCOL)
         if os.path.exists(self.video_path):
             shutil.move( self.video_path, os.path.join( self.drive_dir, "drive_video.h264") )
+        led.turnAllLEDOn( False )
 
-    def packageImages(self, images, image_times, actions, action_times, accel_data ):
+    def packageImages(self, images, image_times, actions, action_times, accel_data, image_actions ):
         image_pkg = { }
         image_pkg["date"] = datetime.datetime.now()
-        image_pkg["model"] = "Manual Drive"
+        image_pkg["model"] = self.drive_name
         image_pkg["actions"] = actions
         image_pkg["action_times"] = action_times
         image_pkg["accelerometer"] = accel_data
         image_pkg["images"] = images
         image_pkg["image_times"] = image_times
+        image_pkg["image_actions"] = image_actions
         return image_pkg
 
 def getOptions():
@@ -171,5 +199,7 @@ if __name__ == "__main__":
     if options.test_only:
         test(options)
 
-    with Drive() as adrive:
+    #def __init__(self, drive_dir, video_path=None, camera=None, image_delay=None):
+    with Drive( os.path.expanduser("~/drive/test1") ) as adrive:
         adrive.startDriving( options )
+        sleep(20)
