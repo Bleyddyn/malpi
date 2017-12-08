@@ -112,24 +112,24 @@ def make_model_flat( num_actions, input_dim, l2_reg=0.005 ):
 
     return model
 
-def make_model_test( num_actions, input_dim, l2_reg=0.005 ):
+def make_model_test( num_actions, input_dim, l2_reg=0.005, optimizer=None, dropouts=[0.25,0.25,0.25,0.25,0.25] ):
     model = Sequential()
-    model.add(Dropout(0.25, input_shape=input_dim))
+    model.add(Dropout(dropouts[0], input_shape=input_dim))
     model.add(Convolution2D(16, (8, 8), activation='relu', padding='same', strides=(4,4), kernel_regularizer=regularizers.l2(l2_reg)))
-    model.add(Dropout(0.25))
+    model.add(Dropout(dropouts[1]))
     model.add(Convolution2D(32, (4, 4), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
-    model.add(Dropout(0.25))
+    model.add(Dropout(dropouts[2]))
     model.add(Convolution2D(64, (3, 3), activation='relu', padding='same', strides=(1,1), kernel_regularizer=regularizers.l2(l2_reg)))
-    #model.add(MaxPooling2D(pool_size=(2,2)))
-    model.add(Dropout(0.25))
+    model.add(Dropout(dropouts[3]))
     model.add(Flatten())
     model.add(Dense(256, activation='relu', kernel_regularizer=regularizers.l2(l2_reg)))
-    model.add(Dropout(0.25))
+    model.add(Dropout(dropouts[4]))
     model.add(Dense(num_actions, activation='softmax', kernel_regularizer=regularizers.l2(l2_reg)))
 
-    optim = optimizers.RMSprop(lr=0.003, rho=0.9, epsilon=1e-08, decay=0.005)
+    if optimizer is None:
+        optimizer = optimizers.RMSprop(lr=0.003, rho=0.9, epsilon=1e-08, decay=0.005)
 
-    model.compile(loss='categorical_crossentropy', optimizer=optim, metrics=[metrics.categorical_accuracy] )
+    model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=[metrics.categorical_accuracy] )
 
     return model
 

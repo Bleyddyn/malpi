@@ -168,6 +168,50 @@ def hparamsToDict( hparams ):
     out["epochs"] = hparams[7]
     return out
 
+def makeOptimizer( optimizer, learning_rate ):
+    # See: https://medium.com/towards-data-science/learning-rate-schedules-and-adaptive-learning-rate-methods-for-deep-learning-2c8f433990d1
+    if optimizer == "RMSProp":
+        optimizer = optimizers.RMSprop(lr=learning_rate, rho=0.9, epsilon=1e-08, decay=0.005) # default lr=0.001
+    elif optimizer == "Adagrad":
+        optimizer = optimizers.Adagrad(lr=learning_rate, epsilon=1e-08, decay=0.0) # default lr=0.01
+    elif optimizer == "Adadelta":
+        optimizer = optimizers.Adadelta(lr=learning_rate, rho=0.95, epsilon=1e-08, decay=0.0) # default lr=1.0
+    elif optimizer == "Adam":
+        optimizer = optimizers.Adam(lr=learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0) # default lr=0.001
+
+    return optimizer
+
+def fitFC( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.005, dropouts=[0.25,0.25,0.25,0.25,0.25],
+           learning_rate=0.003, validation_split=0.15, batch_size=32, optimizer="RMSprop" ):
+    num_actions = len(y[0])
+    callbacks = None
+
+    if verbose:
+        save_chk = ModelCheckpoint("weights_{epoch:02d}_{val_categorical_accuracy:.2f}.hdf5", monitor='val_loss', verbose=0, save_best_only=True, save_weights_only=False, mode='auto', period=1)
+        callbacks = [save_chk]
+
+    optimizer = makeOptimizer( optimizer, learning_rate )
+    
+    model = model_keras.make_model_test( num_actions, input_dim, optimizer=optimizer, dropouts=dropouts )
+
+    history = model.fit( images, y, validation_split=validation_split, epochs=epochs, verbose=verbose, batch_size=batch_size, callbacks=callbacks )
+
+    if verbose:
+        model.save( 'best_model.h5' )
+        model.save_weights('best_model_weights.h5')
+        plotHistory( history.history['loss'], history.history['categorical_accuracy'],
+                     history.history['val_loss'], history.history['val_categorical_accuracy'] )
+
+        if X_val is not None and y_val is not None:
+            (val_loss, val_acc) = evaluate( num_actions, input_dim, X_val, y_val, dropouts=dropouts )
+            print( "Final Validation loss/acc: {}  {}".format( val_loss, val_acc) )
+
+    running = runningMean(history.history['val_categorical_accuracy'], 5)
+    max_running = np.max( running )
+    print( "Max validation (rmean=5, at {}): {}".format( np.argmax(running), max_running ) )
+
+    return max_running
+
 def fitLSTM( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.005, dropouts=[0.25,0.25,0.25,0.25,0.25],
              learning_rate=0.003, validation_split=0.15, batch_size=5, optimizer="RMSprop" ):
     num_actions = len(y[0])
@@ -186,15 +230,7 @@ def fitLSTM( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.
         save_chk = ModelCheckpoint("weights_{epoch:02d}_{val_categorical_accuracy:.2f}.hdf5", monitor='val_loss', verbose=0, save_best_only=True, save_weights_only=False, mode='auto', period=1)
         callbacks = [save_chk]
 
-    # See: https://medium.com/towards-data-science/learning-rate-schedules-and-adaptive-learning-rate-methods-for-deep-learning-2c8f433990d1
-    if optimizer == "RMSProp":
-        optimizer = optimizers.RMSprop(lr=learning_rate, rho=0.9, epsilon=1e-08, decay=0.005) # default lr=0.001
-    elif optimizer == "Adagrad":
-        optimizer = optimizers.Adagrad(lr=learning_rate, epsilon=1e-08, decay=0.0) # default lr=0.01
-    elif optimizer == "Adadelta":
-        optimizer = optimizers.Adadelta(lr=learning_rate, rho=0.95, epsilon=1e-08, decay=0.0) # default lr=1.0
-    elif optimizer == "Adam":
-        optimizer = optimizers.Adam(lr=learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0) # default lr=0.001
+    optimizer = makeOptimizer( optimizer, learning_rate )
 
     model = model_keras.make_model_lstm_fit( num_actions, input_dim, timesteps=timesteps, stateful=False, dropouts=dropouts, optimizer=optimizer )
 
@@ -213,7 +249,6 @@ def fitLSTM( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.
     running = runningMean(history.history['val_categorical_accuracy'], 5)
     max_running = np.max( running )
     print( "Max validation (rmean=5, at {}): {}".format( np.argmax(running), max_running ) )
-    #print( "  val_accuracy: {}".format( history.history['val_categorical_accuracy'] ) )
 
     return max_running
 
@@ -276,17 +311,6 @@ if __name__ == "__main__":
     num_actions = len(y[0])
     num_samples = len(images)
 
-#    timesteps = 10
-#    hold_out = (num_samples % timesteps) + (5 * timesteps)
-#    num_samples = num_samples - hold_out
-#    X_val = images[num_samples:,:]
-#    y_val = y[num_samples:,:]
-#    images = images[0:num_samples,:]
-#    images = np.reshape( images, (num_samples/timesteps, timesteps) + input_dim )
-#    y = y[0:num_samples,:]
-#    y = np.reshape( y, (num_samples/timesteps, timesteps, num_actions) )
-#    epochs = 40
-
     print( "Samples: {}   Input: {}  Output: {}".format( num_samples, input_dim, num_actions ) )
     print( "Shape of y: {}".format( y.shape ) )
     print( "Image 0 data: {} {}".format( np.min(images[0]), np.max(images[0]) ) )
@@ -300,6 +324,8 @@ if __name__ == "__main__":
     verbose = 0 if (count > 1) else 1
     for i in range(count):
         val = fitLSTM( input_dim, images, y, verbose=verbose, **hparams )
+        #val = fitFC( input_dim, images, y, verbose=verbose, **hparams )
+# Return all history from the fit methods and plot learning curves with error bars
         vals.append(val)
 
     if count > 1:
