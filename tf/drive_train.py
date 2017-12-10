@@ -4,7 +4,6 @@ from time import time
 import argparse
 
 import numpy as np
-import matplotlib.pyplot as plt
 
 import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
@@ -81,45 +80,25 @@ def exp_decay(epoch):
     lrate = initial_lrate * exp(-k*t)
     return lrate
 
-def plotHistory( loss, acc, val_loss, val_acc ):
-    #['val_categorical_accuracy', 'loss', 'categorical_accuracy', 'val_loss']
-
-    # summarize history for accuracy
-    plt.figure(1,figsize=(10, 15), dpi=80)
-    plt.subplot(2, 1, 1)
-    plt.plot(acc)
-    plt.plot(val_acc)
-    plt.title('model accuracy')
-    plt.ylabel('accuracy')
-    plt.xlabel('epoch')
-    plt.legend(['train', 'test'], loc='upper left')
-
-    # summarize history for loss
-    plt.subplot(2, 1, 2)
-    plt.plot(loss)
-    plt.plot(val_loss)
-    plt.title('model loss')
-    plt.ylabel('loss')
-    plt.xlabel('epoch')
-    plt.legend(['train', 'test'], loc='upper left')
-    plt.savefig('metrics.png')
-    plt.show()
-
-def loadData( dirs ):
+def loadData( dirs, image_norm=True ):
     images = []
     actions = []
 
     for onedir in dirs:
         if len(onedir) > 0:
-            #ddir = os.path.join("./drive", onedir )
             dimages, dactions = loadOneDrive( onedir )
             images.extend(dimages)
             actions.extend(dactions)
 
     images = np.array(images)
-    images = images.astype(np.float) / 255.0
-#images = np.array(data['images'])
-#actions = data['image_actions']
+    images = images.astype(np.float)
+
+    if image_norm:
+# should only do this for the training data, not val/test, but I'm not sure how to do that when Keras makes the train/val split
+        images[:,:,:,0] -= np.mean(images[:,:,:,0])
+        images[:,:,:,1] -= np.mean(images[:,:,:,1])
+        images[:,:,:,2] -= np.mean(images[:,:,:,2])
+
     y = embedActions( actions )
     y = to_categorical( y, num_classes=5 )
     return images, y
@@ -199,9 +178,6 @@ def fitFC( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.00
     if verbose:
         model.save( 'best_model.h5' )
         model.save_weights('best_model_weights.h5')
-        plotHistory( history.history['loss'], history.history['categorical_accuracy'],
-                     history.history['val_loss'], history.history['val_categorical_accuracy'] )
-
         if X_val is not None and y_val is not None:
             (val_loss, val_acc) = evaluate( num_actions, input_dim, X_val, y_val, dropouts=dropouts )
             print( "Final Validation loss/acc: {}  {}".format( val_loss, val_acc) )
@@ -210,7 +186,7 @@ def fitFC( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.00
     max_running = np.max( running )
     print( "Max validation (rmean=5, at {}): {}".format( np.argmax(running), max_running ) )
 
-    return max_running
+    return (max_running, history)
 
 def fitLSTM( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.005, dropouts=[0.25,0.25,0.25,0.25,0.25],
              learning_rate=0.003, validation_split=0.15, batch_size=5, optimizer="RMSprop" ):
@@ -239,9 +215,6 @@ def fitLSTM( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.
     if verbose:
         model.save( 'best_model.h5' )
         model.save_weights('best_model_weights.h5')
-        plotHistory( history.history['loss'], history.history['categorical_accuracy'],
-                     history.history['val_loss'], history.history['val_categorical_accuracy'] )
-
         if X_val is not None and y_val is not None:
             (val_loss, val_acc) = evaluate( num_actions, input_dim, X_val, y_val, dropouts=dropouts )
             print( "Final Validation loss/acc: {}  {}".format( val_loss, val_acc) )
@@ -274,6 +247,7 @@ def runTests(args):
         print( "Dropouts with 'up' worked" )
     else:
         print( "Dropouts with 'up' did NOT work" )
+    print( args.dirs )
 
 def getOptions():
 
@@ -294,6 +268,12 @@ def getOptions():
         print( "\nNo directories supplied" )
         exit()
 
+    for i in reversed(range(len(args.dirs))):
+        if args.dirs[i].startswith("#"):
+            del args.dirs[i]
+        elif len(args.dirs[i]) == 0:
+            del args.dirs[i]
+            
     return args
 
 if __name__ == "__main__":
@@ -320,13 +300,18 @@ if __name__ == "__main__":
     # Get default params
     hparams = hparamsToDict( hparamsToArray( {} ) )
     vals = []
-    count = 1
+    histories = []
+    count = 5
     verbose = 0 if (count > 1) else 1
     for i in range(count):
-        val = fitLSTM( input_dim, images, y, verbose=verbose, **hparams )
-        #val = fitFC( input_dim, images, y, verbose=verbose, **hparams )
-# Return all history from the fit methods and plot learning curves with error bars
+        #val = fitLSTM( input_dim, images, y, verbose=verbose, **hparams )
+        val, his = fitFC( input_dim, images, y, verbose=verbose, **hparams )
+        # Return all history from the fit methods and pickle
         vals.append(val)
+        histories.append(his.history)
+
+    with open("histories.pickle", 'wb') as f:
+        pickle.dump( histories, f, pickle.HIGHEST_PROTOCOL)
 
     if count > 1:
         print( "Validation accuracy {} {} ({})".format( np.mean(vals), np.std(vals), vals ) )

@@ -92,6 +92,23 @@ def readFromSeparateFiles():
         except:
             print( "{} Failed".format( key ) )
 
+def imageStats( drive_dir, indent="" ):
+    with open(os.path.join( drive_dir, 'images_120x120.pickle' ),'r') as f:
+        small_images = pickle.load(f)
+    print( "{}Small Images min/mean/std/max: {} / {} / {} / {}".format( indent, np.min(small_images), np.mean(small_images), np.std(small_images), np.max(small_images) ) )
+    small_images = np.array(small_images)
+    small_images = small_images.astype(np.float)
+    small_images[:,:,:,0] -= np.mean(small_images[:,:,:,0])
+    small_images[:,:,:,1] -= np.mean(small_images[:,:,:,1])
+    small_images[:,:,:,2] -= np.mean(small_images[:,:,:,2])
+
+    print( "{}Red min/mean/std/max: {} / {} / {} / {}".format( indent, np.min(small_images[:,:,:,0]), np.mean(small_images[:,:,:,0]), np.std(small_images[:,:,:,0]), np.max(small_images[:,:,:,0]) ) )
+    print( "{}Green min/mean/std/max: {} / {} / {} / {}".format( indent, np.min(small_images[:,:,:,1]), np.mean(small_images[:,:,:,1]), np.std(small_images[:,:,:,1]), np.max(small_images[:,:,:,1]) ) )
+    print( "{}Blue min/mean/std/max: {} / {} / {} / {}".format( indent, np.min(small_images[:,:,:,2]), np.mean(small_images[:,:,:,2]), np.std(small_images[:,:,:,2]), np.max(small_images[:,:,:,2]) ) )
+
+    print( "{}Shape: {}".format( indent, small_images.shape ) )
+    print( "{}Type: {}".format( indent, small_images.dtype ) )
+
 def describeKey( key, key_data, indent="" ):
     if isinstance(key_data, basestring):
         print( "{}{}: {}".format( indent, key, key_data ) )
@@ -148,6 +165,7 @@ def getOptions():
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
     parser.add_argument('--desc', action="store_true", default=False, help='Describe each drive, then exit')
     parser.add_argument('--sample', action="store_true", default=False, help='Display sample images, then exit')
+    parser.add_argument('--stats', action="store_true", default=False, help='Display image stats for each directory')
 
     args = parser.parse_args()
 
@@ -161,6 +179,12 @@ def getOptions():
         print( "\nNo directories supplied" )
         exit()
 
+    for i in reversed(range(len(args.dirs))):
+        if args.dirs[i].startswith("#"):
+            del args.dirs[i]
+        elif len(args.dirs[i]) == 0:
+            del args.dirs[i]
+            
     return args
 
 if __name__ == "__main__":
@@ -180,15 +204,18 @@ if __name__ == "__main__":
         
     for adir in args.dirs:
         print( adir )
-        data = loadDrive( adir, indent=indent )
+        if args.stats:
+            imageStats( adir, indent=indent )
+        else:
+            data = loadDrive( adir, indent=indent )
 
-        if data is not None:
-            if args.desc:
-                describeData( data, indent=indent )
-            else:
-                if not 'model' in data:
-                    print( "{}No model name in drive.pickle. Possibly an older drive format".format( indent ) )
+            if data is not None:
+                if args.desc:
+                    describeData( data, indent=indent )
                 else:
-                    print( "{}Model: {}".format( indent, data['model'] ) )
-                makeActions( adir, data, indent=indent )
-                makeSmallImages( adir, data, indent=indent )
+                    if not 'model' in data:
+                        print( "{}No model name in drive.pickle. Possibly an older drive format".format( indent ) )
+                    else:
+                        print( "{}Model: {}".format( indent, data['model'] ) )
+                    makeActions( adir, data, indent=indent )
+                    makeSmallImages( adir, data, indent=indent )
