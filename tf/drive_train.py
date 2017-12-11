@@ -98,6 +98,9 @@ def loadData( dirs, image_norm=True ):
         images[:,:,:,0] -= np.mean(images[:,:,:,0])
         images[:,:,:,1] -= np.mean(images[:,:,:,1])
         images[:,:,:,2] -= np.mean(images[:,:,:,2])
+        images[:,:,:,0] /= np.std(images[:,:,:,0])
+        images[:,:,:,1] /= np.std(images[:,:,:,1])
+        images[:,:,:,2] /= np.std(images[:,:,:,2])
 
     y = embedActions( actions )
     y = to_categorical( y, num_classes=5 )
