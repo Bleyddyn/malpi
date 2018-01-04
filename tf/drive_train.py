@@ -29,6 +29,9 @@ def embedActions( actions ):
     for act in actions:
         if not act.startswith("speed"):
             prev_act = embedding[act]
+            if prev_act is None:
+                print( "Invalid action: {}".format( act ) )
+                raise ValueError("Invalid action: " + str(act) )
             emb.append( embedding[act] )
         else:
             emb.append( prev_act )
@@ -41,16 +44,30 @@ def setCPUCores( cores ):
     set_session(tf.Session(config=config))
 
 def loadOneDrive( drive_dir ):
-    drive_file = os.path.join( drive_dir, "drive.pickle" )
+    actions_file = os.path.join( drive_dir, "image_actions.npy" )
+    if os.path.exists(actions_file):
+        print( "Loading actions from numpy file" )
+        actions = np.load(actions_file)
+        actions = actions.astype('str')
+    else:
+        actions_file = os.path.join( drive_dir, "image_actions.pickle" )
+        with open(actions_file,'r') as f:
+            actions = pickle.load(f)
 
-    with open(drive_file,'r') as f:
-        data = pickle.load(f)
-        #data = pickle.load(f fix_imports=True, encoding='bytes')
-    actions = data['image_actions']
+#    drive_file = os.path.join( drive_dir, "drive.pickle" )
+#    with open(drive_file,'r') as f:
+#        data = pickle.load(f)
+#        #data = pickle.load(f fix_imports=True, encoding='bytes')
+#    actions = data['image_actions']
 
-    im_file = os.path.join( drive_dir, "images_120x120.pickle" )
-    with open(im_file,'r') as f:
-        images = pickle.load(f)
+    im_file = os.path.join( drive_dir, "images_120x120.npy" )
+    if os.path.exists(im_file):
+        print( "Loading images from numpy file" )
+        images = np.load(im_file)
+    else:
+        im_file = os.path.join( drive_dir, "images_120x120.pickle" )
+        with open(im_file,'r') as f:
+            images = pickle.load(f)
 
     return images, actions
 
@@ -181,9 +198,6 @@ def fitFC( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.00
     if verbose:
         model.save( 'best_model.h5' )
         model.save_weights('best_model_weights.h5')
-        if X_val is not None and y_val is not None:
-            (val_loss, val_acc) = evaluate( num_actions, input_dim, X_val, y_val, dropouts=dropouts )
-            print( "Final Validation loss/acc: {}  {}".format( val_loss, val_acc) )
 
     running = runningMean(history.history['val_categorical_accuracy'], 5)
     max_running = np.max( running )
@@ -304,11 +318,11 @@ if __name__ == "__main__":
     hparams = hparamsToDict( hparamsToArray( {} ) )
     vals = []
     histories = []
-    count = 5
+    count = 1
     verbose = 0 if (count > 1) else 1
     for i in range(count):
-        #val = fitLSTM( input_dim, images, y, verbose=verbose, **hparams )
-        val, his = fitFC( input_dim, images, y, verbose=verbose, **hparams )
+        val = fitLSTM( input_dim, images, y, verbose=verbose, **hparams )
+        #val, his = fitFC( input_dim, images, y, verbose=verbose, **hparams )
         # Return all history from the fit methods and pickle
         vals.append(val)
         histories.append(his.history)

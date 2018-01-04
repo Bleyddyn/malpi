@@ -44,6 +44,30 @@ def loadDrive( drive_dir, indent="" ):
 
     return data
 
+def convertDriveToNumpy( drive_dir, indent="" ):
+    ifname = os.path.join( drive_dir, 'image_actions.pickle' )
+    if os.path.exists(ifname):
+        with open(ifname,'r') as f:
+            actions = pickle.load(f)
+            actions = np.array(actions)
+            actions = actions.astype('str')
+            ofname = os.path.join( drive_dir, 'image_actions.npy' )
+            np.save(ofname, actions)
+            print( "{}Converted image_actions to numpy format".format( indent ) )
+    else:
+            print( "{}Missing image_actions.pickle".format( indent ) )
+    # repeat for images_120x120
+    ifname = os.path.join( drive_dir, 'images_120x120.pickle' )
+    if os.path.exists(ifname):
+        with open(ifname,'r') as f:
+            images = pickle.load(f)
+            images = np.array(images)
+            ofname = os.path.join( drive_dir, 'images_120x120.npy' )
+            np.save(ofname, images)
+            print( "{}Converted images_120x120 to numpy format".format( indent ) )
+    else:
+            print( "{}Missing images_120x120.pickle".format( indent ) )
+
 def makeActions( drive_dir, data, indent="" ):
     ofname = os.path.join( drive_dir, 'image_actions.pickle' )
     if not os.path.exists(ofname):
@@ -162,10 +186,14 @@ def getOptions():
     parser = argparse.ArgumentParser(description='View or post-process collected drive data.')
     parser.add_argument('dirs', nargs='*', metavar="Directory", help='A directory containing recorded robot data')
     parser.add_argument('-f', '--file', help='File with one directory per line')
-    parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
-    parser.add_argument('--desc', action="store_true", default=False, help='Describe each drive, then exit')
-    parser.add_argument('--sample', action="store_true", default=False, help='Display sample images, then exit')
-    parser.add_argument('--stats', action="store_true", default=False, help='Display image stats for each directory')
+
+    group = parser.add_mutually_exclusive_group()
+
+    group.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
+    group.add_argument('--desc', action="store_true", default=False, help='Describe each drive, then exit')
+    group.add_argument('--sample', action="store_true", default=False, help='Display sample images, then exit')
+    group.add_argument('--stats', action="store_true", default=False, help='Display image stats for each directory')
+    group.add_argument('--py2py3', action="store_true", default=False, help='Read pickle files and save to numpy files')
 
     args = parser.parse_args()
 
@@ -206,6 +234,8 @@ if __name__ == "__main__":
         print( adir )
         if args.stats:
             imageStats( adir, indent=indent )
+        elif args.py2py3:
+            convertDriveToNumpy( adir, indent=indent )
         else:
             data = loadDrive( adir, indent=indent )
 
