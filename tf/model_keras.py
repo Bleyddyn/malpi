@@ -18,7 +18,7 @@ import time
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation, Flatten, Input
 from keras.layers import Convolution2D, MaxPooling2D, Reshape
-from keras.layers.recurrent import LSTM
+from keras.layers.recurrent import LSTM, GRU
 from keras import regularizers
 from keras.models import model_from_json
 from keras.layers.wrappers import TimeDistributed

@@ -109,9 +109,9 @@ def imageStats( drive_dir, indent="" ):
     print( "{}Shape: {}".format( indent, small_images.shape ) )
     print( "{}Type: {}".format( indent, small_images.dtype ) )
 
-def describeKey( key, key_data, indent="" ):
+def describeKey( key, key_data, indent="", do_print=True ):
     if isinstance(key_data, basestring):
-        print( "{}{}: {}".format( indent, key, key_data ) )
+        output = "{}{}: {}".format( indent, key, key_data )
     else:
         key_len = 0
         try:
@@ -119,13 +119,20 @@ def describeKey( key, key_data, indent="" ):
         except:
             pass
         if key_len > 0:
-            print( "{}{} count: {}".format( indent, key, len(key_data) ) )
+            output = "{}{} count: {}".format( indent, key, len(key_data) )
         else:
-            print( "{}{}: {}".format( indent, key, str(key_data) ) )
+            output = "{}{}: {}".format( indent, key, str(key_data) )
 
-def describeData( data, indent="" ):
+    if do_print:
+        print( output )
+
+    return output
+
+def describeData( data, indent="", do_print=True ):
+    output = ""
     for key in data.keys():
-        describeKey( key, data[key], indent=indent )
+        output += describeKey( key, data[key], indent=indent, do_print=do_print ) + "\n"
+    return output
 
 def sampleImages( drive_dir, data, indent="", count=5 ):
 
@@ -211,7 +218,11 @@ if __name__ == "__main__":
 
             if data is not None:
                 if args.desc:
-                    describeData( data, indent=indent )
+                    output = describeData( data, indent=indent )
+                    meta = os.path.join( adir, 'meta.txt' )
+                    if not os.path.exists(meta):
+                        with open(meta, 'w') as f:
+                            f.write(output)
                 else:
                     if not 'model' in data:
                         print( "{}No model name in drive.pickle. Possibly an older drive format".format( indent ) )

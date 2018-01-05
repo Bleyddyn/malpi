@@ -91,7 +91,7 @@ def loadData( dirs, image_norm=True ):
             actions.extend(dactions)
 
     images = np.array(images)
-    images = images.astype(np.float)
+    images = images.astype(np.float) # / 255.0
 
     if image_norm:
 # should only do this for the training data, not val/test, but I'm not sure how to do that when Keras makes the train/val split
@@ -205,9 +205,9 @@ def fitLSTM( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.
     y = np.reshape( y, (num_samples/timesteps, timesteps, num_actions) )
 
     callbacks = None
-    if verbose:
-        save_chk = ModelCheckpoint("weights_{epoch:02d}_{val_categorical_accuracy:.2f}.hdf5", monitor='val_loss', verbose=0, save_best_only=True, save_weights_only=False, mode='auto', period=1)
-        callbacks = [save_chk]
+#    if verbose:
+#        save_chk = ModelCheckpoint("weights_{epoch:02d}_{val_categorical_accuracy:.2f}.hdf5", monitor='val_loss', verbose=0, save_best_only=True, save_weights_only=False, mode='auto', period=1)
+#        callbacks = [save_chk]
 
     optimizer = makeOptimizer( optimizer, learning_rate )
 
@@ -218,15 +218,15 @@ def fitLSTM( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.
     if verbose:
         model.save( 'best_model.h5' )
         model.save_weights('best_model_weights.h5')
-        if X_val is not None and y_val is not None:
-            (val_loss, val_acc) = evaluate( num_actions, input_dim, X_val, y_val, dropouts=dropouts )
-            print( "Final Validation loss/acc: {}  {}".format( val_loss, val_acc) )
+#        if X_val is not None and y_val is not None:
+#            (val_loss, val_acc) = evaluate( num_actions, input_dim, X_val, y_val, dropouts=dropouts )
+#            print( "Final Validation loss/acc: {}  {}".format( val_loss, val_acc) )
 
     running = runningMean(history.history['val_categorical_accuracy'], 5)
     max_running = np.max( running )
     print( "Max validation (rmean=5, at {}): {}".format( np.argmax(running), max_running ) )
 
-    return max_running
+    return (max_running, history)
 
 def evaluate( num_actions, input_dim, X_val, y_val, dropouts=[0.25,0.25,0.25,0.25,0.25] ):
     model2 = model_keras.make_model_lstm( num_actions, input_dim, batch_size=X_val.shape[0], timesteps=1, stateful=True, dropouts=dropouts )
@@ -307,8 +307,8 @@ if __name__ == "__main__":
     count = 5
     verbose = 0 if (count > 1) else 1
     for i in range(count):
-        #val = fitLSTM( input_dim, images, y, verbose=verbose, **hparams )
-        val, his = fitFC( input_dim, images, y, verbose=verbose, **hparams )
+        val, his = fitLSTM( input_dim, images, y, verbose=verbose, **hparams )
+        #val, his = fitFC( input_dim, images, y, verbose=verbose, **hparams )
         # Return all history from the fit methods and pickle
         vals.append(val)
         histories.append(his.history)

@@ -19,18 +19,19 @@ def loadHistory( fname="histories.pickle" ):
         data = pickle.load(f)
     return data
 
-def plotHistory( loss, acc, val_loss, val_acc ):
+def plotHistory( loss, acc, val_loss, val_acc, name ):
     #['val_categorical_accuracy', 'loss', 'categorical_accuracy', 'val_loss']
 
     # summarize history for accuracy
     plt.figure(1,figsize=(10, 14), dpi=80)
+    plt.suptitle( name, fontsize=16 )
     plt.subplot(2, 1, 1)
     plt.plot(acc)
     plt.plot(val_acc)
     plt.title('model accuracy')
     plt.ylabel('accuracy')
     plt.xlabel('epoch')
-    plt.legend(['train', 'test'], loc='upper left')
+    plt.legend(['train', 'validation'], loc='upper left')
 
     # summarize history for loss
     plt.subplot(2, 1, 2)
@@ -39,11 +40,11 @@ def plotHistory( loss, acc, val_loss, val_acc ):
     plt.title('model loss')
     plt.ylabel('loss')
     plt.xlabel('epoch')
-    plt.legend(['train', 'test'], loc='upper left')
-    plt.savefig('metrics.png')
+    plt.legend(['train', 'validation'], loc='upper left')
+    plt.savefig( name.replace(' ', '_') + '.png')
     plt.show()
 
-def plotHistoryWithError( loss, acc, val_loss, val_acc ):
+def plotHistoryWithError( loss, acc, val_loss, val_acc, name ):
 
     loss_avg = np.mean(loss, axis=0)
     loss_err = np.std(loss, axis=0)
@@ -56,13 +57,14 @@ def plotHistoryWithError( loss, acc, val_loss, val_acc ):
 
     # summarize history for accuracy
     plt.figure(1,figsize=(10, 14), dpi=80)
+    plt.suptitle( name, fontsize=16 )
     plt.subplot(2, 1, 1)
     plt.errorbar(range(len(acc_avg)),acc_avg, yerr=acc_err)
     plt.errorbar(range(len(val_acc_avg)),val_acc_avg, yerr=val_acc_err)
     plt.title('model accuracy')
     plt.ylabel('accuracy')
     plt.xlabel('epoch')
-    plt.legend(['train', 'test'], loc='upper left')
+    plt.legend(['train', 'validation'], loc='upper left')
 
     # summarize history for loss
     plt.subplot(2, 1, 2)
@@ -71,8 +73,8 @@ def plotHistoryWithError( loss, acc, val_loss, val_acc ):
     plt.title('model loss')
     plt.ylabel('loss')
     plt.xlabel('epoch')
-    plt.legend(['train', 'test'], loc='upper left')
-    plt.savefig('metrics.png')
+    plt.legend(['train', 'validation'], loc='upper left')
+    plt.savefig( name.replace(' ', '_') + '.png')
     plt.show()
 
 def runningMean(x, N):
@@ -87,6 +89,7 @@ def getOptions():
     parser = argparse.ArgumentParser(description='Train on robot image/action data.')
     parser.add_argument('history', nargs=1, help='A pickle file containing history from a drive training run')
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
+    parser.add_argument('--name', default='metrics', help='name to use for plot title and filename')
 
     args = parser.parse_args()
 
@@ -102,8 +105,8 @@ if __name__ == "__main__":
     data = loadHistory( args.history[0] )
 
     if len(data) == 1:
-        hist0 = data[1]
-        plotHistory( hist0['loss'], hist0['categorical_accuracy'], hist0['val_loss'], hist0['val_categorical_accuracy'] )
+        hist0 = data[0]
+        plotHistory( hist0['loss'], hist0['categorical_accuracy'], hist0['val_loss'], hist0['val_categorical_accuracy'], args.name )
     elif len(data) > 1:
         loss=[]
         acc=[]
@@ -117,4 +120,4 @@ if __name__ == "__main__":
         #for i in range(len(loss)):
         #    plt.plot( loss[i] )
         #plt.show()
-        plotHistoryWithError( loss, acc, val_loss, val_acc )
+        plotHistoryWithError( loss, acc, val_loss, val_acc, args.name )
