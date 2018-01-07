@@ -52,8 +52,12 @@ class Accelerometer:
         self.t_start = time()
         self.count = 0
         while True:
-            axes = self.adxl345.getAxes(True)
-            self.results.append( [time(),axes['x'], axes['y'], axes['z']] )
+            try:
+                axes = self.adxl345.getAxes(True)
+                self.results.append( [time(),axes['x'], axes['y'], axes['z']] )
+            except IOError as err:
+                self.results.append( [time(),0.0,0.0,0.0] )
+                #print( "adxl345 error: {}".format( err ) )
             self.count += 1
             self.elapsed = time() - self.t_start
             sleep(0.0085) # With overhead, this works out to about 100 samples per second

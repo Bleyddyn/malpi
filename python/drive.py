@@ -19,8 +19,8 @@ import led
 try:
     import config
 except:
-    print "Failed to load config file config.py."
-    print "Try copying config_empty.py to config.py and re-running."
+    print( "Failed to load config file config.py." )
+    print( "Try copying config_empty.py to config.py and re-running." )
     exit()
 
 def log( message, options ):
