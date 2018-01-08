@@ -31,7 +31,7 @@ def log( message, options ):
     with open(logFileName,'a') as outf:
         outf.write(datestr + ": " + message + "\n")
 
-class Drive:
+class DriveRecorder:
     def __init__(self, drive_dir, video_path=None, camera=None, image_delay=None, drive_name=None):
         """ drive_dir: directory where all data will be saved
             video_path: location of the saved video file, e.g. /var/ramdrive/video.h264. Will be moved into drive_dir
@@ -200,6 +200,6 @@ if __name__ == "__main__":
         test(options)
 
     #def __init__(self, drive_dir, video_path=None, camera=None, image_delay=None):
-    with Drive( os.path.expanduser("~/drive/test1") ) as adrive:
+    with DriveRecorder( os.path.expanduser("~/drive/test1") ) as adrive:
         adrive.startDriving( options )
         sleep(20)
