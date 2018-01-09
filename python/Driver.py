@@ -3,17 +3,12 @@ from time import time
 from time import sleep
 import datetime
 from optparse import OptionParser
-import io
-import shutil
-from subprocess import Popen, PIPE, STDOUT
 import pickle
-import socket
 from threading import Thread, Lock
 
 import numpy as np
+from scipy.misc import imresize
 
-from accelerometer import accelerometer
-#from PiVideoStream import PiVideoStream
 import led
 
 import keras
@@ -44,6 +39,9 @@ class Driver:
         self.camera = camera
         self.controller = controller
         self.model = keras.models.load_model(model_path)
+        self.image_delay = 0.1
+        #self.embedding = { "stop":0, "forward":1, "left":2, "right":3, "backward":4 }
+        self.embedding = [ "stop", "forward", "left", "right", "backward" ]
 
     def __enter__(self):
         return self
@@ -57,17 +55,20 @@ class Driver:
         self.stopped = True
         led.turnAllLEDOn( False )
 
-    def _rive( self ):
+    def _drive( self ):
         while not self.stopped:
             sleep(self.image_delay)
             if not self.stopped:
-                (full,_) = self.camera.read()
-                if full is not None:
-                    pass
+                (image,_) = self.camera.read()
+                if image is not None:
 # pre-process image
 # pass image through model
 # Choose action
 # Pass action to controller
+                    image = self.pre_process(image)
+                    actions = self.model.predict_on_batch(image)
+                    action = self.softmax(actions)
+                    controller.do_action( self.embedding[action] )
             else:
                 return
 
@@ -78,6 +79,27 @@ class Driver:
     def endDriving( self ):
         self.stop()
         led.turnAllLEDOn( False )
+
+    def softmax(self, x):
+      probs = np.exp(x - np.max(x))
+      probs /= np.sum(probs )
+      return probs
+
+    def pre_process(self,  image, image_norm=True ):
+        #image = np.array(image)
+        image = images.astype(np.float) # / 255.0
+        image = imresize(image, (120,120), interp='nearest' )
+        image = image.reshape( 1, 120, 120, 3 )
+
+        if image_norm:
+            image[:,:,:,0] -= np.mean(image[:,:,:,0])
+            image[:,:,:,1] -= np.mean(image[:,:,:,1])
+            image[:,:,:,2] -= np.mean(image[:,:,:,2])
+            image[:,:,:,0] /= np.std(image[:,:,:,0])
+            image[:,:,:,1] /= np.std(image[:,:,:,1])
+            image[:,:,:,2] /= np.std(image[:,:,:,2])
+
+        return image
 
 def getOptions():
     usage = "Usage: python ./drive.py [options]"
