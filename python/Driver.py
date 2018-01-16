@@ -55,30 +55,33 @@ class Driver:
         self.stopped = True
         led.turnAllLEDOn( False )
 
-    def _drive( self ):
-        while not self.stopped:
-            sleep(self.image_delay)
-            if not self.stopped:
-                (image,_) = self.camera.read()
-                if image is not None:
+    def _step(self):
+        if self.stopped:
+            return
+
+        (image,_) = self.camera.read()
+        if image is not None:
 # pre-process image
 # pass image through model
 # Choose action
 # Pass action to controller
-                    image = self.pre_process(image)
-                    actions = self.model.predict_on_batch(image)
-                    action = self.softmax(actions)
-                    controller.do_action( self.embedding[action] )
-            else:
-                return
+            image = self.pre_process(image)
+            actions = self.model.predict_on_batch(image)
+            action = self.softmax(actions)
+            controller.do_action( self.embedding[action] )
+
+    def _drive( self ):
+        led.turnLEDOn( True, 11 )
+        while not self.stopped:
+            sleep(self.image_delay)
+            self._step()
+        led.turnAllLEDOn( False )
 
     def startDriving( self ):
         Thread(target=self._drive, args=()).start()
-        led.turnLEDOn( True, 11 )
 
     def endDriving( self ):
         self.stop()
-        led.turnAllLEDOn( False )
 
     def softmax(self, x):
       probs = np.exp(x - np.max(x))
@@ -147,3 +150,4 @@ if __name__ == "__main__":
     with Driver( os.path.expanduser("~/drive/test1") ) as adrive:
         adrive.startDriving( options )
         sleep(20)
+        adrive.endDriving()
