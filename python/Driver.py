@@ -11,7 +11,10 @@ from scipy.misc import imresize
 
 import led
 
-import keras
+#import keras
+import keras.backend as K
+import model_keras
+import tensorflow as tf
 
 try:
     import config
@@ -34,14 +37,22 @@ class Driver:
             camera: A instance of PiVideoStream
             controller: DriveDaemon which handles creating the camera and sending motor commands
         """
+        K.set_learning_phase(True)
+
         self.stopped = False
         self.model_path = model_path
         self.camera = camera
         self.controller = controller
-        self.model = keras.models.load_model(model_path)
-        self.image_delay = 0.1
         #self.embedding = { "stop":0, "forward":1, "left":2, "right":3, "backward":4 }
         self.embedding = [ "stop", "forward", "left", "right", "backward" ]
+        print( "Starting loading model" )
+        self.model = model_keras.make_model_lstm( len(self.embedding), (120,120,3), batch_size=1, timesteps=1, stateful=True, dropouts=[0.25,0.25,0.25,0.25,0.25] )
+        self.model.load_weights( model_path )
+        self.model._make_predict_function()
+        self.graph = tf.get_default_graph()
+        #self.graph = K.get_session().graph # This should work, too
+        print( "Finished loading model" )
+        self.image_delay = 0.01
 
     def __enter__(self):
         return self
@@ -58,23 +69,23 @@ class Driver:
     def _step(self):
         if self.stopped:
             return
-
         (image,_) = self.camera.read()
         if image is not None:
-# pre-process image
-# pass image through model
-# Choose action
-# Pass action to controller
+            t2 = time()
             image = self.pre_process(image)
+            t3 = time()
             actions = self.model.predict_on_batch(image)
-            action = self.softmax(actions)
-            controller.do_action( self.embedding[action] )
+            t4 = time()
+            action = np.argmax(actions) # No exploration, just choose the best
+            self.controller.do_action( self.embedding[action] )
+            print( "Times; {} {}".format( t3-t2, t4-t3 ) )
 
     def _drive( self ):
         led.turnLEDOn( True, 11 )
-        while not self.stopped:
-            sleep(self.image_delay)
-            self._step()
+        with self.graph.as_default():
+            while not self.stopped:
+                sleep(self.image_delay)
+                self._step()
         led.turnAllLEDOn( False )
 
     def startDriving( self ):
@@ -89,18 +100,18 @@ class Driver:
       return probs
 
     def pre_process(self,  image, image_norm=True ):
-        #image = np.array(image)
-        image = images.astype(np.float) # / 255.0
-        image = imresize(image, (120,120), interp='nearest' )
-        image = image.reshape( 1, 120, 120, 3 )
+        image = image.astype(np.float) # / 255.0
+        image = imresize(image, (120,120), interp='nearest' ) # This is slow, 0.3 - 0.4 seconds
 
         if image_norm:
-            image[:,:,:,0] -= np.mean(image[:,:,:,0])
-            image[:,:,:,1] -= np.mean(image[:,:,:,1])
-            image[:,:,:,2] -= np.mean(image[:,:,:,2])
-            image[:,:,:,0] /= np.std(image[:,:,:,0])
-            image[:,:,:,1] /= np.std(image[:,:,:,1])
-            image[:,:,:,2] /= np.std(image[:,:,:,2])
+            image[:,:,0] -= np.mean(image[:,:,0])
+            image[:,:,1] -= np.mean(image[:,:,1])
+            image[:,:,2] -= np.mean(image[:,:,2])
+            image[:,:,0] /= np.std(image[:,:,0])
+            image[:,:,1] /= np.std(image[:,:,1])
+            image[:,:,2] /= np.std(image[:,:,2])
+
+        image = image.reshape( 1, 1, 120, 120, 3 )
 
         return image
 

@@ -10,7 +10,7 @@ import io
 import atexit
 #from cStringIO import StringIO
 import scipy.misc
-import signal
+import argparse
 
 from picamera import PiCamera
 from Adafruit_MotorHAT import Adafruit_MotorHAT, Adafruit_DCMotor
@@ -22,16 +22,13 @@ class App():
     def __init__( self ):
         self.speed = 150
         self.last_command = None
-        self.record_path = None
-        self.raw = None
-
-    def run(self):
         self.raw = PiVideoStream( resolution=(480,480), imsize=120, framerate=32 )
         self.raw.start()
         self.mh = Adafruit_MotorHAT(addr=0x60)
         self.driver = None
 
     def do_action(self, action):
+        print( "{}".format( action ) )
         if action.startswith( 'forward', 0, len('forward') ):
             self.driveForward(self.speed)
         elif action.startswith( 'backward', 0, len('backward') ):
@@ -52,30 +49,7 @@ class App():
             self.raw.stop()
         self.endDrive()
         time.sleep(0.5)
-
-    def adjust(self, args):
-        if self.raw:
-            try:
-                attr, value = args.split(' ')
-                if attr == 'brightness':
-                    value = int(value)
-                    if value > 0 and value <= 100:
-                        print( "setting brightness: {}".format( str(value) ) )
-                        self.raw.brightness = value
-                elif attr == 'shutter_speed':
-                    value = int(value)
-                    self.raw.shutter_speed = value
-                    print( "setting shutter speed: {}".format( str(value) ) )
-                elif attr == 'iso':
-                    value = int(value)
-                    self.raw.iso = value
-                    print( "setting iso: {}".format( str(value) ) )
-                elif attr == 'framerate':
-                    value = int(value)
-                    self.raw.framerate = value
-                    print( "setting framerate: {}".format( str(value) ) )
-            except Exception as ex:
-                print( "{}".format( ex ) )
+        self.stopMotors()
 
     def setSpeed( self, newSpeed ):
         try:
@@ -90,8 +64,8 @@ class App():
 
     def startDrive( self, model_name ):
         if not self.driver:
-            model_path = os.path.join( "~/models", fname )
-            self.driver = DriveRecorder.DriveRecorder( model_path, video_path=self.videoPath(fname), camera=self.raw, image_delay=0.1, drive_name=drive_name )
+            model_path = os.path.join( "~/models", model_name )
+            self.driver = Driver.Driver( model_path, camera=self.raw, controller=self )
             self.driver.startDriving()
             #self.driver._step()
 
@@ -170,9 +144,28 @@ class App():
         self.mh.getMotor(3).run(Adafruit_MotorHAT.RELEASE)
         self.mh.getMotor(4).run(Adafruit_MotorHAT.RELEASE)
 
+def getOptions():
+
+    parser = argparse.ArgumentParser(description='Train on robot image/action data.')
+    parser.add_argument('model', nargs=1, help='path to a trained Keras model')
+    parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
+
+    args = parser.parse_args()
+
+    return args
+
 if __name__ == "__main__":
-    app = App()
-    model_name = "track1.h5"
-    app.startDrive( model_name )
-    time.sleep(5)
-    app.endDrive( self )
+    args = getOptions()
+
+    if args.test_only:
+        exit()
+
+    try:
+        app = App()
+        model_name = os.path.expanduser(args.model[0])
+        app.startDrive( model_name )
+        time.sleep(10)
+        app.stop()
+    except Exception as ex:
+        print( "{}".format( ex ) )
+        app.stop()
