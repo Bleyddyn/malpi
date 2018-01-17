@@ -15,7 +15,7 @@ import signal
 from picamera import PiCamera
 from Adafruit_MotorHAT import Adafruit_MotorHAT, Adafruit_DCMotor
 from PiVideoStream import PiVideoStream
-import DriveRecorder
+import Driver
 
 class App():
     
@@ -31,65 +31,27 @@ class App():
         self.mh = Adafruit_MotorHAT(addr=0x60)
         self.driver = None
 
-    def handle_client(self, sock):
-        for line in sock.makefile('r'):
-            if line.startswith( 'video_start', 0, len('video_start') ):
-                self.startVideo( line[len('video_start '):] )
-            elif line.startswith( 'video_stop', 0, len('video_stop') ):
-                self.endVideo( line[len('video_stop '):] )
-            elif line.startswith( 'set ', 0, len('set ') ):
-                self.adjust( line[len('set '):] )
-            elif line.startswith( 'forward', 0, len('forward') ):
-                self.driveForward(self.speed)
-                self.recordCommand('forward')
-            elif line.startswith( 'backward', 0, len('backward') ):
-                self.driveBackward(self.speed)
-                self.recordCommand('backward')
-            elif line.startswith( 'left', 0, len('left') ):
-                self.turnLeft(self.speed)
-                self.recordCommand('left')
-            elif line.startswith( 'right', 0, len('right') ):
-                self.turnRight(self.speed)
-                self.recordCommand('right')
-            elif line.startswith( 'stop', 0, len('stop') ):
-                self.stopMotors()
-                self.recordCommand('stop')
-            elif line.startswith( 'speed', 0, len('speed') ):
-                self.setSpeed( line[len('speed '):] )
-                self.recordCommand(line)
-            elif line.startswith( 'drive_start', 0, len('drive_start') ):
-                name = None
-                if len(line) > len('drive_start'):
-                    name = line[len('drive_start '):]
-                self.startDrive(name)
-            elif line.startswith( 'drive_end', 0, len('drive_end') ):
-                self.endDrive()
-            elif line.startswith( 'exit_all', 0, len('exit_all') ):
-                self.stop()
-            else:
-                jpeg_byte_string = self.getImage2()
-                sock.sendall( jpeg_byte_string )
-                sock.close()
+    def do_action(self, action):
+        if action.startswith( 'forward', 0, len('forward') ):
+            self.driveForward(self.speed)
+        elif action.startswith( 'backward', 0, len('backward') ):
+            self.driveBackward(self.speed)
+        elif action.startswith( 'left', 0, len('left') ):
+            self.turnLeft(self.speed)
+        elif action.startswith( 'right', 0, len('right') ):
+            self.turnRight(self.speed)
+        elif action.startswith( 'stop', 0, len('stop') ):
+            self.stopMotors()
+        elif action.startswith( 'speed', 0, len('speed') ):
+            self.setSpeed( action[len('speed '):] )
+        else:
+            print( "invalid command" )
 
     def stop(self, signum=0, frame=0):
-        if self.server:
-            self.server.close()
-            self.server = None
         if self.raw:
             self.raw.stop()
         self.endDrive()
         time.sleep(0.5)
-
-    def getImage2(self):
-        image_string = None
-        my_stream = io.BytesIO()
-        if self.raw:
-            np_image, _ = self.raw.read()
-            if np_image is not None:
-                scipy.misc.imsave( my_stream, np_image, 'jpeg' )
-        my_stream.seek(0)
-        image_string = my_stream.read(-1)
-        return image_string
 
     def adjust(self, args):
         if self.raw:
@@ -126,24 +88,18 @@ class App():
                 if self.last_command:
                     self.last_command(spInt)
 
-    def startDrive( self, drive_name ):
+    def startDrive( self, model_name ):
         if not self.driver:
-            n = datetime.datetime.now()
-            fname = n.strftime('drive_%Y%m%d_%H%M%S')
-            drive_dir = os.path.join( "/home/andrew/drive", fname )
-            self.driver = DriveRecorder.DriveRecorder( drive_dir, video_path=self.videoPath(fname), camera=self.raw, image_delay=0.1, drive_name=drive_name )
+            model_path = os.path.join( "~/models", fname )
+            self.driver = DriveRecorder.DriveRecorder( model_path, video_path=self.videoPath(fname), camera=self.raw, image_delay=0.1, drive_name=drive_name )
             self.driver.startDriving()
+            #self.driver._step()
 
     def endDrive( self ):
         if self.driver:
             self.driver.endDriving()
         # Tell the drive object to stop, saving everything to disk
         self.driver = None
-
-    def recordCommand( self, command ):
-        if self.driver:
-            self.driver.addAction( command )
-            #self.driver.addImage( istream, 'jpeg' )
 
     def setMotor( self, mnum, forward, speed ):
         myMotor = None
@@ -215,5 +171,8 @@ class App():
         self.mh.getMotor(4).run(Adafruit_MotorHAT.RELEASE)
 
 if __name__ == "__main__":
-    app = App( "/home/andrew/drive/var" )
-
+    app = App()
+    model_name = "track1.h5"
+    app.startDrive( model_name )
+    time.sleep(5)
+    app.endDrive( self )
