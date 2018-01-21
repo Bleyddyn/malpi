@@ -19,7 +19,7 @@ import tensorflow as tf
 try:
     import config
 except:
-    print( "Failed to load config file config.py." )
+    print( "Driver.py failed to load config file config.py." )
     print( "Try copying config_empty.py to config.py and re-running." )
     exit()
 
@@ -37,7 +37,7 @@ class Driver:
             camera: A instance of PiVideoStream
             controller: DriveDaemon which handles creating the camera and sending motor commands
         """
-        K.set_learning_phase(True)
+        K.set_learning_phase(False)
 
         self.stopped = False
         self.model_path = model_path
@@ -45,14 +45,19 @@ class Driver:
         self.controller = controller
         #self.embedding = { "stop":0, "forward":1, "left":2, "right":3, "backward":4 }
         self.embedding = [ "stop", "forward", "left", "right", "backward" ]
-        print( "Starting loading model" )
-        self.model = model_keras.make_model_lstm( len(self.embedding), (120,120,3), batch_size=1, timesteps=1, stateful=True, dropouts=[0.25,0.25,0.25,0.25,0.25] )
+        self.image_delay = 0.01
+        led.turnLEDOn( True, 11 )
+        led.turnLEDOn( True, 13 )
+        self.isRNN = False
+        if self.isRNN:
+            self.model = model_keras.make_model_lstm( len(self.embedding), (120,120,3), batch_size=1, timesteps=1, stateful=True, dropouts=[0.25,0.25,0.25,0.25,0.25] )
+        else:
+            self.model = model_keras.make_model_test( len(self.embedding), (120,120,3), dropouts=[0.25,0.25,0.25,0.25,0.25] )
         self.model.load_weights( model_path )
         self.model._make_predict_function()
         self.graph = tf.get_default_graph()
         #self.graph = K.get_session().graph # This should work, too
-        print( "Finished loading model" )
-        self.image_delay = 0.01
+        led.turnAllLEDOn( False )
 
     def __enter__(self):
         return self
@@ -75,10 +80,18 @@ class Driver:
             image = self.pre_process(image)
             t3 = time()
             actions = self.model.predict_on_batch(image)
+            if self.isRNN:
+                actions = actions[0][0]
+            else:
+                actions = actions[0]
             t4 = time()
+            #print( "Actions: {}".format( actions ) )
             action = np.argmax(actions) # No exploration, just choose the best
+            if action == 0:
+                action = np.argmax( actions[1:] ) + 1
+                #print( "skipping stop action" )
             self.controller.do_action( self.embedding[action] )
-            print( "Times; {} {}".format( t3-t2, t4-t3 ) )
+            #print( "Times; {} {}".format( t3-t2, t4-t3 ) )
 
     def _drive( self ):
         led.turnLEDOn( True, 11 )
@@ -86,9 +99,11 @@ class Driver:
             while not self.stopped:
                 sleep(self.image_delay)
                 self._step()
+        self.controller.do_action( "stop" )
         led.turnAllLEDOn( False )
 
     def startDriving( self ):
+        self.stopped = False
         Thread(target=self._drive, args=()).start()
 
     def endDriving( self ):
@@ -111,7 +126,10 @@ class Driver:
             image[:,:,1] /= np.std(image[:,:,1])
             image[:,:,2] /= np.std(image[:,:,2])
 
-        image = image.reshape( 1, 1, 120, 120, 3 )
+        if self.isRNN:
+            image = image.reshape( 1, 1, 120, 120, 3 )
+        else:
+            image = image.reshape( 1, 120, 120, 3 )
 
         return image
 
