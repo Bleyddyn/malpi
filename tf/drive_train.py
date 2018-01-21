@@ -46,7 +46,6 @@ def setCPUCores( cores ):
 def loadOneDrive( drive_dir ):
     actions_file = os.path.join( drive_dir, "image_actions.npy" )
     if os.path.exists(actions_file):
-        print( "Loading actions from numpy file" )
         actions = np.load(actions_file)
         actions = actions.astype('str')
     else:
@@ -62,7 +61,6 @@ def loadOneDrive( drive_dir ):
 
     im_file = os.path.join( drive_dir, "images_120x120.npy" )
     if os.path.exists(im_file):
-        print( "Loading images from numpy file" )
         images = np.load(im_file)
     else:
         im_file = os.path.join( drive_dir, "images_120x120.pickle" )
@@ -271,6 +269,7 @@ def getOptions():
     parser = argparse.ArgumentParser(description='Train on robot image/action data.')
     parser.add_argument('dirs', nargs='*', metavar="Directory", help='A directory containing recorded robot data')
     parser.add_argument('-f', '--file', help='File with one directory per line')
+    parser.add_argument('--fc', action="store_true", default=False, help='Train a model with a fully connected layer (no RNN)')
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
 
     args = parser.parse_args()
@@ -321,8 +320,12 @@ if __name__ == "__main__":
     count = 1
     verbose = 0 if (count > 1) else 1
     for i in range(count):
-        val, his = fitLSTM( input_dim, images, y, verbose=verbose, **hparams )
-        #val, his = fitFC( input_dim, images, y, verbose=verbose, **hparams )
+        if args.fc:
+            print( "Fully connected layer, no RNN" )
+            val, his = fitFC( input_dim, images, y, verbose=verbose, **hparams )
+        else:
+            print( "RNN layer" )
+            val, his = fitLSTM( input_dim, images, y, verbose=verbose, **hparams )
         # Return all history from the fit methods and pickle
         vals.append(val)
         histories.append(his.history)
