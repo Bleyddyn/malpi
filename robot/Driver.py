@@ -74,7 +74,8 @@ class Driver:
     def _step(self):
         if self.stopped:
             return
-        (image,_) = self.camera.read()
+        (image,pre_image) = self.camera.read()
+        image = pre_image
         if image is not None:
             t2 = time()
             image = self.pre_process(image)
@@ -91,7 +92,7 @@ class Driver:
                 action = np.argmax( actions[1:] ) + 1
                 #print( "skipping stop action" )
             self.controller.do_action( self.embedding[action] )
-            #print( "Times; {} {}".format( t3-t2, t4-t3 ) )
+            print( "Times; {} {}".format( t3-t2, t4-t3 ) )
 
     def _drive( self ):
         led.turnLEDOn( True, 11 )
@@ -116,7 +117,8 @@ class Driver:
 
     def pre_process(self,  image, image_norm=True ):
         image = image.astype(np.float) # / 255.0
-        image = imresize(image, (120,120), interp='nearest' ) # This is slow, 0.3 - 0.4 seconds
+        if image.shape[0] > 120 or image.shape[1] > 120:
+            image = imresize(image, (120,120), interp='nearest' ) # This is slow, 0.3 - 0.4 seconds
 
         if image_norm:
             image[:,:,0] -= np.mean(image[:,:,0])

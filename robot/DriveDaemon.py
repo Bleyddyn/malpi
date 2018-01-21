@@ -153,7 +153,7 @@ class App():
         if self.camera:
             self.camera.capture(my_stream, 'jpeg')
         if self.raw:
-            np_image, _ = self.raw.read()
+            _, np_image = self.raw.read()
             if np_image is not None:
                 scipy.misc.imsave( my_stream, np_image, 'jpeg' )
         my_stream.seek(0)
