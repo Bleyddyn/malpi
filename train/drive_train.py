@@ -189,7 +189,7 @@ def fitFC( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.00
 
     optimizer = makeOptimizer( optimizer, learning_rate )
     
-    model = model_keras.make_model_test( num_actions, input_dim, optimizer=optimizer, dropouts=dropouts )
+    model = model_keras.make_model_dk( num_actions, input_dim, optimizer=optimizer, dropouts=dropouts )
 
     history = model.fit( images, y, validation_split=validation_split, epochs=epochs, verbose=verbose, batch_size=batch_size, callbacks=callbacks )
 

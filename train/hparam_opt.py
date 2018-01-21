@@ -16,7 +16,8 @@ class Holder:
         print( "Run {}".format( self.run ) )
         print( "   Args {}".format( args ) )
         print( "   Hparams {}".format( hparams ) )
-        val = fitLSTM( self.input_dim, self.images, self.y, verbose=0, **hparams )
+        #val, his = fitLSTM( self.input_dim, self.images, self.y, verbose=0, **hparams )
+        val, his = fitFC( self.input_dim, self.images, self.y, epochs=15, verbose=0, **hparams )
         self.vals.append(val)
         print( "   Val acc {}".format( val ) )
         return 1.0 - val
@@ -78,7 +79,7 @@ if __name__ == "__main__":
 
     space = { 'learning_rate': hp.loguniform('learning_rate', -9, -4 ),
               'l2_reg': hp.loguniform('l2_reg', -10, -3 ),
-              'timesteps': hp.quniform('timesteps', 5, 20, 1 ),
+#              'timesteps': hp.quniform('timesteps', 5, 20, 1 ),
               'batch_size': hp.quniform('batch_size', 5, 20, 1),
               'dropouts': hp.choice('dropouts', ["low","mid","high","up","down"]),
               'optimizer': hp.choice('optimizer', ["RMSProp", "Adagrad", "Adadelta", "Adam"]) }

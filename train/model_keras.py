@@ -16,9 +16,11 @@ import json
 import time
 
 from keras.models import Sequential
+from keras.models import Model
 from keras.layers import Dense, Dropout, Activation, Flatten, Input
 from keras.layers import Convolution2D, MaxPooling2D, Reshape
 from keras.layers.recurrent import LSTM, GRU
+from keras.layers import MaxPooling2D, Reshape, BatchNormalization
 from keras import regularizers
 from keras.models import model_from_json
 from keras.layers.wrappers import TimeDistributed
@@ -133,6 +135,31 @@ def make_model_test( num_actions, input_dim, l2_reg=0.005, optimizer=None, dropo
 
     return model
 
+def make_model_dk( num_actions, input_dim, l2_reg=0.005, optimizer=None, dropouts=[0.25,0.25,0.25,0.25,0.25] ):
+    
+    model = Sequential()
+    model.add(Dropout(dropouts[0], input_shape=input_dim))
+    model.add(Convolution2D(24, (5, 5), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
+    model.add(Convolution2D(32, (5, 5), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
+    model.add(Dropout(dropouts[1]))
+    model.add(Convolution2D(64, (5, 5), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
+    model.add(Dropout(dropouts[2]))
+    model.add(Convolution2D(64, (3, 3), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
+    model.add(Convolution2D(64, (3, 3), activation='relu', padding='same', strides=(1,1), kernel_regularizer=regularizers.l2(l2_reg)))
+    model.add(Dropout(dropouts[3]))
+    model.add(Flatten())
+    model.add(Dense(100, activation='relu', kernel_regularizer=regularizers.l2(l2_reg)))
+    model.add(Dropout(dropouts[4]))
+    model.add(Dense(50, activation='relu', kernel_regularizer=regularizers.l2(l2_reg)))
+    model.add(Dense(num_actions, activation='softmax', kernel_regularizer=regularizers.l2(l2_reg)))
+
+    if optimizer is None:
+        optimizer = optimizers.RMSprop(lr=0.003, rho=0.9, epsilon=1e-08, decay=0.005)
+
+    model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=[metrics.categorical_accuracy] )
+
+    return model
+
 def make_model_orig( num_actions, input_dim, l2_reg=0.005 ):
     model = Sequential()
     model.add(Convolution2D(32, (3, 3), activation='relu', padding='same', strides=(1,1), kernel_regularizer=regularizers.l2(l2_reg), input_shape=input_dim))
@@ -211,6 +238,9 @@ if __name__ == "__main__":
     #model.summary()
     #model = make_model_doom( 6, 10, (84,84,3) )
     #model.summary()
+
+    model = make_model_dk( 6, (120,120,3), l2_reg=0.005 )
+    model.summary()
 
     model = make_model_test( 6, (120,120,3), l2_reg=0.005 )
     model.summary()
