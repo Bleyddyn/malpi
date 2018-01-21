@@ -76,9 +76,9 @@ class PiVideoStream:
         self.stopped = True
 
     def preprocess(self, image):
-        image = image.transpose(2,1,0)
+        #image = image.transpose(2,1,0)
         image = misc.imresize(image,(self.imsize,self.imsize))
-        image = image.reshape(1,3,self.imsize,self.imsize)
+        #image = image.reshape(1,3,self.imsize,self.imsize)
         image = image.astype(np.float32)
         return image
 
