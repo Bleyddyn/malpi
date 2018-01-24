@@ -1,14 +1,18 @@
-from hyperopt import fmin, tpe, hp
+import pickle
+import datetime
+from hyperopt import fmin, tpe, hp, STATUS_OK, Trials
 import hyperopt.pyll.stochastic
+import matplotlib.pyplot as plt
 from drive_train import *
 
 class Holder:
-    def __init__(self, input_dim, images, y):
+    def __init__(self, input_dim, images, y, isFC=False):
         self.input_dim = input_dim
         self.images = images
         self.y = y
         self.vals = []
         self.run = 0
+        self.isFC = not isFC
 
     def __call__(self, args):
         self.run += 1
@@ -16,14 +20,15 @@ class Holder:
         print( "Run {}".format( self.run ) )
         print( "   Args {}".format( args ) )
         print( "   Hparams {}".format( hparams ) )
-        #val, his = fitLSTM( self.input_dim, self.images, self.y, verbose=0, **hparams )
-        val, his = fitFC( self.input_dim, self.images, self.y, epochs=15, verbose=0, **hparams )
+        if self.isFC:
+            val, his = fitFC( self.input_dim, self.images, self.y, verbose=0, **hparams )
+        else:
+            val, his = fitLSTM( self.input_dim, self.images, self.y, verbose=0, **hparams )
         self.vals.append(val)
         print( "   Val acc {}".format( val ) )
-        return 1.0 - val
+        ret = { 'loss': 1.0 - val, 'status': STATUS_OK, 'history':pickle.dumps(his.history), 'val':val }
+        return ret
 
-#def fitLSTM( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.005, dropouts=[0.25,0.25,0.25,0.25,0.25],
-#             learning_rate=0.003, validation_split=0.15, batch_size=5, optimizer="RMSprop" ):
 
 def runParamTests(args):
     best = {'timesteps': 7.0, 'learning_rate': 0.001306236693845287, 'batch_size': 8.0}
@@ -66,23 +71,21 @@ if __name__ == "__main__":
     num_actions = len(y[0])
     num_samples = len(images)
 
-    holder = Holder(input_dim, images, y)
+    holder = Holder(input_dim, images, y, args.fc)
 
-#timesteps = 10
-#l2_reg = 0.005
-#dropouts = [0.25,0.25,0.25,0.25,0.25]
-#learning_rate = 0.003
-#optimizer = RMSprop(lr=0.003, rho=0.9, epsilon=1e-08, decay=0.005)
-#validation_split=0.15
-#epochs=40
-#batch_size=5
+    if args.fc:
+        max_batch = 128
+    else:
+        max_batch = 20
 
     space = { 'learning_rate': hp.loguniform('learning_rate', -9, -4 ),
               'l2_reg': hp.loguniform('l2_reg', -10, -3 ),
-#              'timesteps': hp.quniform('timesteps', 5, 20, 1 ),
-              'batch_size': hp.quniform('batch_size', 5, 20, 1),
+              'batch_size': hp.quniform('batch_size', 5, max_batch, 1),
               'dropouts': hp.choice('dropouts', ["low","mid","high","up","down"]),
-              'optimizer': hp.choice('optimizer', ["RMSProp", "Adagrad", "Adadelta", "Adam"]) }
+              'optimizer': hp.choice('optimizer', ["RMSProp", "Adagrad", "Adadelta", "Adam"]),
+              'epochs': 40 }
+    if not args.fc:
+        space['timesteps'] = hp.quniform('timesteps', 5, 20, 1 )
 
 
 #space = hp.choice('a',
@@ -95,9 +98,14 @@ if __name__ == "__main__":
 #    print( "Sample: {}".format( hyperopt.pyll.stochastic.sample(space) ) )
 # {'timesteps': 18.0, 'batchsize': 16.566825420405156}
 
-    best = fmin(fn=holder, space=space, algo=tpe.suggest, max_evals=100)
+    trials = Trials()
+    best = fmin(fn=holder, space=space, algo=tpe.suggest, max_evals=100, trials=trials )
     print( "Best: {}".format( best ) )
     print( "Val Accuracies: {}".format( holder.vals ) )
     plt.plot(holder.vals)
     plt.show()
 
+    n = datetime.datetime.now()
+    fname = n.strftime('hparam_trials_%Y%m%d_%H%M%S.pkl')
+    with open(fname,'w') as f:
+        pickle.dump( trials, f, pickle.HIGHEST_PROTOCOL)

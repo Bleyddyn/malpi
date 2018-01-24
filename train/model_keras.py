@@ -39,17 +39,30 @@ def make_model( num_actions, input_dim, l2_reg=0.005, model_name="orig" ):
         print( "Invalid model name. Options are: lstm, flat, orig" )
         return None
 
-def make_model_lstm( num_actions, input_dim, batch_size=1, timesteps=None, stateful=True, l2_reg=0.005, optimizer=None, dropouts=[0.25,0.25,0.25,0.25,0.25] ):
+def make_conv_layers( model, dkconv=False, l2_reg=0.005, dropouts=[0.25,0.25,0.25,0.25,0.25] ):
+    if dkconv:
+        model.add(TimeDistributed( Convolution2D(24, (5, 5), padding='same', strides=(2,2), activation='relu', kernel_regularizer=regularizers.l2(l2_reg) ), name="Conv-5-24" ) )
+        model.add(TimeDistributed( Convolution2D(32, (5, 5), padding='same', strides=(2,2), activation='relu', kernel_regularizer=regularizers.l2(l2_reg) ), name="Conv-5-32" ) )
+        model.add(TimeDistributed( Dropout(dropouts[1]), name="Dropout2" ))
+        model.add(TimeDistributed( Convolution2D(64, (5, 5), padding='same', strides=(2,2), activation='relu',  kernel_regularizer=regularizers.l2(l2_reg) ), name="Conv-5-64" ))
+        model.add(TimeDistributed( Dropout(dropouts[2]), name="Dropout3" ))
+        model.add(TimeDistributed( Convolution2D(64, (3, 3), padding='same', strides=(2,2), activation='relu',  kernel_regularizer=regularizers.l2(l2_reg)), name="Conv-3-64" ))
+        model.add(TimeDistributed( Convolution2D(64, (3, 3), padding='same', strides=(1,1), activation='relu',  kernel_regularizer=regularizers.l2(l2_reg)), name="Conv-3-64v2" ))
+    else:
+        model.add(TimeDistributed( Convolution2D(16, (8, 8), padding='same', strides=(4,4), activation='relu', kernel_regularizer=regularizers.l2(l2_reg) ), name="Conv-8-16" ) )
+        model.add(TimeDistributed( Dropout(dropouts[1]), name="Dropout2" ))
+        model.add(TimeDistributed( Convolution2D(32, (4, 4), padding='same', strides=(2,2), activation='relu',  kernel_regularizer=regularizers.l2(l2_reg) ), name="Conv-4-32" ))
+        model.add(TimeDistributed( Dropout(dropouts[2]), name="Dropout3" ))
+        model.add(TimeDistributed( Convolution2D(64, (3, 3), padding='same', strides=(2,2), activation='relu',  kernel_regularizer=regularizers.l2(l2_reg)), name="Conv-3-64" ))
+
+    model.add(TimeDistributed( Dropout(dropouts[3]), name="Dropout4" ))
+    model.add(TimeDistributed(Flatten()))
+    
+def make_model_lstm( num_actions, input_dim, batch_size=1, timesteps=None, stateful=True, l2_reg=0.005, optimizer=None, dropouts=[0.25,0.25,0.25,0.25,0.25], dkconv=False ):
     input_shape=(batch_size,timesteps) + input_dim
     model = Sequential()
     model.add(TimeDistributed( Dropout(dropouts[0]), batch_input_shape=input_shape, name="Dropout1") )
-    model.add(TimeDistributed( Convolution2D(16, (8, 8), padding='same', strides=(4,4), activation='relu', kernel_regularizer=regularizers.l2(l2_reg) ), name="Conv-8-16" ) )
-    model.add(TimeDistributed( Dropout(dropouts[1]), name="Dropout2" ))
-    model.add(TimeDistributed( Convolution2D(32, (4, 4), padding='same', strides=(2,2), activation='relu',  kernel_regularizer=regularizers.l2(l2_reg) ), name="Conv-4-32" ))
-    model.add(TimeDistributed( Dropout(dropouts[2]), name="Dropout3" ))
-    model.add(TimeDistributed( Convolution2D(64, (3, 3), padding='same', strides=(2,2), activation='relu',  kernel_regularizer=regularizers.l2(l2_reg)), name="Conv-3-64" ))
-    model.add(TimeDistributed( Dropout(dropouts[3]), name="Dropout4" ))
-    model.add(TimeDistributed(Flatten()))
+    make_conv_layers( model, dkconv, l2_reg=l2_reg, dropouts=dropouts )
     model.add(GRU(128, return_sequences=True, activation='relu', stateful=stateful,  kernel_regularizer=regularizers.l2(l2_reg)))
     model.add(TimeDistributed( Dropout(dropouts[4]), name="Dropout5" ))
     model.add(Dense(num_actions, activation='softmax',  kernel_regularizer=regularizers.l2(l2_reg), name="Output" ))
@@ -60,17 +73,11 @@ def make_model_lstm( num_actions, input_dim, batch_size=1, timesteps=None, state
 
     return model
 
-def make_model_lstm_fit( num_actions, input_dim, batch_size=1, timesteps=None, stateful=False, l2_reg=0.005, optimizer=None, dropouts=[0.25,0.25,0.25,0.25,0.25] ):
+def make_model_lstm_fit( num_actions, input_dim, batch_size=1, timesteps=None, stateful=False, l2_reg=0.005, optimizer=None, dropouts=[0.25,0.25,0.25,0.25,0.25], dkconv=False ):
     input_shape=(timesteps,) + input_dim
     model = Sequential()
     model.add(TimeDistributed( Dropout(dropouts[0]), input_shape=input_shape, name="Dropout1") )
-    model.add(TimeDistributed( Convolution2D(16, (8, 8), padding='same', strides=(4,4), activation='relu', kernel_regularizer=regularizers.l2(l2_reg) ), name="Conv-8-16" ) )
-    model.add(TimeDistributed( Dropout(dropouts[1]), name="Dropout2" ))
-    model.add(TimeDistributed( Convolution2D(32, (4, 4), padding='same', strides=(2,2), activation='relu',  kernel_regularizer=regularizers.l2(l2_reg) ), name="Conv-4-32" ))
-    model.add(TimeDistributed( Dropout(dropouts[2]), name="Dropout3" ))
-    model.add(TimeDistributed( Convolution2D(64, (3, 3), padding='same', strides=(2,2), activation='relu',  kernel_regularizer=regularizers.l2(l2_reg)), name="Conv-3-64" ))
-    model.add(TimeDistributed( Dropout(dropouts[3]), name="Dropout4" ))
-    model.add(TimeDistributed(Flatten()))
+    make_conv_layers( model, dkconv, l2_reg=l2_reg, dropouts=dropouts )
     model.add(GRU(128, return_sequences=True, activation='relu', stateful=stateful,  kernel_regularizer=regularizers.l2(l2_reg)))
     model.add(TimeDistributed( Dropout(dropouts[4]), name="Dropout5" ))
     model.add(Dense(num_actions, activation='softmax',  kernel_regularizer=regularizers.l2(l2_reg), name="Output" ))
@@ -114,43 +121,35 @@ def make_model_flat( num_actions, input_dim, l2_reg=0.005 ):
 
     return model
 
-def make_model_test( num_actions, input_dim, l2_reg=0.005, optimizer=None, dropouts=[0.25,0.25,0.25,0.25,0.25] ):
-    model = Sequential()
-    model.add(Dropout(dropouts[0], input_shape=input_dim))
-    model.add(Convolution2D(16, (8, 8), activation='relu', padding='same', strides=(4,4), kernel_regularizer=regularizers.l2(l2_reg)))
-    model.add(Dropout(dropouts[1]))
-    model.add(Convolution2D(32, (4, 4), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
-    model.add(Dropout(dropouts[2]))
-    model.add(Convolution2D(64, (3, 3), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
+def make_conv_layers_fc( model, dkconv=False, l2_reg=0.005, dropouts=[0.25,0.25,0.25,0.25,0.25] ):
+    if dkconv:
+        model.add(Convolution2D(24, (5, 5), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
+        model.add(Convolution2D(32, (5, 5), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
+        model.add(Dropout(dropouts[1]))
+        model.add(Convolution2D(64, (5, 5), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
+        model.add(Dropout(dropouts[2]))
+        model.add(Convolution2D(64, (3, 3), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
+        model.add(Convolution2D(64, (3, 3), activation='relu', padding='same', strides=(1,1), kernel_regularizer=regularizers.l2(l2_reg)))
+    else:
+        model.add(Convolution2D(16, (8, 8), activation='relu', padding='same', strides=(4,4), kernel_regularizer=regularizers.l2(l2_reg)))
+        model.add(Dropout(dropouts[1]))
+        model.add(Convolution2D(32, (4, 4), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
+        model.add(Dropout(dropouts[2]))
+        model.add(Convolution2D(64, (3, 3), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
     model.add(Dropout(dropouts[3]))
     model.add(Flatten())
-    model.add(Dense(256, activation='relu', kernel_regularizer=regularizers.l2(l2_reg)))
-    model.add(Dropout(dropouts[4]))
-    model.add(Dense(num_actions, activation='softmax', kernel_regularizer=regularizers.l2(l2_reg)))
 
-    if optimizer is None:
-        optimizer = optimizers.RMSprop(lr=0.003, rho=0.9, epsilon=1e-08, decay=0.005)
-
-    model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=[metrics.categorical_accuracy] )
-
-    return model
-
-def make_model_dk( num_actions, input_dim, l2_reg=0.005, optimizer=None, dropouts=[0.25,0.25,0.25,0.25,0.25] ):
-    
+def make_model_fc( num_actions, input_dim, dkconv=False, l2_reg=0.005, optimizer=None, dropouts=[0.25,0.25,0.25,0.25,0.25] ):
     model = Sequential()
     model.add(Dropout(dropouts[0], input_shape=input_dim))
-    model.add(Convolution2D(24, (5, 5), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
-    model.add(Convolution2D(32, (5, 5), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
-    model.add(Dropout(dropouts[1]))
-    model.add(Convolution2D(64, (5, 5), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
-    model.add(Dropout(dropouts[2]))
-    model.add(Convolution2D(64, (3, 3), activation='relu', padding='same', strides=(2,2), kernel_regularizer=regularizers.l2(l2_reg)))
-    model.add(Convolution2D(64, (3, 3), activation='relu', padding='same', strides=(1,1), kernel_regularizer=regularizers.l2(l2_reg)))
-    model.add(Dropout(dropouts[3]))
-    model.add(Flatten())
-    model.add(Dense(100, activation='relu', kernel_regularizer=regularizers.l2(l2_reg)))
-    model.add(Dropout(dropouts[4]))
-    model.add(Dense(50, activation='relu', kernel_regularizer=regularizers.l2(l2_reg)))
+    make_conv_layers_fc( model, dkconv, l2_reg=l2_reg, dropouts=dropouts )
+    if False and dkconv:
+        model.add(Dense(100, activation='relu', kernel_regularizer=regularizers.l2(l2_reg)))
+        model.add(Dropout(dropouts[4]))
+        model.add(Dense(50, activation='relu', kernel_regularizer=regularizers.l2(l2_reg)))
+    else:
+        model.add(Dropout(dropouts[4]))
+        model.add(Dense(256, activation='relu', kernel_regularizer=regularizers.l2(l2_reg)))
     model.add(Dense(num_actions, activation='softmax', kernel_regularizer=regularizers.l2(l2_reg)))
 
     if optimizer is None:
@@ -239,14 +238,16 @@ if __name__ == "__main__":
     #model = make_model_doom( 6, 10, (84,84,3) )
     #model.summary()
 
-    model = make_model_dk( 6, (120,120,3), l2_reg=0.005 )
+    model = make_model_fc( 6, (120,120,3), dkconv=True, l2_reg=0.005 )
     model.summary()
 
-    model = make_model_test( 6, (120,120,3), l2_reg=0.005 )
+    model = make_model_fc( 6, (120,120,3), dkconv=False, l2_reg=0.005 )
     model.summary()
 
-    model = make_model_lstm( 6, (120,120,3), l2_reg=0.005 )
-    model.summary()
+    #model = make_model_lstm( 6, (120,120,3), l2_reg=0.005, dkconv=True )
+    #model.summary()
+    #model = make_model_lstm( 6, (120,120,3), l2_reg=0.005, dkconv=False )
+    #model.summary()
     exit()
 
     model_name = "test_speed"

@@ -10,7 +10,7 @@ from keras.backend.tensorflow_backend import set_session
 import model_keras
 from keras.utils import to_categorical
 from keras.callbacks import Callback
-from keras.callbacks import ModelCheckpoint
+from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras import optimizers
 import keras.backend as K
 
@@ -178,18 +178,22 @@ def makeOptimizer( optimizer, learning_rate ):
 
     return optimizer
 
-def fitFC( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.005, dropouts=[0.25,0.25,0.25,0.25,0.25],
+def fitFC( input_dim, images, y, verbose=1, dkconv=False, early_stop=False, epochs=40, timesteps=None, l2_reg=0.005, dropouts=[0.25,0.25,0.25,0.25,0.25],
            learning_rate=0.003, validation_split=0.15, batch_size=32, optimizer="RMSprop" ):
     num_actions = len(y[0])
     callbacks = None
 
-    if verbose:
-        save_chk = ModelCheckpoint("weights_{epoch:02d}_{val_categorical_accuracy:.2f}.hdf5", monitor='val_loss', verbose=0, save_best_only=True, save_weights_only=False, mode='auto', period=1)
-        callbacks = [save_chk]
+    callbacks = []
+#    if verbose:
+#        save_chk = ModelCheckpoint("weights_{epoch:02d}_{val_categorical_accuracy:.2f}.hdf5", monitor='val_loss', verbose=0, save_best_only=True, save_weights_only=False, mode='auto', period=1)
+#        callbacks.append(save_chk)
+
+    if early_stop:
+        callbacks.append(EarlyStopping(monitor='val_loss', min_delta=0.0005, patience=5, verbose=verbose, mode='auto'))
 
     optimizer = makeOptimizer( optimizer, learning_rate )
     
-    model = model_keras.make_model_dk( num_actions, input_dim, optimizer=optimizer, dropouts=dropouts )
+    model = model_keras.make_model_fc( num_actions, input_dim, dkconv=dkconv, optimizer=optimizer, dropouts=dropouts )
 
     history = model.fit( images, y, validation_split=validation_split, epochs=epochs, verbose=verbose, batch_size=batch_size, callbacks=callbacks )
 
@@ -203,7 +207,7 @@ def fitFC( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.00
 
     return (max_running, history)
 
-def fitLSTM( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.005, dropouts=[0.25,0.25,0.25,0.25,0.25],
+def fitLSTM( input_dim, images, y, verbose=1, dkconv=False, early_stop=False, epochs=40, timesteps=10, l2_reg=0.005, dropouts=[0.25,0.25,0.25,0.25,0.25],
              learning_rate=0.003, validation_split=0.15, batch_size=5, optimizer="RMSprop" ):
     num_actions = len(y[0])
     num_samples = len(images)
@@ -216,14 +220,17 @@ def fitLSTM( input_dim, images, y, verbose=1, epochs=40, timesteps=10, l2_reg=0.
     y = y[0:num_samples,:]
     y = np.reshape( y, (num_samples/timesteps, timesteps, num_actions) )
 
-    callbacks = None
+    callbacks = []
 #    if verbose:
 #        save_chk = ModelCheckpoint("weights_{epoch:02d}_{val_categorical_accuracy:.2f}.hdf5", monitor='val_loss', verbose=0, save_best_only=True, save_weights_only=False, mode='auto', period=1)
-#        callbacks = [save_chk]
+#        callbacks.append(save_chk)
+
+    if early_stop:
+        callbacks.append(EarlyStopping(monitor='val_loss', min_delta=0.0005, patience=5, verbose=verbose, mode='auto'))
 
     optimizer = makeOptimizer( optimizer, learning_rate )
 
-    model = model_keras.make_model_lstm_fit( num_actions, input_dim, timesteps=timesteps, stateful=False, dropouts=dropouts, optimizer=optimizer )
+    model = model_keras.make_model_lstm_fit( num_actions, input_dim, dkconv=dkconv, timesteps=timesteps, stateful=False, dropouts=dropouts, optimizer=optimizer )
 
     history = model.fit( images, y, validation_split=validation_split, epochs=epochs, verbose=verbose, batch_size=batch_size, shuffle=False, callbacks=callbacks )
 
@@ -266,10 +273,13 @@ def runTests(args):
 
 def getOptions():
 
-    parser = argparse.ArgumentParser(description='Train on robot image/action data.')
+    parser = argparse.ArgumentParser(description='Train on robot image/action data.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('dirs', nargs='*', metavar="Directory", help='A directory containing recorded robot data')
     parser.add_argument('-f', '--file', help='File with one directory per line')
     parser.add_argument('--fc', action="store_true", default=False, help='Train a model with a fully connected layer (no RNN)')
+    parser.add_argument('--dk', action="store_true", default=False, help='Train a model with DonkeyCar style Convolution layers')
+    parser.add_argument('--early', action="store_true", default=False, help='Stop training early if learning plateaus')
+    parser.add_argument('--runs', type=int, default=1, help='How many runs to train')
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
 
     args = parser.parse_args()
@@ -313,19 +323,26 @@ if __name__ == "__main__":
     print( "Images: {}".format( images.shape ) )
     print( "Labels: {}".format( y.shape ) )
 
+    if args.fc:
+        print( "Fully connected layer, no RNN" )
+    else:
+        print( "RNN layer" )
+    if args.dk:
+        print( "DonkeyCar style convolution layers (5)" )
+    else:
+        print( "DeepMind style convolution layers (3)" )
+
     # Get default params
     hparams = hparamsToDict( hparamsToArray( {} ) )
     vals = []
     histories = []
-    count = 1
+    count = args.runs
     verbose = 0 if (count > 1) else 1
     for i in range(count):
         if args.fc:
-            print( "Fully connected layer, no RNN" )
-            val, his = fitFC( input_dim, images, y, verbose=verbose, **hparams )
+            val, his = fitFC( input_dim, images, y, verbose=verbose, dkconv=args.dk, early_stop=args.early, **hparams )
         else:
-            print( "RNN layer" )
-            val, his = fitLSTM( input_dim, images, y, verbose=verbose, **hparams )
+            val, his = fitLSTM( input_dim, images, y, verbose=verbose, dkconv=args.dk, early_stop=args.early, **hparams )
         # Return all history from the fit methods and pickle
         vals.append(val)
         histories.append(his.history)
