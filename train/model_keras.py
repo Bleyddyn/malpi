@@ -144,7 +144,7 @@ def make_model_fc( num_actions, input_dim, dkconv=False, l2_reg=0.005, optimizer
     model = Sequential()
     model.add(Dropout(dropouts[0], input_shape=input_dim))
     make_conv_layers_fc( model, dkconv, l2_reg=l2_reg, dropouts=dropouts )
-    if False and dkconv:
+    if dkconv:
         model.add(Dense(100, activation='relu', kernel_regularizer=regularizers.l2(l2_reg)))
         model.add(Dropout(dropouts[4]))
         model.add(Dense(50, activation='relu', kernel_regularizer=regularizers.l2(l2_reg)))

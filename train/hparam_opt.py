@@ -2,7 +2,7 @@ import pickle
 import datetime
 from hyperopt import fmin, tpe, hp, STATUS_OK, Trials
 import hyperopt.pyll.stochastic
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 from drive_train import *
 
 class Holder:
@@ -12,7 +12,7 @@ class Holder:
         self.y = y
         self.vals = []
         self.run = 0
-        self.isFC = not isFC
+        self.isFC = isFC
 
     def __call__(self, args):
         self.run += 1
@@ -26,6 +26,8 @@ class Holder:
             val, his = fitLSTM( self.input_dim, self.images, self.y, verbose=0, **hparams )
         self.vals.append(val)
         print( "   Val acc {}".format( val ) )
+        with open( 'hparam_current.txt', 'a' ) as f:
+            f.write( "{}\n".format( val ) )
         ret = { 'loss': 1.0 - val, 'status': STATUS_OK, 'history':pickle.dumps(his.history), 'val':val }
         return ret
 
@@ -98,12 +100,15 @@ if __name__ == "__main__":
 #    print( "Sample: {}".format( hyperopt.pyll.stochastic.sample(space) ) )
 # {'timesteps': 18.0, 'batchsize': 16.566825420405156}
 
+    with open( 'hparam_current.txt', 'a' ) as f:
+        f.write( "#{} {} {}\n".format( ("FC" if args.fc else "RNN"), ("DK" if args.dk else "DM"), datetime.datetime.now() ) )
+
     trials = Trials()
     best = fmin(fn=holder, space=space, algo=tpe.suggest, max_evals=100, trials=trials )
     print( "Best: {}".format( best ) )
     print( "Val Accuracies: {}".format( holder.vals ) )
-    plt.plot(holder.vals)
-    plt.show()
+    #plt.plot(holder.vals)
+    #plt.show()
 
     n = datetime.datetime.now()
     fname = n.strftime('hparam_trials_%Y%m%d_%H%M%S.pkl')
