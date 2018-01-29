@@ -25,6 +25,7 @@ from keras import regularizers
 from keras.models import model_from_json
 from keras.layers.wrappers import TimeDistributed
 from keras.utils import to_categorical
+from keras.utils import plot_model
 from keras import optimizers
 from keras import metrics
 
@@ -238,11 +239,12 @@ if __name__ == "__main__":
     #model = make_model_doom( 6, 10, (84,84,3) )
     #model.summary()
 
-    model = make_model_fc( 6, (120,120,3), dkconv=True, l2_reg=0.005 )
-    model.summary()
+    #model = make_model_fc( 6, (120,120,3), dkconv=True, l2_reg=0.005 )
+    #model.summary()
 
     model = make_model_fc( 6, (120,120,3), dkconv=False, l2_reg=0.005 )
     model.summary()
+    plot_model(model, to_file='./model.png', show_shapes = True)
 
     #model = make_model_lstm( 6, (120,120,3), l2_reg=0.005, dkconv=True )
     #model.summary()
