@@ -14,6 +14,8 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras import optimizers
 import keras.backend as K
 
+import experiment
+
 def describeDriveData( data ):
     print( data.keys() )
     for key, value in data.iteritems():
@@ -205,7 +207,7 @@ def fitFC( input_dim, images, y, verbose=1, dkconv=False, early_stop=False, epoc
     max_running = np.max( running )
     print( "Max validation (rmean=5, at {}): {}".format( np.argmax(running), max_running ) )
 
-    return (max_running, history)
+    return (max_running, history, model)
 
 def fitLSTM( input_dim, images, y, verbose=1, dkconv=False, early_stop=False, epochs=40, timesteps=10, l2_reg=0.005, dropouts=[0.25,0.25,0.25,0.25,0.25],
              learning_rate=0.003, validation_split=0.15, batch_size=5, optimizer="RMSprop" ):
@@ -245,7 +247,7 @@ def fitLSTM( input_dim, images, y, verbose=1, dkconv=False, early_stop=False, ep
     max_running = np.max( running )
     print( "Max validation (rmean=5, at {}): {}".format( np.argmax(running), max_running ) )
 
-    return (max_running, history)
+    return (max_running, history, model)
 
 def evaluate( num_actions, input_dim, X_val, y_val, dropouts=[0.25,0.25,0.25,0.25,0.25] ):
     model2 = model_keras.make_model_lstm( num_actions, input_dim, batch_size=X_val.shape[0], timesteps=1, stateful=True, dropouts=dropouts )
@@ -280,6 +282,7 @@ def getOptions():
     parser.add_argument('--dk', action="store_true", default=False, help='Train a model with DonkeyCar style Convolution layers')
     parser.add_argument('--early', action="store_true", default=False, help='Stop training early if learning plateaus')
     parser.add_argument('--runs', type=int, default=1, help='How many runs to train')
+    parser.add_argument('--name', help='Display name for this training experiment')
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
 
     args = parser.parse_args()
@@ -334,18 +337,22 @@ if __name__ == "__main__":
 
     # Get default params
     hparams = hparamsToDict( hparamsToArray( {} ) )
+    expMeta = experiment.Meta(args, exp_name=args.name, num_samples=num_samples, input_dim=input_dim, num_actions=num_actions, hparams=hparams)
+    model = None
     vals = []
     histories = []
     count = args.runs
     verbose = 0 if (count > 1) else 1
     for i in range(count):
         if args.fc:
-            val, his = fitFC( input_dim, images, y, verbose=verbose, dkconv=args.dk, early_stop=args.early, **hparams )
+            val, his, model = fitFC( input_dim, images, y, verbose=verbose, dkconv=args.dk, early_stop=args.early, **hparams )
         else:
-            val, his = fitLSTM( input_dim, images, y, verbose=verbose, dkconv=args.dk, early_stop=args.early, **hparams )
+            val, his, model = fitLSTM( input_dim, images, y, verbose=verbose, dkconv=args.dk, early_stop=args.early, **hparams )
         # Return all history from the fit methods and pickle
         vals.append(val)
         histories.append(his.history)
+
+    expMeta.writeAfter(model=model, results={'vals': vals, 'histories':histories})
 
     with open("histories.pickle", 'wb') as f:
         pickle.dump( histories, f, pickle.HIGHEST_PROTOCOL)
