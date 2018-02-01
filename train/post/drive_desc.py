@@ -252,6 +252,7 @@ if __name__ == "__main__":
                     meta = os.path.join( adir, 'meta.txt' )
                     if not os.path.exists(meta):
                         with open(meta, 'w') as f:
+                            f.write("Format: MaLPi v1.1\n")
                             f.write(output)
                 else:
                     if not 'model' in data:
