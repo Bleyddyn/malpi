@@ -1,8 +1,5 @@
 import pickle
 import datetime
-#from hyperopt import fmin, tpe, hp, STATUS_OK, Trials
-#import hyperopt.pyll.stochastic
-#import matplotlib.pyplot as plt
 from skopt.space import Real, Integer, Categorical, Dimension, Identity
 from skopt.utils import use_named_args
 from skopt import gp_minimize
