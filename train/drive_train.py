@@ -255,6 +255,31 @@ def evaluate( num_actions, input_dim, X_val, y_val, dropouts=[0.25,0.25,0.25,0.2
     return model2.test_on_batch( np.reshape(X_val,(X_val.shape[0],1,X_val.shape[1],X_val.shape[2],X_val.shape[3])),
         np.reshape(y_val, (y_val.shape[0],1,y_val.shape[1]) ) )
 
+def evaluateRandom( input_dim, images, y, args, hparams ):
+    num_actions = len(y[0])
+
+    dropouts=hparams['dropouts']
+    if args.fc:
+        model2 = model_keras.make_model_fc( num_actions, input_dim, dkconv=args.dk, dropouts=dropouts )
+        loss, val = model2.test_on_batch( images, y )
+    else:
+        num_samples = len(images)
+        timesteps = 1
+        hold_out = (num_samples % timesteps) + (5 * timesteps)
+        num_samples = num_samples - hold_out
+        X_val = images[num_samples:,:]
+        y_val = y[num_samples:,:]
+        images = images[0:num_samples,:]
+        images = np.reshape( images, (num_samples/timesteps, timesteps) + input_dim )
+        y = y[0:num_samples,:]
+        y = np.reshape( y, (num_samples/timesteps, timesteps, num_actions) )
+        model2 = model_keras.make_model_lstm_fit( num_actions, input_dim, dkconv=args.dk, timesteps=1, stateful=False, dropouts=dropouts )
+        loss, val = model2.test_on_batch( images, y )
+
+    print( val )
+    his = None
+    return (val, his, model2)
+
 def runTests(args):
     arr1 = hparamsToArray( {} )
     print( "default hparams: {}".format( arr1 ) )
@@ -284,6 +309,7 @@ def getOptions():
     parser.add_argument('--runs', type=int, default=1, help='How many runs to train')
     parser.add_argument('--name', help='Display name for this training experiment')
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
+    parser.add_argument('--random', action="store_true", default=False, help='Test an untrained model, then exit')
 
     args = parser.parse_args()
 
@@ -341,21 +367,27 @@ if __name__ == "__main__":
 
     hparams = hparamsToDict( hparamsToArray( hparams ) )
     expMeta = experiment.Meta(args, exp_name=args.name, num_samples=num_samples, input_dim=input_dim, num_actions=num_actions, hparams=hparams)
+    if not args.random:
+        expMeta = experiment.Meta(args, exp_name=args.name, num_samples=num_samples, input_dim=input_dim, num_actions=num_actions, hparams=hparams)
     model = None
     vals = []
     histories = []
     count = args.runs
     verbose = 0 if (count > 1) else 1
     for i in range(count):
-        if args.fc:
+        if args.random:
+            val, his, model = evaluateRandom( input_dim, images, y, args, hparams )
+        elif args.fc:
             val, his, model = fitFC( input_dim, images, y, verbose=verbose, dkconv=args.dk, early_stop=args.early, **hparams )
         else:
             val, his, model = fitLSTM( input_dim, images, y, verbose=verbose, dkconv=args.dk, early_stop=args.early, **hparams )
         # Return all history from the fit methods and pickle
         vals.append(val)
-        histories.append(his.history)
+        if his is not None:
+            histories.append(his.history)
 
-    expMeta.writeAfter(model=model, results={'vals': vals, 'histories':histories})
+    if not args.random:
+        expMeta.writeAfter(model=model, results={'vals': vals, 'histories':histories})
 
     with open("histories.pickle", 'wb') as f:
         pickle.dump( histories, f, pickle.HIGHEST_PROTOCOL)
