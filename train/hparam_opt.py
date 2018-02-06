@@ -21,9 +21,9 @@ class Holder:
         print( "   Args {}".format( args ) )
         print( "   Hparams {}".format( hparams ) )
         if self.isFC:
-            val, his = fitFC( self.input_dim, self.images, self.y, verbose=0, **hparams )
+            val, his, model = fitFC( self.input_dim, self.images, self.y, verbose=0, **hparams )
         else:
-            val, his = fitLSTM( self.input_dim, self.images, self.y, verbose=0, **hparams )
+            val, his, model = fitLSTM( self.input_dim, self.images, self.y, verbose=0, **hparams )
         self.vals.append(val)
         print( "   Val acc {}".format( val ) )
         with open( 'hparam_current.txt', 'a' ) as f:

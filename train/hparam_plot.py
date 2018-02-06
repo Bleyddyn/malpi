@@ -50,14 +50,15 @@ def autolabel(rects):
                 '%d' % int(height),
                 ha='center', va='bottom')
 
-max_batch = 128
+def plotTrials():
+    max_batch = 128
 # This should be included in the trials object
-space = { 'learning_rate': hp.loguniform('learning_rate', -9, -4 ),
-          'l2_reg': hp.loguniform('l2_reg', -10, -3 ),
-          'batch_size': hp.quniform('batch_size', 5, max_batch, 1),
-          'dropouts': hp.choice('dropouts', ["low","mid","high","up","down"]),
-          'optimizer': hp.choice('optimizer', ["RMSProp", "Adagrad", "Adadelta", "Adam"]),
-          'epochs': 40 }
+    space = { 'learning_rate': hp.loguniform('learning_rate', -9, -4 ),
+              'l2_reg': hp.loguniform('l2_reg', -10, -3 ),
+              'batch_size': hp.quniform('batch_size', 5, max_batch, 1),
+              'dropouts': hp.choice('dropouts', ["low","mid","high","up","down"]),
+              'optimizer': hp.choice('optimizer', ["RMSProp", "Adagrad", "Adadelta", "Adam"]),
+              'epochs': 40 }
 
 #conditions = ()
 #hps = {}
@@ -69,18 +70,18 @@ space = { 'learning_rate': hp.loguniform('learning_rate', -9, -4 ),
 #dropouts = space['dropouts']
 #print( "{}".format( dropouts ) )
 
-with open('hparam_trials_20180124_101346.pkl','r') as f:
-    trials = pickle.load(f)
+    with open('hparam_trials_20180124_101346.pkl','r') as f:
+        trials = pickle.load(f)
 
-print( "{}".format( trials.losses() ) )
+    print( "{}".format( trials.losses() ) )
 
 #print( "trials.argmin: {}".format( trials.argmin ) )
 #print( "eval: {}".format( hyperopt.space_eval( space, trials.argmin ) ) )
 
-losses = []
-hparams = {}
+    losses = []
+    hparams = {}
 
-for trial in trials.trials:
+    for trial in trials.trials:
 # >>> trial.keys()
 # ['refresh_time', 'book_time', 'misc', 'exp_key', 'owner', 'state', 'version', 'result', 'tid', 'spec']
 # trial['misc'] = {'tid': 0, 'idxs': {'optimizer': [0], 'learning_rate': [0], 'batch_size': [0], 'timesteps': [0], 'dropouts': [0], 'l2_reg': [0]}, 'cmd': ('domain_attachment', 'FMinIter_Domain'), 'vals': {'optimizer': [0], 'learning_rate': [0.00021416260507967771], 'batch_size': [6.0], 'timesteps': [18.0], 'dropouts': [0], 'l2_reg': [0.005126253249084938]}, 'workdir': None}
@@ -91,29 +92,44 @@ for trial in trials.trials:
 # trial['tid'] = 0
 # trial['spec']
 # trial['result'].keys() = ['status', 'loss', 'val', 'history']
-    loss = trial['result']['val']
-    losses.append(loss)
+        loss = trial['result']['val']
+        losses.append(loss)
 
-    argvals = trial['misc']['vals']
-    for key, val in argvals.iteritems():
-        argvals[key] = val[0]
-    hparam1 = hyperopt.space_eval( space, argvals )
+        argvals = trial['misc']['vals']
+        for key, val in argvals.iteritems():
+            argvals[key] = val[0]
+        hparam1 = hyperopt.space_eval( space, argvals )
 #    print( 'trial1: {}'.format( hparam1 ) )
 # trial1: {'epochs': 40, 'optimizer': 'RMSProp', 'learning_rate': 0.00021416260507967771, 'dropouts': 'low', 'batch_size': 6.0, 'l2_reg': 0.005126253249084938}
-    for key, val in hparam1.iteritems():
-        if isinstance(val, basestring):
-            if key not in hparams:
-                hparams[key] = { val: [] }
-            if val not in hparams[key]:
-                hparams[key][val] = []
-            hparams[key][val].append(loss)
-        else:
-            if key not in hparams:
-                hparams[key] = []
-            hparams[key].append(val)
+        for key, val in hparam1.iteritems():
+            if isinstance(val, basestring):
+                if key not in hparams:
+                    hparams[key] = { val: [] }
+                if val not in hparams[key]:
+                    hparams[key][val] = []
+                hparams[key][val].append(loss)
+            else:
+                if key not in hparams:
+                    hparams[key] = []
+                hparams[key].append(val)
 
 #print( "final: {}".format( hparams ) )
 #plotRegressionHparam( losses, hparams['learning_rate'], 'Learning Rate' )
-print( "{}".format( hparams['dropouts'] ) )
-plotCategoricalHparam( hparams['dropouts'], 'dropouts' )
+    print( "{}".format( hparams['dropouts'] ) )
+    plotCategoricalHparam( hparams['dropouts'], 'dropouts' )
 
+acc = []
+# Only read in the lines back to the marker at the beginning of the current run
+for line in reversed(open("hparam_current.txt").readlines()):
+    if line.startswith("#"):
+        break
+    acc.insert(0,float(line))
+print( "Sorted: \n{}".format( sorted(acc) ) )
+
+#acc = np.loadtxt('hparam_current.txt')
+x = range(len(acc))
+z = np.polyfit( x, acc, 2, rcond=None, full=False, w=None, cov=False)
+p2 = np.poly1d(np.polyfit(x, acc, 2))
+xp = np.linspace(0, len(acc), 100)
+plt.plot(x, acc, '-', xp, p2(xp), '--')
+plt.show()
