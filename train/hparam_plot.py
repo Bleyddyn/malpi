@@ -6,6 +6,7 @@ from hyperopt.pyll_utils import expr_to_config
 import hyperopt
 
 import matplotlib.pyplot as plt
+from matplotlib import style
 
 def plotRegressionHparam( losses, values, name ):
 
@@ -112,8 +113,10 @@ for trial in trials.trials:
                 hparams[key] = []
             hparams[key].append(val)
 
+style.use('fivethirtyeight')
+
 #print( "final: {}".format( hparams ) )
-#plotRegressionHparam( losses, hparams['learning_rate'], 'Learning Rate' )
-print( "{}".format( hparams['dropouts'] ) )
+plotRegressionHparam( losses, hparams['learning_rate'], 'Learning Rate' )
+#print( "{}".format( hparams['dropouts'] ) )
 plotCategoricalHparam( hparams['dropouts'], 'dropouts' )
 
