@@ -7,11 +7,14 @@ import hyperopt
 
 import matplotlib.pyplot as plt
 
-def plotRegressionHparam( losses, values, name ):
+def plotRegressionHparam( losses, values, name, logx=False ):
 
     plt.figure(1,figsize=(10, 14), dpi=80)
     #plt.suptitle( name, fontsize=16 )
-    plt.plot(values, losses, '.')
+    if logx:
+        plt.semilogx(values, losses, '.')
+    else:
+        plt.plot(values, losses, '.')
     plt.title(name)
     plt.ylabel('val acc')
     plt.xlabel('value')
@@ -70,10 +73,8 @@ def plotTrials():
 #dropouts = space['dropouts']
 #print( "{}".format( dropouts ) )
 
-    with open('hparam_trials_20180124_101346.pkl','r') as f:
+    with open('hparam_trials_20180201_130438.pkl','r') as f:
         trials = pickle.load(f)
-
-    print( "{}".format( trials.losses() ) )
 
 #print( "trials.argmin: {}".format( trials.argmin ) )
 #print( "eval: {}".format( hyperopt.space_eval( space, trials.argmin ) ) )
@@ -114,22 +115,28 @@ def plotTrials():
                 hparams[key].append(val)
 
 #print( "final: {}".format( hparams ) )
-#plotRegressionHparam( losses, hparams['learning_rate'], 'Learning Rate' )
-    print( "{}".format( hparams['dropouts'] ) )
-    plotCategoricalHparam( hparams['dropouts'], 'dropouts' )
+    plotRegressionHparam( losses, hparams['batch_size'], 'Batch Size' )
+    plotRegressionHparam( losses, hparams['learning_rate'], 'Learning Rate', logx=True )
+    plotRegressionHparam( losses, hparams['l2_reg'], 'L2 Regularization', logx=True )
+    #plotCategoricalHparam( hparams['dropouts'], 'dropouts' )
+    #plotCategoricalHparam( hparams['optimizer'], 'optimizer' )
 
-acc = []
+def plotCurrent():
+    acc = []
 # Only read in the lines back to the marker at the beginning of the current run
-for line in reversed(open("hparam_current.txt").readlines()):
-    if line.startswith("#"):
-        break
-    acc.insert(0,float(line))
-print( "Sorted: \n{}".format( sorted(acc) ) )
+    for line in reversed(open("hparam_current.txt").readlines()):
+        if line.startswith("#"):
+            break
+        acc.insert(0,float(line))
+    print( "Sorted: \n{}".format( sorted(acc) ) )
 
 #acc = np.loadtxt('hparam_current.txt')
-x = range(len(acc))
-z = np.polyfit( x, acc, 2, rcond=None, full=False, w=None, cov=False)
-p2 = np.poly1d(np.polyfit(x, acc, 2))
-xp = np.linspace(0, len(acc), 100)
-plt.plot(x, acc, '-', xp, p2(xp), '--')
-plt.show()
+    x = range(len(acc))
+    z = np.polyfit( x, acc, 2, rcond=None, full=False, w=None, cov=False)
+    p2 = np.poly1d(np.polyfit(x, acc, 2))
+    xp = np.linspace(0, len(acc), 100)
+    plt.plot(x, acc, '-', xp, p2(xp), '--')
+    plt.show()
+
+plotTrials()
+#plotCurrent()
