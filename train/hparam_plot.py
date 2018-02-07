@@ -10,11 +10,14 @@ from matplotlib import style
 
 style.use('fivethirtyeight')
 
-def plotRegressionHparam( losses, values, name ):
+def plotRegressionHparam( losses, values, name, logx=False ):
 
     plt.figure(1,figsize=(10, 14), dpi=80)
     #plt.suptitle( name, fontsize=16 )
-    plt.plot(values, losses, '.')
+    if logx:
+        plt.semilogx(values, losses, '.')
+    else:
+        plt.plot(values, losses, '.')
     plt.title(name)
     plt.ylabel('val acc')
     plt.xlabel('value')
@@ -71,10 +74,8 @@ def plotTrials():
 #dropouts = space['dropouts']
 #print( "{}".format( dropouts ) )
 
-    with open('hparam_trials_20180124_101346.pkl','r') as f:
+    with open('hparam_trials_20180201_130438.pkl','r') as f:
         trials = pickle.load(f)
-
-    print( "{}".format( trials.losses() ) )
 
 #print( "trials.argmin: {}".format( trials.argmin ) )
 #print( "eval: {}".format( hyperopt.space_eval( space, trials.argmin ) ) )
@@ -116,9 +117,11 @@ def plotTrials():
 
 
 #print( "final: {}".format( hparams ) )
-#plotRegressionHparam( losses, hparams['learning_rate'], 'Learning Rate' )
-    print( "{}".format( hparams['dropouts'] ) )
     plotCategoricalHparam( hparams['dropouts'], 'dropouts' )
+    plotCategoricalHparam( hparams['optimizer'], 'optimizer' )
+    plotRegressionHparam( losses, hparams['batch_size'], 'Batch Size' )
+    plotRegressionHparam( losses, hparams['learning_rate'], 'Learning Rate', logx=True )
+    plotRegressionHparam( losses, hparams['l2_reg'], 'L2 Regularization', logx=True )
 
 def plotCurrent():
     acc = []
@@ -136,3 +139,6 @@ def plotCurrent():
     xp = np.linspace(0, len(acc), 100)
     plt.plot(x, acc, '-', xp, p2(xp), '--')
     plt.show()
+
+plotTrials()
+#plotCurrent()
