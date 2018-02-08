@@ -136,7 +136,8 @@ def plotCurrent():
     p2 = np.poly1d(np.polyfit(x, acc, 2))
     xp = np.linspace(0, len(acc), 100)
     plt.plot(x, acc, '-', xp, p2(xp), '--')
+    plt.savefig( 'hparam_current.png')
     plt.show()
 
-plotTrials()
-#plotCurrent()
+#plotTrials()
+plotCurrent()
