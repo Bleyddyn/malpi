@@ -12,10 +12,13 @@ TODO:
 3) Make it obvious which action will be changed via keyboard shortcut
 4) Pre-generate QImages and store them
 5) Load/Save DonkeyCar tub files
+6) Add an indicator if the file has been changed and warn the user if they try to exit without saving
 """
 
 import sys
 import os
+import argparse
+
 from PyQt5.QtWidgets import QMainWindow, QWidget, QAction, QMenu, QMessageBox, QApplication, QDesktopWidget, qApp, QPushButton
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QGridLayout
 from PyQt5.QtWidgets import QLabel, QLineEdit, QTextEdit, QSlider, QListView, QTreeView, QAbstractItemView, QComboBox
@@ -126,11 +129,11 @@ class Example(QMainWindow):
         return ae
 
     def initGrid(self):
-        gridWidth = 5
+        self.gridWidth = 5
         self.imageLabels = []
         self.actionLabels = []
         self.indexes = []
-        for i in range(gridWidth):
+        for i in range(self.gridWidth):
             self.imageLabels.append( QLabel(self) )
             self.actionLabels.append( self.makeActionComboBox() )
             idx = QLabel(self)
@@ -161,7 +164,7 @@ class Example(QMainWindow):
             grid.addWidget(self.indexes[i], row, i+1)
 
         row += 1
-        grid.addWidget(sld, row, 0, 1, gridWidth+1)
+        grid.addWidget(sld, row, 0, 1, self.gridWidth+1)
 
         self.centralWidget().setLayout(grid)
 
@@ -171,7 +174,7 @@ class Example(QMainWindow):
 
     def actionEdited(self, newValue):
         idx = self.actionLabels.index(self.sender())
-        print( "New action: {} at {}".format( newValue, idx ) )
+        #print( "New action: {} at {}".format( newValue, idx ) )
         self.actions[self.index + idx] = newValue
 
     def toggleMenu(self, state):
@@ -219,9 +222,9 @@ class Example(QMainWindow):
         self.images = images
         self.actions = y
         self.statusBar().showMessage( "{} images loaded".format( len(images) ) )
-        self.slider.setMinimum(1)
-        self.slider.setMaximum( len(images) )
-        self.slider.setSliderPosition(1)
+        self.slider.setMinimum(0)
+        self.slider.setMaximum( len(images)-self.gridWidth )
+        self.slider.setSliderPosition(0)
         self.updateImages()
 
     def saveData(self):
@@ -247,7 +250,7 @@ class Example(QMainWindow):
                 self.slider.setSliderPosition(self.index)
                 self.updateImages()
         elif e.key() == Qt.Key_Right:
-            if self.index < len(self.images):
+            if self.index < (len(self.images) - self.gridWidth):
                 self.index += 1
                 self.slider.setSliderPosition(self.index)
                 self.updateImages()
@@ -267,6 +270,8 @@ class Example(QMainWindow):
     def changeCurrentAction(self, action, label_index=2):
         # Defaults to changing the action in the middle of the screen
         self.actionLabels[label_index].setCurrentText( action )
+        if (self.index+label_index) >= len(self.actions):
+            print( "{} actions. index {}, label_index {}".format( len(self.actions), self.index, label_index ) )
         self.actions[self.index+label_index] = action
 
     def mouseMoveEvent(self, e):
@@ -308,8 +313,29 @@ class Example(QMainWindow):
                 self.actionLabels[i].setCurrentText( self.actions[ self.index + i ] )
                 self.indexes[i].setText( str( self.index + i ) )
 
+def runTests(args):
+    pass
+
+def getOptions():
+
+    parser = argparse.ArgumentParser(description='Adjust action values for a drive.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('file', nargs='*', metavar="File", help='Recorded drive data file to open')
+    parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
+
+    args = parser.parse_args()
+
+    return args
+
 if __name__ == '__main__':
     
+    args = getOptions()
+
+    if args.test_only:
+        runTests(args)
+        exit()
+
     app = QApplication(sys.argv)
     ex = Example()
+    if len(args.file) > 0:
+        ex.loadData(args.file[0])
     sys.exit(app.exec_())

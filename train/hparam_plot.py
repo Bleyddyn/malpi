@@ -1,4 +1,5 @@
 import pickle
+import argparse
 import numpy as np
 
 from hyperopt import hp, STATUS_OK, Trials
@@ -6,6 +7,9 @@ from hyperopt.pyll_utils import expr_to_config
 import hyperopt
 
 import matplotlib.pyplot as plt
+from matplotlib import style
+
+style.use('fivethirtyeight')
 
 def plotRegressionHparam( losses, values, name, logx=False ):
 
@@ -53,7 +57,7 @@ def autolabel(rects):
                 '%d' % int(height),
                 ha='center', va='bottom')
 
-def plotTrials():
+def plotTrials(filename):
     max_batch = 128
 # This should be included in the trials object
     space = { 'learning_rate': hp.loguniform('learning_rate', -9, -4 ),
@@ -67,13 +71,11 @@ def plotTrials():
 #hps = {}
 #expr_to_config(space, conditions, hps)
 
-# `hyperopt.space_eval(space, best_vals)`.
-
 #print( "{}".format( hps ) )
 #dropouts = space['dropouts']
 #print( "{}".format( dropouts ) )
 
-    with open('hparam_trials_20180201_130438.pkl','r') as f:
+    with open(filename,'r') as f:
         trials = pickle.load(f)
 
 #print( "trials.argmin: {}".format( trials.argmin ) )
@@ -114,17 +116,18 @@ def plotTrials():
                     hparams[key] = []
                 hparams[key].append(val)
 
+
 #print( "final: {}".format( hparams ) )
+    plotCategoricalHparam( hparams['dropouts'], 'dropouts' )
+    plotCategoricalHparam( hparams['optimizer'], 'optimizer' )
     plotRegressionHparam( losses, hparams['batch_size'], 'Batch Size' )
     plotRegressionHparam( losses, hparams['learning_rate'], 'Learning Rate', logx=True )
     plotRegressionHparam( losses, hparams['l2_reg'], 'L2 Regularization', logx=True )
-    #plotCategoricalHparam( hparams['dropouts'], 'dropouts' )
-    #plotCategoricalHparam( hparams['optimizer'], 'optimizer' )
 
-def plotCurrent():
+def plotCurrent(filename):
     acc = []
 # Only read in the lines back to the marker at the beginning of the current run
-    for line in reversed(open("hparam_current.txt").readlines()):
+    for line in reversed(open(filename).readlines()):
         if line.startswith("#"):
             break
         acc.insert(0,float(line))
@@ -139,5 +142,28 @@ def plotCurrent():
     plt.savefig( 'hparam_current.png')
     plt.show()
 
-#plotTrials()
-plotCurrent()
+def runTests(args):
+    pass
+
+def getOptions():
+
+    parser = argparse.ArgumentParser(description='Plot results from a hyperparameter optimization run.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--trial', help='Plot results from a pickled hyperopt Trials object.')
+    parser.add_argument('--current', default="hparam_current.txt", help='Plot results from the current run.')
+    parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
+
+    args = parser.parse_args()
+
+    return args
+
+if __name__ == "__main__":
+    args = getOptions()
+
+    if args.test_only:
+        runTests(args)
+        exit()
+
+    if args.trial is not None:
+        plotTrials(args.trial)
+    else:
+        plotCurrent(args.current)
