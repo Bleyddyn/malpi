@@ -375,7 +375,7 @@ if __name__ == "__main__":
     #hparams = {'epochs': 40, 'optimizer': 'Adam', 'learning_rate': 0.0005897214669321487, 'dropouts': 'up', 'batch_size': 60.0, 'l2_reg': 0.0074109846420101}
     hparams = hparamsToDict( hparamsToArray( hparams ) )
     if not args.random:
-        expMeta = experiment.Meta(args, exp_name=args.name, num_samples=num_samples, input_dim=input_dim, num_actions=num_actions, hparams=hparams)
+        expMeta = experiment.Meta(args.name, args, num_samples=num_samples, input_dim=input_dim, num_actions=num_actions, hparams=hparams)
 
     best_model = None
     best_val = 0.0
@@ -408,10 +408,10 @@ if __name__ == "__main__":
         best_model.save_weights(name + '_weights.h5')
 
     if not args.random:
-        expMeta.writeAfter(model=model, results={'vals': vals, 'histories':histories})
+        expMeta.writeAfter(model=model, histories=histories, results={'vals': vals})
 
-    with open("histories.pickle", 'wb') as f:
-        pickle.dump( histories, f, pickle.HIGHEST_PROTOCOL)
+#    with open("histories.pickle", 'wb') as f:
+#        pickle.dump( histories, f, pickle.HIGHEST_PROTOCOL)
 
     if count > 1:
         msg = "Validation accuracy {} {} ({})".format( np.mean(vals), np.std(vals), vals )

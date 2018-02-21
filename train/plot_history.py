@@ -19,7 +19,7 @@ def loadHistory( fname="histories.pickle" ):
         data = pickle.load(f)
     return data
 
-def plotHistory( loss, acc, val_loss, val_acc, name ):
+def plotHistory( loss, acc, val_loss, val_acc, name, plot_dir ):
     #['val_categorical_accuracy', 'loss', 'categorical_accuracy', 'val_loss']
 
     # summarize history for accuracy
@@ -41,10 +41,10 @@ def plotHistory( loss, acc, val_loss, val_acc, name ):
     plt.ylabel('loss')
     plt.xlabel('epoch')
     plt.legend(['train', 'validation'], loc='upper left')
-    plt.savefig( name.replace(' ', '_') + '.png')
+    plt.savefig( os.path.join( plot_dir, name.replace(' ', '_') + '.png' ) )
     plt.show()
 
-def plotHistoryWithError( loss, acc, val_loss, val_acc, name ):
+def plotHistoryWithError( loss, acc, val_loss, val_acc, name, plot_dir ):
 
     loss_avg = np.mean(loss, axis=0)
     loss_err = np.std(loss, axis=0)
@@ -74,7 +74,7 @@ def plotHistoryWithError( loss, acc, val_loss, val_acc, name ):
     plt.ylabel('loss')
     plt.xlabel('epoch')
     plt.legend(['train', 'validation'], loc='upper left')
-    plt.savefig( name.replace(' ', '_') + '.png')
+    plt.savefig( os.path.join( plot_dir, name.replace(' ', '_') + '.png' ) )
     plt.show()
 
 def runningMean(x, N):
@@ -84,12 +84,26 @@ def runTests(args):
     print( "Args: {}".format( args ) )
     pass
 
+def getExpName( exp_dir ):
+    if exp_dir[-1] == "/":
+        exp_dir = exp_dir[:-1]
+    name = os.path.basename(exp_dir)
+    meta = os.path.join(exp_dir,name+".txt")
+    if os.path.exists(meta):
+        with open(meta,'r') as f:
+            for line in f:
+                if line.startswith('Name: '):
+                    name = line[6:]
+                    break
+    return name.strip()
+
 def getOptions():
 
     parser = argparse.ArgumentParser(description='Train on robot image/action data.')
-    parser.add_argument('history', nargs=1, help='A pickle file containing history from a drive training run')
+    parser.add_argument('history', nargs='?', help='A pickle file containing history from a drive training run')
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
-    parser.add_argument('--name', default='metrics', help='name to use for plot title and filename')
+    parser.add_argument('--name', help='name to use for plot title and filename')
+    parser.add_argument('--exp', help='Directory with saved experiment meta-data, including a history file')
 
     args = parser.parse_args()
 
@@ -102,11 +116,25 @@ if __name__ == "__main__":
         runTests(args)
         exit()
 
-    data = loadHistory( args.history[0] )
+    fname = 'histories.pickle'
+    plot_name = 'metrics'
+    plot_dir = '.'
+    if args.exp is not None:
+        fname = os.path.join( args.exp, fname)
+        plot_name = getExpName(args.exp)
+        plot_dir = args.exp
+    else:
+        if args.history is not None:
+            fname = args.history
+
+    if args.name is not None:
+        plot_name = args.name
+
+    data = loadHistory( fname )
 
     if len(data) == 1:
         hist0 = data[0]
-        plotHistory( hist0['loss'], hist0['categorical_accuracy'], hist0['val_loss'], hist0['val_categorical_accuracy'], args.name )
+        plotHistory( hist0['loss'], hist0['categorical_accuracy'], hist0['val_loss'], hist0['val_categorical_accuracy'], plot_name, plot_dir )
     elif len(data) > 1:
         loss=[]
         acc=[]
@@ -120,4 +148,4 @@ if __name__ == "__main__":
         #for i in range(len(loss)):
         #    plt.plot( loss[i] )
         #plt.show()
-        plotHistoryWithError( loss, acc, val_loss, val_acc, args.name )
+        plotHistoryWithError( loss, acc, val_loss, val_acc, plot_name, plot_dir )

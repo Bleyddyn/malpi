@@ -4,15 +4,21 @@ E.g. Command line arguments, hyperparameters, input and output sizes, model desc
 import os
 import argparse
 import datetime
+import pickle
 
 class Meta(object):
-    def __init__(self, args, fname='current.txt', exp_name='', num_samples=None, input_dim=None, num_actions=None, hparams={}):
-        if os.path.exists(fname):
-            raise IOError(-1,"experiment.Meta file already exists, won't overwrite",fname) 
+    def __init__(self, exp_name, args, exp_dir='experiments', num_samples=None, input_dim=None, num_actions=None, hparams={}):
+        if not os.path.exists(exp_dir):
+            os.makedirs(exp_dir)
+        self.dir_name = os.path.join( exp_dir, exp_name )
+        if os.path.exists(self.dir_name):
+            raise IOError(-1,"Experiment directory already exists, won't overwrite ",self.dir_name) 
+
+        os.makedirs(self.dir_name)
 
         self.args = args
-        self.filename = fname
-        self.name = exp_name if exp_name is not None else ''
+        self.filename = os.path.join( self.dir_name, exp_name+".txt" )
+        self.name = exp_name
         self.num_samples = num_samples
         self.input_dim = input_dim
         self.num_actions = num_actions
@@ -40,7 +46,7 @@ class Meta(object):
             for key,value in self.hparams.iteritems():
                 f.write( "   {}: {}\n".format( key, value ) )
 
-    def writeAfter(self, model=None, results={}):
+    def writeAfter(self, model=None, histories=None, results={}):
         """ Write closing data to the experiment file.
             model: Needs to be a Keras model (with a summary method that accepts a print_fn argument)
             results: A dictionary of any relevant results
@@ -60,6 +66,10 @@ class Meta(object):
             f.write( "Results:\n" )
             for key,value in results.iteritems():
                 f.write( "   {}: {}\n".format( key, value ) )
+        if histories is not None:
+            his_fname = os.path.join(self.dir_name, "histories.pickle")
+            with open(his_fname, 'wb') as f:
+                pickle.dump( histories, f, pickle.HIGHEST_PROTOCOL)
 
 def _hparamsTest():
     out = {}
@@ -70,7 +80,7 @@ def _hparamsTest():
 
 def _runTests(args):
     try:
-        exp1 = Meta( args, fname='experiment.py')
+        exp1 = Meta( "TestExperimentName", args, exp_dir='test_experiments')
     except IOError as ex:
         print( "Caught correct exception when meta file already exists: PASS" )
     except Exception as exg:
@@ -80,11 +90,11 @@ def _runTests(args):
     
     if args.file is None:
         n = datetime.datetime.now()
-        testname = n.strftime('expMetaTest_%Y%m%d_%H%M%S.txt')
+        testname = n.strftime('expMetaTest_%Y%m%d_%H%M%S')
     else:
         testname = args.file
     print( "testname: {}".format( testname ) )
-    exp2 = Meta( args, fname=testname, num_samples=10000, input_dim=(120,120,3), hparams=_hparamsTest() )
+    exp2 = Meta( testname, args, exp_dir="test_experiments", num_samples=10000, input_dim=(120,120,3), hparams=_hparamsTest() )
 
     from keras.models import Sequential
     from keras.layers import Dense
