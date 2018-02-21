@@ -3,12 +3,15 @@ import datetime
 from skopt.space import Real, Integer, Categorical, Dimension, Identity
 from skopt.utils import use_named_args
 from skopt import gp_minimize
+from skopt import dump, load
 
 from drive_train import *
 
 class Constant(Dimension):
     def __init__(self, value, prior=None, transform=None, name=None):
-        """Search space dimension that can take on categorical values.
+        """Search space dimension with a constant value.
+        For convenience when passing hyperparameters to the learned function.
+        Doesn't currently work.
 
         Parameters
         ----------
@@ -117,8 +120,8 @@ class Holder:
             val, his, model = fitLSTM( self.input_dim, self.images, self.y, verbose=0, **hparams )
         self.vals.append(val)
         print( "   Val acc {}".format( val ) )
-        #with open( 'hparam_current.txt', 'a' ) as f:
-        #    f.write( "{}\n".format( val ) )
+        with open( 'skopt_current.txt', 'a' ) as f:
+            f.write( "{}\n".format( val ) )
         #ret = { 'loss': 1.0 - val, 'status': STATUS_OK, 'history':pickle.dumps(his.history), 'val':val }
         return 1.0 - val
 
@@ -195,10 +198,10 @@ if __name__ == "__main__":
         space.append( Integer(5,20,name='timesteps') )
 
 
-#    with open( 'gpopt_current.txt', 'a' ) as f:
-#        f.write( "#{} {} {}\n".format( ("FC" if args.fc else "RNN"), ("DK" if args.dk else "DM"), datetime.datetime.now() ) )
+    with open( 'skopt_current.txt', 'a' ) as f:
+        f.write( "#{} {} {}\n".format( ("FC" if args.fc else "RNN"), ("DK" if args.dk else "DM"), datetime.datetime.now() ) )
 
-    res_gp = gp_minimize(holder, space, n_calls=10)
+    res_gp = gp_minimize(holder, space, n_calls=100)
  
     print( "Best: {}".format( res_gp.fun ) )
     print("""Best parameters:
@@ -209,6 +212,5 @@ if __name__ == "__main__":
     - optimizer=%s""" % (res_gp.x[0], res_gp.x[1], res_gp.x[2], res_gp.x[3], res_gp.x[4]))
 
     n = datetime.datetime.now()
-    fname = n.strftime('hparam_gpopt_%Y%m%d_%H%M%S.pkl')
-    with open(fname,'w') as f:
-        pickle.dump( res_gp, f, pickle.HIGHEST_PROTOCOL)
+    fname = n.strftime('hparam_skopt_%Y%m%d_%H%M%S.pkl')
+    dump( res_gp, fname, store_objective=False )

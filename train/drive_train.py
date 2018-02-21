@@ -1,4 +1,6 @@
+from __future__ import print_function
 import os
+import sys
 import pickle
 from time import time
 import argparse
@@ -15,6 +17,7 @@ from keras import optimizers
 import keras.backend as K
 
 import experiment
+import notify
 
 def describeDriveData( data ):
     print( data.keys() )
@@ -101,12 +104,17 @@ def loadData( dirs, image_norm=True ):
     images = []
     actions = []
 
+    count = 1
     for onedir in dirs:
         if len(onedir) > 0:
             dimages, dactions = loadOneDrive( onedir )
             images.extend(dimages)
             actions.extend(dactions)
+            print( "Loading {} of {}: {} total samples".format( count, len(dirs), len(images) ), end='\r' )
+            sys.stdout.flush()
+            count += 1
 
+    print("")
     images = np.array(images)
     images = images.astype(np.float) # / 255.0
 
@@ -199,9 +207,9 @@ def fitFC( input_dim, images, y, verbose=1, dkconv=False, early_stop=False, epoc
 
     history = model.fit( images, y, validation_split=validation_split, epochs=epochs, verbose=verbose, batch_size=batch_size, callbacks=callbacks )
 
-    if verbose:
-        model.save( 'best_model.h5' )
-        model.save_weights('best_model_weights.h5')
+#    if verbose:
+#        model.save( 'best_model.h5' )
+#        model.save_weights('best_model_weights.h5')
 
     running = runningMean(history.history['val_categorical_accuracy'], 5)
     max_running = np.max( running )
@@ -308,6 +316,7 @@ def getOptions():
     parser.add_argument('--early', action="store_true", default=False, help='Stop training early if learning plateaus')
     parser.add_argument('--runs', type=int, default=1, help='How many runs to train')
     parser.add_argument('--name', help='Display name for this training experiment')
+    parser.add_argument('--notify', help='Email address to notify when the training is finished')
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
     parser.add_argument('--random', action="store_true", default=False, help='Test an untrained model, then exit')
 
@@ -362,14 +371,14 @@ if __name__ == "__main__":
         print( "DeepMind style convolution layers (3)" )
 
     # Get default params
-    #hparams = {'epochs': 40, 'optimizer': 'Adam', 'learning_rate': 0.0006482854972491668, 'dropouts': 'up', 'batch_size': 71.0, 'l2_reg': 0.00115070702991493}
-    hparams = {'epochs': 40, 'optimizer': 'Adam', 'learning_rate': 0.0005897214669321487, 'dropouts': 'up', 'batch_size': 60.0, 'l2_reg': 0.0074109846420101}
-
+    hparams = {'epochs': 40, 'optimizer': 'Adam', 'learning_rate': 0.0006482854972491668, 'dropouts': 'up', 'batch_size': 71.0, 'l2_reg': 0.00115070702991493}
+    #hparams = {'epochs': 40, 'optimizer': 'Adam', 'learning_rate': 0.0005897214669321487, 'dropouts': 'up', 'batch_size': 60.0, 'l2_reg': 0.0074109846420101}
     hparams = hparamsToDict( hparamsToArray( hparams ) )
-    expMeta = experiment.Meta(args, exp_name=args.name, num_samples=num_samples, input_dim=input_dim, num_actions=num_actions, hparams=hparams)
     if not args.random:
         expMeta = experiment.Meta(args, exp_name=args.name, num_samples=num_samples, input_dim=input_dim, num_actions=num_actions, hparams=hparams)
-    model = None
+
+    best_model = None
+    best_val = 0.0
     vals = []
     histories = []
     count = args.runs
@@ -385,6 +394,18 @@ if __name__ == "__main__":
         vals.append(val)
         if his is not None:
             histories.append(his.history)
+        if val > best_val:
+            best_val = val
+            best_model = model
+
+    if best_model:
+        json_string = best_model.to_json()
+        name = "best_model"
+        if args.name:
+            name = args.name + "_model"
+        with open(name + '.json','w') as f:
+            f.write(json_string)
+        best_model.save_weights(name + '_weights.h5')
 
     if not args.random:
         expMeta.writeAfter(model=model, results={'vals': vals, 'histories':histories})
@@ -393,4 +414,10 @@ if __name__ == "__main__":
         pickle.dump( histories, f, pickle.HIGHEST_PROTOCOL)
 
     if count > 1:
-        print( "Validation accuracy {} {} ({})".format( np.mean(vals), np.std(vals), vals ) )
+        msg = "Validation accuracy {} {} ({})".format( np.mean(vals), np.std(vals), vals )
+        print( msg )
+    else:
+        msg = "Validation accuracy {}".format( vals )
+
+    if args.notify is not None:
+        notify.mailTo( args.notify, subject="Training complete", message=msg )

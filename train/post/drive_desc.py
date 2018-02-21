@@ -1,10 +1,22 @@
 import os
 import pickle
 import argparse
+import re
 from scipy.misc import imresize
 import matplotlib.pyplot as plt
 import numpy as np
 
+def atoi(text):
+    return int(text) if text.isdigit() else text
+
+def natural_keys(text):
+    '''
+    alist.sort(key=natural_keys) sorts in human order
+    http://nedbatchelder.com/blog/200712/human_sorting.html
+    (See Toothy's implementation in the comments)
+    '''
+    return [ atoi(c) for c in re.split('(\d+)', text) ]
+    
 def dumpArrayToFile( data, key, fname=None, indent="" ):
     if not fname:
         fname = key + ".pickle"
@@ -80,12 +92,16 @@ def makeSmallImages( drive_dir, data, indent="" ):
     ofname = os.path.join( drive_dir, 'images_120x120.pickle' )
     if not os.path.exists(ofname):
         smallImages = []
+        image_files = []
         for fname in os.listdir(drive_dir):
             if fname.startswith("images_") and fname.endswith(".pickle"):
-                ifname = os.path.join( drive_dir, fname )
-                print( "{}Reading {}".format( indent, fname ) )
-                im1 = getImagesFrom(ifname)
-                smallImages.extend(im1)
+                image_files.append(fname)
+        image_files.sort(key=natural_keys)
+        for fname in image_files:
+            ifname = os.path.join( drive_dir, fname )
+            print( "{}Reading {}".format( indent, fname ) )
+            im1 = getImagesFrom(ifname)
+            smallImages.extend(im1)
 
         if len(smallImages) == 0 and 'images' in data:
             img_data = data['images']
