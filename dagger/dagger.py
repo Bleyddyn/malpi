@@ -221,6 +221,8 @@ class Example(QMainWindow):
         self.path = path
         self.images = images
         self.actions = y
+        if len(self.images) != len(self.actions):
+            print( "Images/actions: {}/{}".format( len(self.images), len(self.actions) ) )
         self.statusBar().showMessage( "{} images loaded".format( len(images) ) )
         self.slider.setMinimum(0)
         self.slider.setMaximum( len(images)-self.gridWidth )
@@ -249,11 +251,15 @@ class Example(QMainWindow):
                 self.index -= 1
                 self.slider.setSliderPosition(self.index)
                 self.updateImages()
+            else:
+                print( "Not doing key left" )
         elif e.key() == Qt.Key_Right:
             if self.index < (len(self.images) - self.gridWidth):
                 self.index += 1
                 self.slider.setSliderPosition(self.index)
                 self.updateImages()
+            else:
+                print( "Not doing key right" )
         elif e.key() == Qt.Key_W:
             self.changeCurrentAction( 'forward' )
         elif e.key() == Qt.Key_A:
@@ -312,6 +318,8 @@ class Example(QMainWindow):
                 self.imageLabels[i].setPixmap( QPixmap(image) )
                 self.actionLabels[i].setCurrentText( self.actions[ self.index + i ] )
                 self.indexes[i].setText( str( self.index + i ) )
+            else:
+                print( "Not doing updateImages for index {} + {}".format( self.index, i ) )
 
 def runTests(args):
     pass

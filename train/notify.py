@@ -1,7 +1,7 @@
 #! /usr/bin/python
 
 import sys
-from optparse import OptionParser, OptionGroup, IndentedHelpFormatter
+import argparse
 
 # Import smtplib to provide email functions
 import smtplib
@@ -15,7 +15,14 @@ except:
     print "Failed to load config file config.py."
     print "Try copying config_empty.py to config.py, fill in the details, and re-run."
     exit()
- 
+
+try:
+    import mac_notify
+    mac_notifications = True
+except:
+    mac_notifications = False
+    print( "Failed to import mac_notify. Mac OS X Notifications will not be sent." )
+
 def mailTo( addr_to, subject='Notification', message='' ):
     """ Send an email using an smtp account.
       Email addresses (comma delimited if more than one)
@@ -46,30 +53,36 @@ def mailTo( addr_to, subject='Notification', message='' ):
     s.sendmail(addr_from, addr_to, msg.as_string())
     s.quit()
 
+def notify( title, subTitle='', message='', email_to=None, mac=True ):
+    if email_to is not None:
+        if subTitle is None:
+            msg2 = message
+        else:
+            msg2 = subTitle + "\n" + message
+        mailTo( email_to, subject=title, message=msg2 )
+    if mac and mac_notifications:
+        mac_notify.notify( title, subTitle, message )
+
 def _parse_cmdline():
-    usage = "mail.py --subject <subject> --message <message> <email(s)>"
+    parser = argparse.ArgumentParser(description='Send a notification by email and/or Mac OS X notification system .', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument( 'title', nargs=1, help="Title for the notification and/or Subject for the email" );
+    parser.add_argument( '--message', help="Message body. If none, expect body on standard input" );
+    parser.add_argument( '--sub', help="Subtitle." );
+    parser.add_argument( '--email', help="Email address to send the notification to");
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--mac', action="store_true", default=True, help='Send a Mac OS X Notification')
+    group.add_argument('--no_mac', action="store_false", dest='mac', default=False, help="Don't Send a Mac OS X Notification")
 
-    parser = OptionParser( usage=usage, description="Send an email using my Gmail account" )
-    parser.add_option( '--subject', help="Subject for the email" );
-    parser.add_option( '--message', help="Message body. If none, expect body on standard input" );
+    args = parser.parse_args()
 
-    parser.disable_interspersed_args()
-    (options, args) = parser.parse_args()
-
-    if len(args) == 0:
-        print "At least one destination email address is required."
-        parser.print_help()
-        sys.exit(1)
-
-    return (options, args)
-
+    return args
 
 if __name__ == "__main__":
-    (options, args) = _parse_cmdline()
+    args = _parse_cmdline()
 
-    if options.message:
-        msg = options.message
+    if args.message:
+        msg = args.message
     else:
         msg = sys.stdin.read()
 
-    mailTo( args[0], subject=options.subject, message=msg )
+    notify( args.title[0], subTitle=args.sub, message=msg, email_to=args.email, mac=args.mac )

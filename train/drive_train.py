@@ -419,5 +419,5 @@ if __name__ == "__main__":
     else:
         msg = "Validation accuracy {}".format( vals )
 
-    if args.notify is not None:
-        notify.mailTo( args.notify, subject="Training complete", message=msg )
+    msg2 = "Model " + args.name
+    notify.notify( "Training complete", subTitle=msg2, message=msg, email_to=args.notify )
