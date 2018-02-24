@@ -71,16 +71,19 @@ class MountainLionNotification(Foundation.NSObject):
         # Note that the notification center saves a *copy* of our object.
         return notification
 
-    # We'll get this if the user clicked on the notification.
     def userNotificationCenter_didActivateNotification_(self, center, notification):
-        """Handler a user clicking on one of our posted notifications."""
+        """Handle when a user clicks on one of our posted notifications.
+           This will only work if self still exists at the time of the user interaction.
+           This has not worked in testing."""
 
         userInfo = notification.userInfo()
         if userInfo["action"] == "open_url":
             import subprocess
-            # Open the log file with TextEdit.
-            subprocess.Popen(['open', "-e", userInfo["value"]])
+            subprocess.Popen(['open', userInfo["value"]])
 
-def notify( title, subTitle, message ):
+def notify( title, subTitle, message, sound=False ):
     mnot = MountainLionNotification.alloc().init()
-    mnot.notify( title, subTitle, message, None )
+    mnot.notify( title, subTitle, message, sound=sound )
+
+    # In case the caller needs to keep the object around to handle user interaction
+    return mnot

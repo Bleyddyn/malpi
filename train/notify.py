@@ -53,7 +53,7 @@ def mailTo( addr_to, subject='Notification', message='' ):
     s.sendmail(addr_from, addr_to, msg.as_string())
     s.quit()
 
-def notify( title, subTitle='', message='', email_to=None, mac=True ):
+def notify( title, subTitle='', message='', email_to=None, mac=True, sound=False ):
     if email_to is not None:
         if subTitle is None:
             msg2 = message
@@ -61,7 +61,7 @@ def notify( title, subTitle='', message='', email_to=None, mac=True ):
             msg2 = subTitle + "\n" + message
         mailTo( email_to, subject=title, message=msg2 )
     if mac and mac_notifications:
-        mac_notify.notify( title, subTitle, message )
+        mac_notify.notify( title, subTitle, message, sound=sound )
 
 def _parse_cmdline():
     parser = argparse.ArgumentParser(description='Send a notification by email and/or Mac OS X notification system .', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
