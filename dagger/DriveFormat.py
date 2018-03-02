@@ -50,8 +50,11 @@ class Drive:
         actions = []
 
         images, actions = self._loadOneDrive( path )
+        if len(images) != len(actions):
+            print( "Images/actions: {}/{}".format( len(self.images), len(self.actions) ) )
 
         images = np.array(images)
+        actions = np.array(actions)
 
         return images, actions
 
@@ -61,24 +64,45 @@ class Drive:
         actions = actions.astype('str')
         ofname = os.path.join( self.path, 'image_actions.npy' )
         np.save(ofname, actions)
+        self.clean = True
 
     def isClean( self ):
         return self.clean
+
+    def count( self ):
+        return len(self.images)
 
     def imageForIndex( self, index ):
         return self.images[index]
 
     def actionForIndex( self, index ):
+        print( "Read [{}]: {}".format( index, self.actions[index] ) )
         return self.actions[index]
 
-    def setActionForIndex( self, action, index ):
-        if self.actions[index] != action:
-            self.actions[index] = action
+    def setActionForIndex( self, new_action, index ):
+        print( "Before [{}]: {} = {}".format( index, self.actions[index], new_action ) )
+        if self.actions[index] != new_action:
+            print( "   {} {}".format( len(self.actions[index]), len(new_action) ) )
+            self.actions[index] = new_action
+            print( "After [{}]: {} = {}".format( index, self.actions[index], new_action ) )
+            print( "   {} {}".format( len(self.actions[index]), len(new_action) ) )
             self.clean = False
 
-    @staticmethod
-    def actionNames():
+    def actionNames(self):
         return [ "forward", "backward", "left", "right", "stop" ]
+
+    def actionForKey(self,keybind,oldAction=None):
+        if keybind == 'w':
+            return 'forward'
+        elif keybind == 'a':
+            return 'left'
+        elif keybind == 'd':
+            return 'right'
+        elif keybind == 's':
+            return 'stop'
+        elif keybind == 'x':
+            return 'backward'
+        return None
 
 def tests():
 

@@ -29,6 +29,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal, QObject
 
 import dagger_data
+import DriveFormat
 
 class Communicate(QObject):
     closeApp = pyqtSignal() 
@@ -38,9 +39,9 @@ class Example(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.images = []
-        self.actions = []    
+        self.data = None
         self.index = 0
+        self.gridWidth = 5
 
         self.initUI()
 
@@ -54,7 +55,6 @@ class Example(QMainWindow):
         
         #self.initButtons()
         #self.setMouseTracking(True)
-        self.initGrid()
 
         self.setWindowTitle('DAgger Tool')    
         self.statusBar().showMessage('Ready')
@@ -119,17 +119,14 @@ class Example(QMainWindow):
 
     def makeActionComboBox(self):
         ae = QComboBox(self)
-        ae.addItem("forward")
-        ae.addItem("backward")
-        ae.addItem("left")
-        ae.addItem("right")
-        ae.addItem("stop")
+        if self.data is not None:
+            for aclab in self.data.actionNames():
+                ae.addItem(aclab)
         ae.setInsertPolicy(QComboBox.NoInsert)
         ae.activated[str].connect(self.actionEdited)
         return ae
 
     def initGrid(self):
-        self.gridWidth = 5
         self.imageLabels = []
         self.actionLabels = []
         self.indexes = []
@@ -174,8 +171,7 @@ class Example(QMainWindow):
 
     def actionEdited(self, newValue):
         idx = self.actionLabels.index(self.sender())
-        #print( "New action: {} at {}".format( newValue, idx ) )
-        self.actions[self.index + idx] = newValue
+        self.data.setActionForIndex( newValue, self.index + idx )
 
     def toggleMenu(self, state):
         if state:
@@ -217,26 +213,25 @@ class Example(QMainWindow):
     def loadData(self, path):
         if not os.path.isdir(path):
             return
-        images, y = dagger_data.loadData( [path] )
+        self.data = DriveFormat.Drive(path)
         self.path = path
-        self.images = images
-        self.actions = y
-        if len(self.images) != len(self.actions):
-            print( "Images/actions: {}/{}".format( len(self.images), len(self.actions) ) )
-        self.statusBar().showMessage( "{} images loaded".format( len(images) ) )
+        self.initGrid()
+        self.statusBar().showMessage( "{} images loaded".format( self.data.count() ) )
         self.slider.setMinimum(0)
-        self.slider.setMaximum( len(images)-self.gridWidth )
+        self.slider.setMaximum( self.data.count()-self.gridWidth )
         self.slider.setSliderPosition(0)
         self.updateImages()
 
     def saveData(self):
-        dagger_data.saveData( self.path, self.images, self.actions )
-        self.statusBar().showMessage( "{} actions saved to {}".format( len(self.actions), self.path ) )
+        if self.data is not None:
+            self.data.save()
+            self.statusBar().showMessage( "{} actions saved to {}".format( self.data.count(), self.path ) )
 
     def closeEvent(self, event):
-        #reply = QMessageBox.question(self, 'Message', "Are you sure to quit?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-# Check if data has been modified. If so ask user.
-        reply = QMessageBox.Yes
+        if self.data is not None and not self.data.isClean():
+            reply = QMessageBox.warning(self, 'Unsaved changes', "This document has unsaved changes.\nAre you sure you want to quit?", buttons=QMessageBox.Yes | QMessageBox.No, defaultButton=QMessageBox.No)
+        else:
+            reply = QMessageBox.Yes
 
         if reply == QMessageBox.Yes:
             event.accept()
@@ -251,34 +246,31 @@ class Example(QMainWindow):
                 self.index -= 1
                 self.slider.setSliderPosition(self.index)
                 self.updateImages()
-            else:
-                print( "Not doing key left" )
+            #else:
+            #    print( "Not doing key left" )
         elif e.key() == Qt.Key_Right:
-            if self.index < (len(self.images) - self.gridWidth):
+            if self.index < (self.data.count() - self.gridWidth):
                 self.index += 1
                 self.slider.setSliderPosition(self.index)
                 self.updateImages()
+            #else:
+            #    print( "Not doing key right" )
+
+        if self.data is not None:
+            newAction = self.data.actionForKey(e.text())
+            if newAction is None:
+                e.ignore()
             else:
-                print( "Not doing key right" )
-        elif e.key() == Qt.Key_W:
-            self.changeCurrentAction( 'forward' )
-        elif e.key() == Qt.Key_A:
-            self.changeCurrentAction( 'left' )
-        elif e.key() == Qt.Key_D:
-            self.changeCurrentAction( 'right' )
-        elif e.key() == Qt.Key_S:
-            self.changeCurrentAction( 'stop' )
-        elif e.key() == Qt.Key_X:
-            self.changeCurrentAction( 'backward' )
+                self.changeCurrentAction( newAction )
         else:
             e.ignore()
 
     def changeCurrentAction(self, action, label_index=2):
         # Defaults to changing the action in the middle of the screen
         self.actionLabels[label_index].setCurrentText( action )
-        if (self.index+label_index) >= len(self.actions):
-            print( "{} actions. index {}, label_index {}".format( len(self.actions), self.index, label_index ) )
-        self.actions[self.index+label_index] = action
+        if (self.index+label_index) >= self.data.count():
+            print( "{} actions. index {}, label_index {}".format( self.data.count(), self.index, label_index ) )
+        self.data.setActionForIndex( action, self.index+label_index )
 
     def mouseMoveEvent(self, e):
         #x = e.x()
@@ -312,11 +304,11 @@ class Example(QMainWindow):
 
     def updateImages(self):
         for i in range( len(self.imageLabels) ):
-            if self.index + i < len(self.images):
-                image = self.images[ self.index + i ]
+            if self.index + i < self.data.count():
+                image = self.data.imageForIndex( self.index + i )
                 image = QImage(image, image.shape[1], image.shape[0], image.shape[1] * 3, QImage.Format_RGB888)
                 self.imageLabels[i].setPixmap( QPixmap(image) )
-                self.actionLabels[i].setCurrentText( self.actions[ self.index + i ] )
+                self.actionLabels[i].setCurrentText( self.data.actionForIndex( self.index + i ) )
                 self.indexes[i].setText( str( self.index + i ) )
             else:
                 print( "Not doing updateImages for index {} + {}".format( self.index, i ) )
@@ -347,3 +339,10 @@ if __name__ == '__main__':
     if len(args.file) > 0:
         ex.loadData(args.file[0])
     sys.exit(app.exec_())
+
+#def save( self ):
+#def isClean( self ):
+#def imageForIndex( self, index ):
+#def actionForIndex( self, index ):
+#def setActionForIndex( self, action, index ):
+#def actionNames():

@@ -80,6 +80,41 @@ def plotHistoryWithError( loss, acc, val_loss, val_acc, name, plot_dir ):
 def runningMean(x, N):
     return np.convolve(x, np.ones((N,))/N, mode='valid')
 
+def plotDagger():
+    files = ["experiments/Track_CW_FC_DK_256_opt2/histories.pickle", "experiments/Track_CW_FC_DK_256_dag1/histories.pickle", "experiments/Track_CW_FC_DK_256_dag2/histories.pickle", "experiments/Track_CW_FC_DK_256_dag3/histories.pickle", "experiments/Track_CW_FC_DK_256_dag4/histories.pickle"]
+
+    plt.figure(1,figsize=(10, 14), dpi=80)
+    train = plt.subplot(2, 1, 1)
+    val = plt.subplot(2, 1, 2)
+    lines = []
+
+    for fname in files:
+        data = loadHistory( fname )
+        acc=[]
+        val_acc=[]
+        for hist in data:
+            acc.append(hist['categorical_accuracy'])
+            val_acc.append(hist['val_categorical_accuracy'])
+        acc_avg = np.mean(acc, axis=0)
+        acc_err = np.std(acc, axis=0)
+        val_acc_avg = np.mean(val_acc, axis=0)
+        val_acc_err = np.std(val_acc, axis=0)
+
+        line = train.errorbar(range(len(acc_avg)),acc_avg, yerr=acc_err)
+        val.errorbar(range(len(val_acc_avg)),val_acc_avg, yerr=val_acc_err)
+        lines.append(line)
+
+    plt.figlegend(lines, ['Opt2', 'Dag1', 'Dag2', 'Dag3', 'Dag4'], loc = 'center', ncol=5 )
+    plt.subplots_adjust(hspace=0.4)
+    train.set_title('Training Accuracy')
+    train.set_ylabel('accuracy')
+    train.set_xlabel('epoch')
+    val.set_title('Validation Accuracy')
+    val.set_ylabel('accuracy')
+    val.set_xlabel('epoch')
+    plt.savefig( 'dagger_plot.png' )
+    plt.show()
+
 def runTests(args):
     print( "Args: {}".format( args ) )
     pass
@@ -104,6 +139,7 @@ def getOptions():
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
     parser.add_argument('--name', help='name to use for plot title and filename')
     parser.add_argument('--exp', help='Directory with saved experiment meta-data, including a history file')
+    parser.add_argument('--dagger', action="store_true", default=False, help='Plots for first Dagger blog post')
 
     args = parser.parse_args()
 
@@ -114,6 +150,10 @@ if __name__ == "__main__":
 
     if args.test_only:
         runTests(args)
+        exit()
+
+    if args.dagger:
+        plotDagger()
         exit()
 
     fname = 'histories.pickle'
