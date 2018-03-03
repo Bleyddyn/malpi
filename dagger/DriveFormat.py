@@ -29,11 +29,12 @@ class Drive:
         actions_file = os.path.join( drive_dir, "image_actions.npy" )
         if os.path.exists(actions_file):
             actions = np.load(actions_file)
-            actions = actions.astype('str')
+            actions = actions.astype('object')
         else:
             actions_file = os.path.join( drive_dir, "image_actions.pickle" )
             with open(actions_file,'r') as f:
                 actions = pickle.load(f)
+                actions = np.array(actions,dtype='object')
 
         im_file = os.path.join( drive_dir, "images_120x120.npy" )
         if os.path.exists(im_file):
@@ -42,6 +43,7 @@ class Drive:
             im_file = os.path.join( drive_dir, "images_120x120.pickle" )
             with open(im_file,'r') as f:
                 images = pickle.load(f)
+                images = np.array(images)
 
         return images, actions
 
@@ -52,9 +54,6 @@ class Drive:
         images, actions = self._loadOneDrive( path )
         if len(images) != len(actions):
             print( "Images/actions: {}/{}".format( len(self.images), len(self.actions) ) )
-
-        images = np.array(images)
-        actions = np.array(actions)
 
         return images, actions
 
@@ -76,16 +75,11 @@ class Drive:
         return self.images[index]
 
     def actionForIndex( self, index ):
-        print( "Read [{}]: {}".format( index, self.actions[index] ) )
         return self.actions[index]
 
     def setActionForIndex( self, new_action, index ):
-        print( "Before [{}]: {} = {}".format( index, self.actions[index], new_action ) )
         if self.actions[index] != new_action:
-            print( "   {} {}".format( len(self.actions[index]), len(new_action) ) )
             self.actions[index] = new_action
-            print( "After [{}]: {} = {}".format( index, self.actions[index], new_action ) )
-            print( "   {} {}".format( len(self.actions[index]), len(new_action) ) )
             self.clean = False
 
     def actionNames(self):
@@ -111,10 +105,20 @@ def tests():
     d = Drive(test_path)
 
     print( "Drive:\n{}".format( d.meta ) )
-    print( "Actions: {}".format( Drive.actionNames() ) )
+    print( "Actions: {}".format( d.actionNames() ) )
     print( "Image 10 shape: {}".format( d.imageForIndex(9).shape ) )
     print( "Action 10: {}".format( d.actionForIndex(9) ) )
-    
+    print( "Actions shape: {} ".format( d.actions.shape ) )
+   
+    longact = 'very long action'
+    before = d.actionForIndex(3)
+    d.setActionForIndex(longact,3)
+    after = d.actionForIndex(3)
+    if longact != after:
+        print( "Set action before/set/after: {}/{}/{}: FAIL".format( before, longact, after ) )
+    else:
+        print( "Set action succeeded: PASS" )
+
     try:
         d = Drive("DriveFormat.py")
     except IOError as ex:
