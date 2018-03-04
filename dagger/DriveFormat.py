@@ -1,6 +1,7 @@
 import os
-import numpy as np
 import pickle
+from collections import defaultdict
+import numpy as np
 
 class Drive:
     """ A class to represent a MaLPi drive on disc.
@@ -97,6 +98,12 @@ class Drive:
         elif keybind == 'x':
             return 'backward'
         return None
+
+    def actionStats(self):
+        stats = defaultdict(int)
+        for action in self.actions:
+            stats[action] += 1
+        return stats
 
 def tests():
 
