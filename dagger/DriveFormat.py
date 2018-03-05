@@ -30,12 +30,12 @@ class Drive:
         actions_file = os.path.join( drive_dir, "image_actions.npy" )
         if os.path.exists(actions_file):
             actions = np.load(actions_file)
-            actions = actions.astype('object')
+            actions = actions.astype(str)
         else:
             actions_file = os.path.join( drive_dir, "image_actions.pickle" )
             with open(actions_file,'r') as f:
                 actions = pickle.load(f)
-                actions = np.array(actions,dtype='object')
+                actions = np.array(actions,dtype=str)
 
         im_file = os.path.join( drive_dir, "images_120x120.npy" )
         if os.path.exists(im_file):
@@ -56,7 +56,11 @@ class Drive:
         if len(images) != len(actions):
             print( "Images/actions: {}/{}".format( len(self.images), len(self.actions) ) )
 
-        return images, actions
+        # A numpy array has a fixed string size, need this to be a python array
+        act_str = []
+        for act in actions:
+            act_str.append(str(act))
+        return images, act_str
 
     def save( self ):
         # Ignoring images for now
