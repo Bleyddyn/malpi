@@ -26,7 +26,7 @@ from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal, QObject
 
-import DriveFormat
+import MalpiFormat
 
 class Communicate(QObject):
     closeApp = pyqtSignal() 
@@ -237,7 +237,7 @@ class Example(QMainWindow):
     def loadData(self, path):
         if not os.path.isdir(path):
             return
-        self.data = DriveFormat.Drive(path)
+        self.data = MalpiFormat.MalpiFormat(path)
         self.path = path
         self.updateWindowTitle()
         self.initGrid()
