@@ -26,7 +26,7 @@ from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal, QObject
 
-import MalpiFormat
+from DriveFormat import DriveFormat
 
 class Communicate(QObject):
     closeApp = pyqtSignal() 
@@ -237,15 +237,18 @@ class Example(QMainWindow):
     def loadData(self, path):
         if not os.path.isdir(path):
             return
-        self.data = MalpiFormat.MalpiFormat(path)
-        self.path = path
-        self.updateWindowTitle()
-        self.initGrid()
-        self.statusBar().showMessage( "{} images loaded".format( self.data.count() ) )
-        self.slider.setMinimum(0)
-        self.slider.setMaximum( self.data.count()-self.gridWidth )
-        self.slider.setSliderPosition(0)
-        self.updateImages()
+        self.data = DriveFormat.handlerForFile( path )
+        if self.data is not None:
+            self.path = path
+            self.updateWindowTitle()
+            self.initGrid()
+            self.statusBar().showMessage( "{} images loaded".format( self.data.count() ) )
+            self.slider.setMinimum(0)
+            self.slider.setMaximum( self.data.count()-self.gridWidth )
+            self.slider.setSliderPosition(0)
+            self.updateImages()
+        else:
+            QMessageBox.warning(self, 'Unknown Filetype', "The file you selected could not be opened by any available file formats.", buttons=QMessageBox.Ok, defaultButton=QMessageBox.Ok)
 
     def saveData(self):
         if self.data is not None:

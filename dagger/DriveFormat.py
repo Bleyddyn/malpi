@@ -30,12 +30,13 @@ class DriveFormat:
         DriveFormat._formats[name] = formatClass
 
     @staticmethod
-    def classForFile( path ):
+    def handlerForFile( path ):
         """ This method will be called by the UI to find the appropriate class for a given file.
         Sub-classes must implement canOpenFile(path) as a classmethod."""
         for name, cls in DriveFormat._formats.items():
             if cls.canOpenFile(path):
-                return cls
+                handler = cls(path)
+                return handler
         return None
 
     @classmethod
