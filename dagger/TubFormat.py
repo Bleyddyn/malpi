@@ -43,7 +43,7 @@ class TubFormat(DriveFormat):
         if os.path.exists(meta_file):
             with open(meta_file,'r') as f:
                 meta = json.load(f)
-        return meta
+        return str(meta)
 
     def _load( self, path, image_norm=True ):
         images = []
@@ -60,7 +60,7 @@ class TubFormat(DriveFormat):
         image_files.sort(key=natural_keys)
         action_files.sort(key=natural_keys)
 
-        for i in range(20):
+        for i in range(len(image_files)):
             images.append( imread( os.path.join( self.path, image_files[i] ) ) )
             with open( os.path.join( self.path, action_files[i] ) ) as f:
                 actions.append( json.load(f)["user/angle"] )
@@ -79,7 +79,7 @@ class TubFormat(DriveFormat):
         return self.images[index]
 
     def actionForIndex( self, index ):
-        return self.actions[index]
+        return str(self.actions[index])
 
     def setActionForIndex( self, new_action, index ):
         if self.actions[index] != new_action:

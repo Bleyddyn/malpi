@@ -109,6 +109,24 @@ class MalpiFormat(DriveFormat):
         return stats
 
     @classmethod
+    def defaultInputTypes():
+        return [{"name":"Images", "type":"numpy image", "shape":(120,120,3)}]
+
+    def inputTypes():
+        res = MalpiFormat.defaultInputTypes()
+        if len(self.images) > 0:
+            res[0]["shape"] = self.images[0].shape
+        return res
+
+    @classmethod
+    def defaultOutputTypes():
+        return [{"name":"actions", "type":"categorical", "categories":[ "forward", "backward", "left", "right", "stop" ]}]
+
+    def inputTypes():
+        res = MalpiFormat.defaultOutputTypes()
+        return res
+
+    @classmethod
     def canOpenFile( cls, path ):
         if not os.path.exists(path):
             return False

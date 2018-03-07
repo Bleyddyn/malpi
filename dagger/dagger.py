@@ -27,6 +27,8 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal, QObject
 
 from DriveFormat import DriveFormat
+import MalpiFormat
+import TubFormat
 
 class Communicate(QObject):
     closeApp = pyqtSignal() 
