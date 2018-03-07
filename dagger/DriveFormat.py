@@ -114,3 +114,95 @@ class DriveFormat:
         TODO: Behavior isn't yet defined for continuous action spaces."""
         return {}
 
+    @staticmethod
+    def testFormat( FormatClass, test_path, invalid_action ):
+
+        d = FormatClass(test_path)
+
+        print( "Testing {}".format( FormatClass ) )
+        print( "Meta data:\n{}".format( d.meta ) )
+        print( "Actions: {}".format( d.actionNames() ) )
+        print( "Image 10 shape: {}".format( d.imageForIndex(9).shape ) )
+        print( "Action 10: {}".format( d.actionForIndex(9) ) )
+        print( "Actions length: {} ".format( len(d.actions) ) )
+        if d.isClean():
+            print( "Drive is clean before edit PASS" )
+        else:
+            print( "Drive is dirty before eidt: FAIL" )
+
+        invalid_action = 'very long action'
+        before = d.actionForIndex(3)
+        d.setActionForIndex(invalid_action,3)
+        after = d.actionForIndex(3)
+        if invalid_action != after:
+            print( "Set action before/set/after: {}/{}/{}: FAIL".format( before, invalid_action, after ) )
+        else:
+            print( "Set action succeeded: PASS" )
+        if d.isClean():
+            print( "Drive is clean after edit: FAIL" )
+        else:
+            print( "Drive is dirty after edit: PASS" )
+
+        try:
+            d = FormatClass("DriveFormat.py")
+        except IOError as ex:
+            print( "Caught correct exception when path is not a directory: PASS" )
+        except Exception as exg:
+            print( "Caught invalid exception ({}) when path is not a directory: FAIL".format(exg) )
+        else:
+            print( "No exception raised when path is not a directory: FAIL" )
+
+        try:
+            d = FormatClass("NonExistantDrivePath_________")
+        except IOError as ex:
+            print( "Caught correct exception when path does not exist: PASS" )
+        except Exception as exg:
+            print( "Caught invalid exception ({}) when path does not exist: FAIL".format(exg) )
+        else:
+            print( "No exception raised when path does not exist: FAIL" )
+
+        handler = DriveFormat.handlerForFile( test_path )
+        if handler is None:
+            print( "Failed to find class for test_path: FAIL" )
+        elif not isinstance(handler,FormatClass):
+            print( "Found wrong class for test_path: FAIL" )
+        else:
+            print( "Found correct class for test_path: PASS" )
+
+        handler = DriveFormat.handlerForFile( "DriveFormat.py" )
+        if handler is not None:
+            print( "Found class for invalid file type: Fail" )
+        else:
+            print( "Found no class for invalid file type: PASS" )
+
+        try:
+            DriveFormat.registerFormat( "test_format", FormatClass )
+        except Exception as exg:
+            print( "Caught invalid exception ({}) when registering format: FAIL".format(exg) )
+        else:
+            print( "No exception when registering format: PASS" )
+
+        try:
+            DriveFormat.registerFormat( "test_format", FormatClass )
+        except Exception as exg:
+            print( "Caught invalid exception ({}) when re-registering format: FAIL".format(exg) )
+        else:
+            print( "No exception when re-registering format: PASS" )
+
+        class FakeDrive:
+            pass
+
+        try:
+            DriveFormat.registerFormat( "test_format", FakeDrive )
+        except ValueError as exr:
+            print( "Caught correct exception when registering a duplicate format: PASS" )
+        except Exception as exg:
+            print( "Caught invalid exception ({}) when registering a duplicate format: FAIL".format(exg) )
+        else:
+            print( "No exception when registering a duplicate format: FAIL" )
+
+
+        if FormatClass.canOpenFile( test_path ):
+            print( "Can open file {}: PASS".format(test_path) )
+        else:
+            print( "Can't open file {}: FAIL".format(test_path) )
