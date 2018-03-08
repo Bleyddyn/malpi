@@ -2,15 +2,14 @@
     A base class for file formats meant to be used by dagger.py.
 
     TODO:
-    1) Have a method that returns a list of action space names, types and sizes.
-        e.g. [{ "name": "steering", "type": "categorical", "size": 5},
-              { "name": "throttle", "type": "continuous", "size": (-1.0,1.)}]
-    2) Add support for auxiliary labels as defined by the user. Name, type, size.
+    2) Add support for auxiliary labels as defined by the user. Name, type, names/range.
         e.g. Let the user label data based on which lane the car is in.
 """
 
 class DriveFormat:
-    """ A class to represent a drive on disc.
+    """ A base class to represent a drive on disc.
+    Callers can call handlerForFile(path) to get an object that can read/write the given file.
+    Sub classes need to call registerFormat(...) so they will be know to DriveFormat.
     """
 
     _formats = {}
@@ -45,11 +44,6 @@ class DriveFormat:
         Return is True if the class can read and write the file at path. Otherwise False."""
         return False
                     
-    def save( self ):
-        """ Override this to save the file and either call this or call setClean() to
-        mark it as clean """
-        self.clean = True
-
     def setDirty( self ):
         """ Mark this file as dirty, i.e. it has been edited since the last time it was
         saved """
@@ -65,6 +59,11 @@ class DriveFormat:
 
         return self.clean
 
+    def save( self ):
+        """ Override this to save the file and either call this or call setClean() to
+        mark it as clean """
+        self.clean = True
+
     def count( self ):
         """ Must be overridden by subclasses. Should return the number of samples
         in the file. """
@@ -72,7 +71,8 @@ class DriveFormat:
         return 0
 
     def imageForIndex( self, index ):
-        """ Return the image for the sample at index.
+        """ Must be overridden by subclasses.
+        Return the image for the sample at index.
         The only image format currentlly supported is a numpy array with
         shape: ( height, width, 3 channels).
         e.g. return self.images[index]"""
@@ -80,25 +80,20 @@ class DriveFormat:
         return None
 
     def actionForIndex( self, index ):
-        """ Return the action for the sample at index.
+        """ Must be overridden by subclasses.
+        Return the action for the sample at index.
         Action should be a string for categorical outputs, or a float for continuous outputs.
         e.g. return self.actions[index]"""
 
         return None
 
     def setActionForIndex( self, new_action, index ):
-        """ Set the action for this index to new_action, then either call this method
+        """ Must be overridden by subclasses.
+        Set the action for this index to new_action, then either call this method
         or call setDirty() directly to mark this file as edited.
         e.g. self.actions[index] = new_action; self.setDirty()"""
 
         self.setDirty()
-
-    def actionNames(self):
-        """ Return a list with strings representing each possible action.
-        For continuous action spaces return an empty list.
-        e.g. return [ 'forward', 'backward', etc... ]"""
-
-        return [ ]
 
     def actionForKey(self,keybind,oldAction=None):
         """ Implement keybindings for this file type. The keybind argument will be a string
@@ -115,13 +110,30 @@ class DriveFormat:
         return {}
 
     @staticmethod
+    def defaultInputTypes():
+        """ Return an array of dicts describing the input types.
+        e.g. [{"name":"Images", "type":"numpy image", "shape":(120,120,3)}] """
+        return [{}]
+
+    def inputTypes(self):
+        return DriveFormat.defaultInputTypes()
+
+    @staticmethod
+    def defaultOutputTypes():
+        """  Return an array of dicts describing the output types.
+        e.g. [{"name":"Actions", "type":"categorical", "categories":[ "forward", "backward", "left", "right", "stop" ]}] """
+        return [{}]
+
+    def outputTypes(self):
+        return DriveFormat.defaultOutputTypes()
+
+    @staticmethod
     def testFormat( FormatClass, test_path, invalid_action ):
 
         d = FormatClass(test_path)
 
         print( "Testing {}".format( FormatClass ) )
         print( "Meta data:\n{}".format( d.meta ) )
-        print( "Actions: {}".format( d.actionNames() ) )
         print( "Image 10 shape: {}".format( d.imageForIndex(9).shape ) )
         print( "Action 10: {}".format( d.actionForIndex(9) ) )
         print( "Actions length: {} ".format( len(d.actions) ) )

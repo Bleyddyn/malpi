@@ -86,9 +86,6 @@ class MalpiFormat(DriveFormat):
             self.actions[index] = new_action
             self.setDirty()
 
-    def actionNames(self):
-        return [ "forward", "backward", "left", "right", "stop" ]
-
     def actionForKey(self,keybind,oldAction=None):
         if keybind == 'w':
             return 'forward'
@@ -108,21 +105,21 @@ class MalpiFormat(DriveFormat):
             stats[action] += 1
         return stats
 
-    @classmethod
+    @staticmethod
     def defaultInputTypes():
         return [{"name":"Images", "type":"numpy image", "shape":(120,120,3)}]
 
-    def inputTypes():
+    def inputTypes(self):
         res = MalpiFormat.defaultInputTypes()
         if len(self.images) > 0:
             res[0]["shape"] = self.images[0].shape
         return res
 
-    @classmethod
+    @staticmethod
     def defaultOutputTypes():
-        return [{"name":"actions", "type":"categorical", "categories":[ "forward", "backward", "left", "right", "stop" ]}]
+        return [{"name":"Actions", "type":"categorical", "categories":[ "forward", "backward", "left", "right", "stop" ]}]
 
-    def inputTypes():
+    def outputTypes(self):
         res = MalpiFormat.defaultOutputTypes()
         return res
 
@@ -164,3 +161,6 @@ DriveFormat.registerFormat( "MalpiFormat", MalpiFormat )
 
 if __name__ == "__main__":
     DriveFormat.testFormat( MalpiFormat, "test.drive", "very long action" )
+    #d = MalpiFormat("test.drive")
+    #print( d.inputTypes() )
+    #print( d.outputTypes() )

@@ -107,49 +107,63 @@ class Example(QMainWindow):
         self.toolbar.addAction(openFile)
 
     def makeActionComboBox(self):
-        ae = QComboBox(self)
-        if self.data is not None:
-            for aclab in self.data.actionNames():
+        ae = None
+
+        ot = self.data.outputTypes()
+        if ot[0]["type"] == "categorical":
+            ae = QComboBox(self)
+            for aclab in ot[0]["categories"]:
                 ae.addItem(aclab)
-        ae.setInsertPolicy(QComboBox.NoInsert)
-        ae.activated[str].connect(self.actionEdited)
+            ae.setInsertPolicy(QComboBox.NoInsert)
+            ae.activated[str].connect(self.actionEdited)
+        elif ot[0]["type"] == "continuous":
+            ae = QLineEdit(self)
+
+        if ae is None:
+            ae = QLineEdit(self)
         return ae
 
     def initGrid(self):
+        if self.data is None:
+            return
+
+        # This needs to be generalized to handle multiple input and output types
         self.imageLabels = []
         self.actionLabels = []
-        self.indexes = []
         for i in range(self.gridWidth):
             self.imageLabels.append( QLabel(self) )
             self.actionLabels.append( self.makeActionComboBox() )
-            idx = QLabel(self)
-            idx.setAlignment( Qt.AlignCenter )
-            self.indexes.append( idx )
-
-        sld = QSlider(Qt.Horizontal, self)
-        self.slider = sld
-        sld.setFocusPolicy(Qt.NoFocus)
-        sld.valueChanged[int].connect(self.changeValue)
-
 
         grid = QGridLayout()
         grid.setSpacing(10)
 
+        otypes = self.data.outputTypes()
+        itypes = self.data.inputTypes()
+
         row = 1
-        grid.addWidget(QLabel('Images'), row, 0)
+        grid.addWidget(QLabel(itypes[0]["name"]), row, 0)
         for i in range(len(self.imageLabels)):
             grid.addWidget(self.imageLabels[i], row, i+1)
 
         row += 1
-        grid.addWidget(QLabel('Actions'), row, 0)
+        grid.addWidget(QLabel(otypes[0]["name"]), row, 0)
         for i in range(len(self.actionLabels)):
             grid.addWidget(self.actionLabels[i], row, i+1)
 
         row += 1
+        self.indexes = []
+        for i in range(self.gridWidth):
+            idx = QLabel(self)
+            idx.setAlignment( Qt.AlignCenter )
+            self.indexes.append( idx )
         for i in range(len(self.indexes)):
             grid.addWidget(self.indexes[i], row, i+1)
 
         row += 1
+        sld = QSlider(Qt.Horizontal, self)
+        self.slider = sld
+        sld.setFocusPolicy(Qt.NoFocus)
+        sld.valueChanged[int].connect(self.changeValue)
         grid.addWidget(sld, row, 0, 1, self.gridWidth+1)
 
         self.setCentralWidget(QWidget(self))

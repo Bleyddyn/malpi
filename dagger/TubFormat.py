@@ -1,4 +1,5 @@
 import os
+import sys
 import pickle
 from DriveFormat import DriveFormat
 from collections import defaultdict
@@ -52,7 +53,9 @@ class TubFormat(DriveFormat):
         image_files = []
         action_files = []
         for fname in os.listdir(path):
-            if "cam-image_array_" in fname and fname.endswith(".jpg"):
+            if fname.startswith("._"):
+                pass
+            elif "cam-image_array_" in fname and fname.endswith(".jpg"):
                 image_files.append(fname)
             elif fname.startswith("record_") and fname.endswith(".json"):
                 action_files.append(fname)
@@ -61,10 +64,12 @@ class TubFormat(DriveFormat):
         action_files.sort(key=natural_keys)
 
         for i in range(len(image_files)):
+            print( "Loading {} of {}".format( i, len(image_files) ), end='\r' )
+            sys.stdout.flush()
             images.append( imread( os.path.join( self.path, image_files[i] ) ) )
             with open( os.path.join( self.path, action_files[i] ) ) as f:
                 actions.append( json.load(f)["user/angle"] )
-
+        print("")
         return images, actions
 
     def save( self ):
@@ -85,9 +90,6 @@ class TubFormat(DriveFormat):
         if self.actions[index] != new_action:
             self.actions[index] = new_action
             self.setDirty()
-
-    def actionNames(self):
-        return [ ]
 
     def actionForKey(self,keybind,oldAction=None):
         if keybind == 'w':
@@ -124,8 +126,29 @@ class TubFormat(DriveFormat):
 
         return True
 
+    @staticmethod
+    def defaultInputTypes():
+        return [{"name":"Images", "type":"numpy image", "shape":(120,160,3)}]
+
+    def inputTypes(self):
+        res = TubFormat.defaultInputTypes()
+        if len(self.images) > 0:
+            res[0]["shape"] = self.images[0].shape
+        return res
+
+    @staticmethod
+    def defaultOutputTypes():
+        return [{"name":"Actions", "type":"continuous", "range":(-1.0,1.0)}]
+
+    def outputTypes(self):
+        res = TubFormat.defaultOutputTypes()
+        return res
+
 """ Register this format with the base class """
 DriveFormat.registerFormat( "TubFormat", TubFormat )
 
 if __name__ == "__main__":
     DriveFormat.testFormat( TubFormat, "test.tub", 2.0 )
+    d = TubFormat("test.drive")
+    print( d.inputTypes() )
+    print( d.outputTypes() )
