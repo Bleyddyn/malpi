@@ -118,6 +118,7 @@ class Example(QMainWindow):
             ae.activated[str].connect(self.actionEdited)
         elif ot[0]["type"] == "continuous":
             ae = QLineEdit(self)
+            ae.setEnabled(False)
 
         if ae is None:
             ae = QLineEdit(self)
@@ -303,7 +304,7 @@ class Example(QMainWindow):
             #    print( "Not doing key right" )
 
         if self.data is not None:
-            newAction = self.data.actionForKey(e.text())
+            newAction = self.data.actionForKey(e.text(),oldAction=self.data.actionForIndex(self.index+2))
             if newAction is None:
                 e.ignore()
             else:
@@ -313,7 +314,11 @@ class Example(QMainWindow):
 
     def changeCurrentAction(self, action, label_index=2):
         # Defaults to changing the action in the middle of the screen
-        self.actionLabels[label_index].setCurrentText( action )
+        ot = self.data.outputTypes()
+        if ot[0]["type"] == "categorical":
+            self.actionLabels[label_index].setCurrentText( action )
+        elif ot[0]["type"] == "continuous":
+            self.actionLabels[label_index].setText( str(action) )
         if (self.index+label_index) >= self.data.count():
             print( "{} actions. index {}, label_index {}".format( self.data.count(), self.index, label_index ) )
         self.data.setActionForIndex( action, self.index+label_index )
@@ -356,8 +361,12 @@ class Example(QMainWindow):
                 image = self.data.imageForIndex( self.index + i )
                 image = QImage(image, image.shape[1], image.shape[0], image.shape[1] * 3, QImage.Format_RGB888)
                 self.imageLabels[i].setPixmap( QPixmap(image) )
-                self.actionLabels[i].setCurrentText( self.data.actionForIndex( self.index + i ) )
                 self.indexes[i].setText( str( self.index + i ) )
+                ot = self.data.outputTypes()
+                if ot[0]["type"] == "categorical":
+                    self.actionLabels[i].setCurrentText( self.data.actionForIndex( self.index + i ) )
+                elif ot[0]["type"] == "continuous":
+                    self.actionLabels[i].setText( str(self.data.actionForIndex( self.index + i )) )
             else:
                 print( "Not doing updateImages for index {} + {}".format( self.index, i ) )
 

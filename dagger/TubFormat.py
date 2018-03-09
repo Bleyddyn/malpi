@@ -84,7 +84,7 @@ class TubFormat(DriveFormat):
         return self.images[index]
 
     def actionForIndex( self, index ):
-        return str(self.actions[index])
+        return self.actions[index]
 
     def setActionForIndex( self, new_action, index ):
         if self.actions[index] != new_action:
@@ -93,21 +93,23 @@ class TubFormat(DriveFormat):
 
     def actionForKey(self,keybind,oldAction=None):
         if keybind == 'w':
-            return 'forward'
+            return oldAction
         elif keybind == 'a':
-            return 'left'
+            return oldAction - 0.1
         elif keybind == 'd':
-            return 'right'
+            return oldAction + 0.1
         elif keybind == 's':
-            return 'stop'
+            return 0.0
         elif keybind == 'x':
-            return 'backward'
-        return None
+            return oldAction
+        return oldAction
 
     def actionStats(self):
         stats = defaultdict(int)
-        for action in self.actions:
-            stats[action] += 1
+        stats["Min"] = np.min(self.actions)
+        stats["Max"] = np.max(self.actions)
+        stats["Mean"] = np.mean(self.actions)
+        stats["StdDev"] = np.std(self.actions)
         return stats
 
     @classmethod
