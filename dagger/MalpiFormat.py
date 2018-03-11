@@ -66,6 +66,10 @@ class MalpiFormat(DriveFormat):
 
     def save( self ):
         # Ignoring images for now
+        images = np.array(self.images)
+        ofname = os.path.join( self.path, 'images_120x120.npy' )
+        np.save(ofname, images)
+
         actions = np.array(self.actions)
         actions = actions.astype('str')
         ofname = os.path.join( self.path, 'image_actions.npy' )
@@ -84,6 +88,12 @@ class MalpiFormat(DriveFormat):
     def setActionForIndex( self, new_action, index ):
         if self.actions[index] != new_action:
             self.actions[index] = new_action
+            self.setDirty()
+
+    def deleteIndex( self, index ):
+        if index >= 0 and index < self.count():
+            self.images = np.delete(self.images,index,axis=0)
+            self.actions.pop(index)
             self.setDirty()
 
     def actionForKey(self,keybind,oldAction=None):

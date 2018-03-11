@@ -95,6 +95,13 @@ class DriveFormat:
 
         self.setDirty()
 
+    def deleteIndex( self, index ):
+        """ May be overridden by subclasses.
+        Delete all data associated with the sample at index.
+        Call setDirty() to mark this file as edited. """
+
+        pass
+
     def actionForKey(self,keybind,oldAction=None):
         """ Implement keybindings for this file type. The keybind argument will be a string
         with a single character the user typed. oldAction is for reference in case keybindings

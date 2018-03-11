@@ -302,8 +302,14 @@ class Example(QMainWindow):
                 self.updateImages()
             #else:
             #    print( "Not doing key right" )
-
-        if self.data is not None:
+        elif e.key() == Qt.Key_Delete:
+            print( "Deleting sample" )
+            if self.data is not None:
+                self.data.deleteIndex(self.index+2)
+                self.slider.setMaximum( self.data.count()-self.gridWidth )
+                self.updateImages()
+                self.updateStats()
+        elif self.data is not None:
             newAction = self.data.actionForKey(e.text(),oldAction=self.data.actionForIndex(self.index+2))
             if newAction is None:
                 e.ignore()
