@@ -19,7 +19,7 @@ import argparse
 
 from PyQt5.QtWidgets import QMainWindow, QWidget, QAction, QMenu, QMessageBox, QApplication, QDesktopWidget, qApp, QPushButton
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QGridLayout
-from PyQt5.QtWidgets import QLabel, QLineEdit, QTextEdit, QSlider, QListView, QTreeView, QAbstractItemView, QComboBox
+from PyQt5.QtWidgets import QLabel, QLineEdit, QTextEdit, QSlider, QListView, QTreeView, QAbstractItemView, QComboBox, QFrame
 from PyQt5.QtWidgets import QDialog, QFileDialog, QDockWidget, QTableWidget, QTableWidgetItem
 from PyQt5.QtGui import QIcon
 from PyQt5.QtGui import QPixmap, QImage
@@ -133,7 +133,9 @@ class Example(QMainWindow):
         self.actionLabels = []
         for i in range(self.gridWidth):
             self.imageLabels.append( QLabel(self) )
-            self.actionLabels.append( self.makeActionComboBox() )
+            cb = self.makeActionComboBox()
+            self.actionLabels.append( cb )
+
 
         grid = QGridLayout()
         grid.setSpacing(10)
@@ -149,6 +151,12 @@ class Example(QMainWindow):
         row += 1
         grid.addWidget(QLabel(otypes[0]["name"]), row, 0)
         for i in range(len(self.actionLabels)):
+#            if i == 2: # should be gridWidth / 2
+#                cbframe = QFrame(self)
+#                self.actionLabels[i].setParent( cbframe )
+#                cbframe.setStyleSheet("QFrame { border: 2px solid black; }")
+#                grid.addWidget(cbframe, row, i+1)
+#            else:
             grid.addWidget(self.actionLabels[i], row, i+1)
 
         row += 1
@@ -296,7 +304,7 @@ class Example(QMainWindow):
             #else:
             #    print( "Not doing key left" )
         elif e.key() == Qt.Key_Right:
-            if self.index < (self.data.count() - self.gridWidth):
+            if self.index < (self.data.count() - 1):
                 self.index += 1
                 self.slider.setSliderPosition(self.index)
                 self.updateImages()
@@ -310,7 +318,7 @@ class Example(QMainWindow):
                 self.updateImages()
                 self.updateStats()
         elif self.data is not None:
-            newAction = self.data.actionForKey(e.text(),oldAction=self.data.actionForIndex(self.index+2))
+            newAction = self.data.actionForKey(e.text(),oldAction=self.data.actionForIndex(self.index))
             if newAction is None:
                 e.ignore()
             else:
@@ -325,9 +333,9 @@ class Example(QMainWindow):
             self.actionLabels[label_index].setCurrentText( action )
         elif ot[0]["type"] == "continuous":
             self.actionLabels[label_index].setText( str(action) )
-        if (self.index+label_index) >= self.data.count():
+        if self.index >= self.data.count():
             print( "{} actions. index {}, label_index {}".format( self.data.count(), self.index, label_index ) )
-        self.data.setActionForIndex( action, self.index+label_index )
+        self.data.setActionForIndex( action, self.index )
         self.updateWindowTitle()
         self.updateStats()
 
@@ -363,18 +371,23 @@ class Example(QMainWindow):
 
     def updateImages(self):
         for i in range( len(self.imageLabels) ):
-            if self.index + i < self.data.count():
-                image = self.data.imageForIndex( self.index + i )
+            il = self.index - 2 + i
+            if il >= 0 and il < self.data.count():
+                image = self.data.imageForIndex( il )
                 image = QImage(image, image.shape[1], image.shape[0], image.shape[1] * 3, QImage.Format_RGB888)
                 self.imageLabels[i].setPixmap( QPixmap(image) )
-                self.indexes[i].setText( str( self.index + i ) )
+                self.indexes[i].setText( str( il ) )
                 ot = self.data.outputTypes()
                 if ot[0]["type"] == "categorical":
-                    self.actionLabels[i].setCurrentText( self.data.actionForIndex( self.index + i ) )
+                    self.actionLabels[i].setCurrentText( self.data.actionForIndex( il ) )
                 elif ot[0]["type"] == "continuous":
-                    self.actionLabels[i].setText( str(self.data.actionForIndex( self.index + i )) )
+                    self.actionLabels[i].setText( str(self.data.actionForIndex( il )) )
+                self.actionLabels[i].setEnabled(True)
             else:
-                print( "Not doing updateImages for index {} + {}".format( self.index, i ) )
+                self.imageLabels[i].clear()
+                self.indexes[i].setText( "" )
+                self.actionLabels[i].setCurrentText( "" )
+                self.actionLabels[i].setEnabled(False)
 
     def updateStats(self):
         if self.data is not None:
