@@ -6,8 +6,9 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from scipy.stats import norm
 
-from keras.layers import Input, Dense, Conv2D, MaxPooling2D, UpSampling2D, Cropping2D, Lambda
+from keras.layers import Input, Dense, Conv2D, MaxPooling2D, UpSampling2D, Cropping2D, Lambda, Dropout
 from keras.models import Model, load_model
+from keras.callbacks import EarlyStopping
 from keras import backend as K
 from keras.datasets import mnist
 from keras import metrics
@@ -151,17 +152,25 @@ def makeAEConv( input_shape ):
     decoded = Conv2D(3, (3, 3), activation='sigmoid', padding='same')(x)
 
     autoencoder = Model(input_img, decoded)
-    autoencoder.compile(optimizer='adadelta', loss='binary_crossentropy')
+    autoencoder.compile(optimizer='adadelta', loss='binary_crossentropy', metrics=["val_loss", "val_binary_acc", metrics.binary_accuracy])
 
     return autoencoder
 
-def makeAEConvStrides( input_shape ):
+def makeAEConvStrides( input_shape, dropouts=None ):
     input_img = Input(shape=input_shape)  # adapt this if using `channels_first` image data format
 
     x = Conv2D(24, (5, 5), activation='relu', strides=(2,2), padding='same')(input_img)
+    if dropouts is not None:
+        x = Dropout(dropouts[0])(x)
     x = Conv2D(32, (5, 5), activation='relu', strides=(2,2), padding='same')(x)
+    if dropouts is not None:
+        x = Dropout(dropouts[1])(x)
     x = Conv2D(64, (5, 5), activation='relu', strides=(2,2), padding='same')(x)
+    if dropouts is not None:
+        x = Dropout(dropouts[2])(x)
     x = Conv2D(64, (3, 3), activation='relu', strides=(2,2), padding='same')(x)
+    if dropouts is not None:
+        x = Dropout(dropouts[3])(x)
     x = Conv2D(64, (3, 3), activation='relu', strides=(1,1), padding='same')(x)
     encoded = x
 
@@ -173,25 +182,34 @@ def makeAEConvStrides( input_shape ):
     x = UpSampling2D((2, 2))(x)
     x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
     x = UpSampling2D((2, 2))(x)
-    x = Cropping2D(4)(x)
+    #x = Cropping2D(4)(x)
     decoded = Conv2D(3, (3, 3), activation='sigmoid', padding='same')(x)
 
     autoencoder = Model(input_img, decoded)
-    autoencoder.compile(optimizer='adadelta', loss='binary_crossentropy')
+    autoencoder.compile(optimizer='adadelta', loss='binary_crossentropy', metrics=[metrics.binary_accuracy])
 
     return autoencoder
 
-def train(input_dim, x_train, x_test):
-    autoencoder = makeAEConvStrides(input_dim)
+def train(input_dim, x_train, x_test, early_stop = False):
+    callbacks = []
+    if early_stop:
+        callbacks.append(EarlyStopping(monitor='val_loss', min_delta=0.0005, patience=5, verbose=True, mode='auto'))
+    dropouts = None # [0.6,0.5,0.4,0.3]
+    autoencoder = makeAEConvStrides(input_dim, dropouts = dropouts)
     autoencoder.summary()
 
     autoencoder.fit(x_train, x_train,
                     epochs=50,
                     batch_size=128,
                     shuffle=True,
-                    validation_data=(x_test, x_test))
+                    validation_data=(x_test, x_test),
+                    callbacks=callbacks)
 
-    autoencoder.save( 'ae_conv_model.h5' )
+    #autoencoder.save( 'ae_conv_model.h5' )
+    json_string = autoencoder.to_json()
+    with open('ae_conv.json','w') as f:
+        f.write(json_string)
+
     autoencoder.save_weights('ae_conv_model_weights.h5')
 
     decoded_imgs = autoencoder.predict(x_test)
@@ -203,6 +221,7 @@ def loadModel(fname):
 def plot(input_dim, x_test):
     autoencoder = makeAEConvStrides(input_dim)
     autoencoder.load_weights('ae_conv_model_weights.h5')
+    autoencoder.summary()
     decoded_imgs = autoencoder.predict(x_test, batch_size=128)
     img1 = decoded_imgs[0]
     print( "decoded: {}".format( img1.shape ) )
@@ -219,31 +238,32 @@ def plot(input_dim, x_test):
         print( "deco: min/max/avg {}/{}/{}\n".format( np.min(img1), np.max(img1), np.mean(img1) ) )
         # display original
         ax = plt.subplot(2, n, i+1)
-        plt.imshow(x_test[idx].reshape(120, 120, 3))
+        plt.imshow(x_test[idx].reshape(input_dim[0], input_dim[1], input_dim[2]))
         #plt.gray()
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
 
         # display reconstruction
         ax = plt.subplot(2, n, i + n+1)
-        plt.imshow(decoded_imgs[idx].reshape(120, 120, 3))
+        plt.imshow(decoded_imgs[idx].reshape(input_dim[0], input_dim[1], input_dim[2]))
         #plt.gray()
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
     plt.savefig( 'ae_conv.png')
     plt.show()
 
-#autoencoder = makeAEConvStrides((120,120,3))
-#autoencoder.summary()
-#exit()
-drive_train.setCPUCores(4)
+if __name__ == "__main__":
+    drive_train.setCPUCores(4)
 
-args = drive_train.getOptions()
-images, y = drive_train.loadData(args.dirs, image_norm=False)
-images = images.astype('float32') / 255.
-input_dim = images[0].shape
+    args = drive_train.getOptions()
+    images, y = drive_train.loadData(args.dirs, size=(128,128), image_norm=False)
+    images = images.astype('float32') / 255.
+    input_dim = images[0].shape
+    #autoencoder = makeAEConvStrides(input_dim)
+    #autoencoder.summary()
+    #exit()
 
-x_train, x_test, y_train, y_test = train_test_split(images, y, test_size=0.2, random_state=1)
+    x_train, x_test, y_train, y_test = train_test_split(images, y, test_size=0.2, random_state=1)
 
-#train( input_dim, x_train, x_test)
-plot( input_dim, x_test)
+    train( input_dim, x_train, x_test, early_stop=args.early)
+    plot( input_dim, x_test)

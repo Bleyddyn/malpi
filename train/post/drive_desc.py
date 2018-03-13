@@ -35,13 +35,13 @@ def readArrayFromFile( key ):
         data = pickle.load( f )
     return data
 
-def getImagesFrom( filename ):
+def getImagesFrom( filename, size=(120,120) ):
     with open(filename,'r') as f:
         data = pickle.load(f)
 
     small = []
     for img in data:
-        img = imresize(img, (120,120), interp='nearest' )
+        img = imresize(img, size, interp='nearest' )
         small.append(img)
     return small
 
@@ -56,7 +56,7 @@ def loadDrive( drive_dir, indent="" ):
 
     return data
 
-def convertDriveToNumpy( drive_dir, indent="" ):
+def convertDriveToNumpy( drive_dir, size=(120,120), indent="" ):
     ifname = os.path.join( drive_dir, 'image_actions.pickle' )
     if os.path.exists(ifname):
         with open(ifname,'r') as f:
@@ -69,16 +69,17 @@ def convertDriveToNumpy( drive_dir, indent="" ):
     else:
             print( "{}Missing image_actions.pickle".format( indent ) )
     # repeat for images_120x120
-    ifname = os.path.join( drive_dir, 'images_120x120.pickle' )
+    basename = 'images_{}x{}'.format( size[0], size[1] )
+    ifname = os.path.join( drive_dir, basename+'.pickle' )
     if os.path.exists(ifname):
         with open(ifname,'r') as f:
             images = pickle.load(f)
             images = np.array(images)
-            ofname = os.path.join( drive_dir, 'images_120x120.npy' )
+            ofname = os.path.join( drive_dir, basename+'.npy' )
             np.save(ofname, images)
-            print( "{}Converted images_120x120 to numpy format".format( indent ) )
+            print( "{}Converted {} to numpy format".format( indent, basename ) )
     else:
-            print( "{}Missing images_120x120.pickle".format( indent ) )
+            print( "{}Missing {}.pickle".format( indent, basename ) )
 
 def makeActions( drive_dir, data, indent="" ):
     ofname = os.path.join( drive_dir, 'image_actions.pickle' )
@@ -88,8 +89,8 @@ def makeActions( drive_dir, data, indent="" ):
     else:
         print( "{}Image actions already exists".format( indent ) )
 
-def makeSmallImages( drive_dir, data, indent="" ):
-    ofname = os.path.join( drive_dir, 'images_120x120.pickle' )
+def makeSmallImages( drive_dir, data, size=(120,120), indent="" ):
+    ofname = os.path.join( drive_dir, 'images_{}x{}.pickle'.format( size[0], size[1] ) )
     if not os.path.exists(ofname):
         smallImages = []
         image_files = []
@@ -100,13 +101,13 @@ def makeSmallImages( drive_dir, data, indent="" ):
         for fname in image_files:
             ifname = os.path.join( drive_dir, fname )
             print( "{}Reading {}".format( indent, fname ) )
-            im1 = getImagesFrom(ifname)
+            im1 = getImagesFrom(ifname, size=size)
             smallImages.extend(im1)
 
         if len(smallImages) == 0 and 'images' in data:
             img_data = data['images']
             for img in img_data:
-                img = imresize(img, (120,120), interp='nearest' )
+                img = imresize(img, size, interp='nearest' )
                 smallImages.append(img)
 
         print( "{}Writing {} small images".format( indent, len(smallImages) ) )
@@ -276,4 +277,6 @@ if __name__ == "__main__":
                     else:
                         print( "{}Model: {}".format( indent, data['model'] ) )
                     makeActions( adir, data, indent=indent )
-                    makeSmallImages( adir, data, indent=indent )
+                    isize = (128,128)
+                    makeSmallImages( adir, data, size=isize, indent=indent )
+                    convertDriveToNumpy( adir, size=isize, indent=indent )
