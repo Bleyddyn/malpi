@@ -1,141 +1,227 @@
-import os
-import numpy as np
-import pickle
+""" DriveFormat.
+    A base class for file formats meant to be used by dagger.py.
 
-class Drive:
-    """ A class to represent a MaLPi drive on disc.
+    TODO:
+    2) Add support for auxiliary labels as defined by the user. Name, type, names/range.
+        e.g. Let the user label data based on which lane the car is in.
+"""
+
+class DriveFormat:
+    """ A base class to represent a drive on disc.
+    Callers can call handlerForFile(path) to get an object that can read/write the given file.
+    Sub classes need to call registerFormat(...) so they will be know to DriveFormat.
     """
 
-    def __init__( self, path ):
-        if not os.path.exists(path):
-            raise IOError( "Drive directory does not exist: {}".format( path ) )
-        if not os.path.isdir(path):
-            raise IOError( "Drive path is not a directory: {}".format( path ) )
+    _formats = {}
 
-        self.path = path
-        (self.images, self.actions) = self._load(path)
-        self.meta = self._loadMeta(path)
+    def __init__( self ):
         self.clean = True
 
-    def _loadMeta( self, path ):
-        meta_file = os.path.join( path, "meta.txt" )
-        meta = ""
-        if os.path.exists(meta_file):
-            with open(meta_file,'r') as f:
-                meta = f.read()
-        return meta
+    @staticmethod
+    def registerFormat( name, formatClass ):
+        """ This method should be called by sub-classes after they are defined.
+        This method should NOT be overridden by sub-classes."""
+        if name in DriveFormat._formats:
+            if DriveFormat._formats[name] == formatClass:
+                return
+            else:
+                raise ValueError("Multiple Drive formats with the same name: " + str(name) )
+        DriveFormat._formats[name] = formatClass
 
-    def _loadOneDrive( self, drive_dir ):
-        actions_file = os.path.join( drive_dir, "image_actions.npy" )
-        if os.path.exists(actions_file):
-            actions = np.load(actions_file)
-            actions = actions.astype('object')
-        else:
-            actions_file = os.path.join( drive_dir, "image_actions.pickle" )
-            with open(actions_file,'r') as f:
-                actions = pickle.load(f)
-                actions = np.array(actions,dtype='object')
+    @staticmethod
+    def handlerForFile( path ):
+        """ This method will be called by the UI to find the appropriate class for a given file.
+        Sub-classes must implement canOpenFile(path) as a classmethod."""
+        for name, cls in DriveFormat._formats.items():
+            if cls.canOpenFile(path):
+                handler = cls(path)
+                return handler
+        return None
 
-        im_file = os.path.join( drive_dir, "images_120x120.npy" )
-        if os.path.exists(im_file):
-            images = np.load(im_file)
-        else:
-            im_file = os.path.join( drive_dir, "images_120x120.pickle" )
-            with open(im_file,'r') as f:
-                images = pickle.load(f)
-                images = np.array(images)
+    @classmethod
+    def canOpenFile( cls, path ):
+        """ Sub-classes must override this as a class method.
+        Return is True if the class can read and write the file at path. Otherwise False."""
+        return False
+                    
+    def setDirty( self ):
+        """ Mark this file as dirty, i.e. it has been edited since the last time it was
+        saved """
+        self.clean = False
 
-        return images, actions
-
-    def _load( self, path, image_norm=True ):
-        images = []
-        actions = []
-
-        images, actions = self._loadOneDrive( path )
-        if len(images) != len(actions):
-            print( "Images/actions: {}/{}".format( len(self.images), len(self.actions) ) )
-
-        return images, actions
-
-    def save( self ):
-        # Ignoring images for now
-        actions = np.array(self.actions)
-        actions = actions.astype('str')
-        ofname = os.path.join( self.path, 'image_actions.npy' )
-        np.save(ofname, actions)
+    def setClean( self ):
+        """ Mark this file as clean, i.e. no edits since last saved. """
         self.clean = True
 
     def isClean( self ):
+        """ Returns True if this file has not be edited since opened or last saved.
+        False, otherwise. """
+
         return self.clean
 
+    def save( self ):
+        """ Override this to save the file and either call this or call setClean() to
+        mark it as clean """
+        self.clean = True
+
     def count( self ):
-        return len(self.images)
+        """ Must be overridden by subclasses. Should return the number of samples
+        in the file. """
+
+        return 0
 
     def imageForIndex( self, index ):
-        return self.images[index]
+        """ Must be overridden by subclasses.
+        Return the image for the sample at index.
+        The only image format currentlly supported is a numpy array with
+        shape: ( height, width, 3 channels).
+        e.g. return self.images[index]"""
 
-    def actionForIndex( self, index ):
-        return self.actions[index]
-
-    def setActionForIndex( self, new_action, index ):
-        if self.actions[index] != new_action:
-            self.actions[index] = new_action
-            self.clean = False
-
-    def actionNames(self):
-        return [ "forward", "backward", "left", "right", "stop" ]
-
-    def actionForKey(self,keybind,oldAction=None):
-        if keybind == 'w':
-            return 'forward'
-        elif keybind == 'a':
-            return 'left'
-        elif keybind == 'd':
-            return 'right'
-        elif keybind == 's':
-            return 'stop'
-        elif keybind == 'x':
-            return 'backward'
         return None
 
-def tests():
+    def actionForIndex( self, index ):
+        """ Must be overridden by subclasses.
+        Return the action for the sample at index.
+        Action should be a string for categorical outputs, or a float for continuous outputs.
+        e.g. return self.actions[index]"""
 
-    test_path = "test.drive"
+        return None
 
-    d = Drive(test_path)
+    def setActionForIndex( self, new_action, index ):
+        """ Must be overridden by subclasses.
+        Set the action for this index to new_action, then either call this method
+        or call setDirty() directly to mark this file as edited.
+        e.g. self.actions[index] = new_action; self.setDirty()"""
 
-    print( "Drive:\n{}".format( d.meta ) )
-    print( "Actions: {}".format( d.actionNames() ) )
-    print( "Image 10 shape: {}".format( d.imageForIndex(9).shape ) )
-    print( "Action 10: {}".format( d.actionForIndex(9) ) )
-    print( "Actions shape: {} ".format( d.actions.shape ) )
-   
-    longact = 'very long action'
-    before = d.actionForIndex(3)
-    d.setActionForIndex(longact,3)
-    after = d.actionForIndex(3)
-    if longact != after:
-        print( "Set action before/set/after: {}/{}/{}: FAIL".format( before, longact, after ) )
-    else:
-        print( "Set action succeeded: PASS" )
+        self.setDirty()
 
-    try:
-        d = Drive("DriveFormat.py")
-    except IOError as ex:
-        print( "Caught correct exception when path is not a directory: PASS" )
-    except Exception as exg:
-        print( "Caught invalid exception ({}) when path is not a directory: FAIL".format(exg) )
-    else:
-        print( "No exception raised when path is not a directory: FAIL" )
+    def deleteIndex( self, index ):
+        """ May be overridden by subclasses.
+        Delete all data associated with the sample at index.
+        Call setDirty() to mark this file as edited. """
 
-    try:
-        d = Drive("NonExistantDrivePath_________")
-    except IOError as ex:
-        print( "Caught correct exception when path does not exist: PASS" )
-    except Exception as exg:
-        print( "Caught invalid exception ({}) when path does not exist: FAIL".format(exg) )
-    else:
-        print( "No exception raised when path does not exist: FAIL" )
+        pass
 
-if __name__ == "__main__":
-    tests()
+    def actionForKey(self,keybind,oldAction=None):
+        """ Implement keybindings for this file type. The keybind argument will be a string
+        with a single character the user typed. oldAction is for reference in case keybindings
+        shift actions rather than choosing one.
+        e.g. if keybind == 'w' then return 'forward'
+        e.g. if keybind == '+' then return oldAction + 1"""
+
+        return None
+
+    def actionStats(self):
+        """ Return a dictionary with action names as keys and a count of each action as value.
+        TODO: Behavior isn't yet defined for continuous action spaces."""
+        return {}
+
+    @staticmethod
+    def defaultInputTypes():
+        """ Return an array of dicts describing the input types.
+        e.g. [{"name":"Images", "type":"numpy image", "shape":(120,120,3)}] """
+        return [{}]
+
+    def inputTypes(self):
+        return DriveFormat.defaultInputTypes()
+
+    @staticmethod
+    def defaultOutputTypes():
+        """  Return an array of dicts describing the output types.
+        e.g. [{"name":"Actions", "type":"categorical", "categories":[ "forward", "backward", "left", "right", "stop" ]}] """
+        return [{}]
+
+    def outputTypes(self):
+        return DriveFormat.defaultOutputTypes()
+
+    @staticmethod
+    def testFormat( FormatClass, test_path, invalid_action ):
+
+        d = FormatClass(test_path)
+
+        print( "Testing {}".format( FormatClass ) )
+        print( "Meta data:\n{}".format( d.meta ) )
+        print( "Image 10 shape: {}".format( d.imageForIndex(9).shape ) )
+        print( "Action 10: {}".format( d.actionForIndex(9) ) )
+        print( "Actions length: {} ".format( len(d.actions) ) )
+        if d.isClean():
+            print( "Drive is clean before edit PASS" )
+        else:
+            print( "Drive is dirty before eidt: FAIL" )
+
+        invalid_action = 'very long action'
+        before = d.actionForIndex(3)
+        d.setActionForIndex(invalid_action,3)
+        after = d.actionForIndex(3)
+        if invalid_action != after:
+            print( "Set action before/set/after: {}/{}/{}: FAIL".format( before, invalid_action, after ) )
+        else:
+            print( "Set action succeeded: PASS" )
+        if d.isClean():
+            print( "Drive is clean after edit: FAIL" )
+        else:
+            print( "Drive is dirty after edit: PASS" )
+
+        try:
+            d = FormatClass("DriveFormat.py")
+        except IOError as ex:
+            print( "Caught correct exception when path is not a directory: PASS" )
+        except Exception as exg:
+            print( "Caught invalid exception ({}) when path is not a directory: FAIL".format(exg) )
+        else:
+            print( "No exception raised when path is not a directory: FAIL" )
+
+        try:
+            d = FormatClass("NonExistantDrivePath_________")
+        except IOError as ex:
+            print( "Caught correct exception when path does not exist: PASS" )
+        except Exception as exg:
+            print( "Caught invalid exception ({}) when path does not exist: FAIL".format(exg) )
+        else:
+            print( "No exception raised when path does not exist: FAIL" )
+
+        handler = DriveFormat.handlerForFile( test_path )
+        if handler is None:
+            print( "Failed to find class for test_path: FAIL" )
+        elif not isinstance(handler,FormatClass):
+            print( "Found wrong class for test_path: FAIL" )
+        else:
+            print( "Found correct class for test_path: PASS" )
+
+        handler = DriveFormat.handlerForFile( "DriveFormat.py" )
+        if handler is not None:
+            print( "Found class for invalid file type: Fail" )
+        else:
+            print( "Found no class for invalid file type: PASS" )
+
+        try:
+            DriveFormat.registerFormat( "test_format", FormatClass )
+        except Exception as exg:
+            print( "Caught invalid exception ({}) when registering format: FAIL".format(exg) )
+        else:
+            print( "No exception when registering format: PASS" )
+
+        try:
+            DriveFormat.registerFormat( "test_format", FormatClass )
+        except Exception as exg:
+            print( "Caught invalid exception ({}) when re-registering format: FAIL".format(exg) )
+        else:
+            print( "No exception when re-registering format: PASS" )
+
+        class FakeDrive:
+            pass
+
+        try:
+            DriveFormat.registerFormat( "test_format", FakeDrive )
+        except ValueError as exr:
+            print( "Caught correct exception when registering a duplicate format: PASS" )
+        except Exception as exg:
+            print( "Caught invalid exception ({}) when registering a duplicate format: FAIL".format(exg) )
+        else:
+            print( "No exception when registering a duplicate format: FAIL" )
+
+
+        if FormatClass.canOpenFile( test_path ):
+            print( "Can open file {}: PASS".format(test_path) )
+        else:
+            print( "Can't open file {}: FAIL".format(test_path) )

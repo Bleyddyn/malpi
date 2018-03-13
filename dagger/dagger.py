@@ -8,11 +8,9 @@ then retraining on the cleaned up data.
 
 TODO:
 1) Add in-app help (keyboard shortcuts, etc)
-2) Add currently open filename to window (text field or window title)
 3) Make it obvious which action will be changed via keyboard shortcut
-4) Pre-generate QImages and store them
+4) Pre-generate QImages and cache them
 5) Load/Save DonkeyCar tub files
-6) Add an indicator if the file has been changed and warn the user if they try to exit without saving
 """
 
 import sys
@@ -21,15 +19,16 @@ import argparse
 
 from PyQt5.QtWidgets import QMainWindow, QWidget, QAction, QMenu, QMessageBox, QApplication, QDesktopWidget, qApp, QPushButton
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QGridLayout
-from PyQt5.QtWidgets import QLabel, QLineEdit, QTextEdit, QSlider, QListView, QTreeView, QAbstractItemView, QComboBox
-from PyQt5.QtWidgets import QDialog, QFileDialog
+from PyQt5.QtWidgets import QLabel, QLineEdit, QTextEdit, QSlider, QListView, QTreeView, QAbstractItemView, QComboBox, QFrame
+from PyQt5.QtWidgets import QDialog, QFileDialog, QDockWidget, QTableWidget, QTableWidgetItem
 from PyQt5.QtGui import QIcon
 from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal, QObject
 
-import dagger_data
-import DriveFormat
+from DriveFormat import DriveFormat
+import MalpiFormat
+import TubFormat
 
 class Communicate(QObject):
     closeApp = pyqtSignal() 
@@ -42,6 +41,10 @@ class Example(QMainWindow):
         self.data = None
         self.index = 0
         self.gridWidth = 5
+        self.viewMenu = None
+        self.metaDock = None
+        self.statsDock = None
+        self.path = ""
 
         self.initUI()
 
@@ -53,14 +56,13 @@ class Example(QMainWindow):
         self.c = Communicate()
         self.c.closeApp.connect(self.close)       
         
-        #self.initButtons()
         #self.setMouseTracking(True)
 
-        self.setWindowTitle('DAgger Tool')    
+        self.updateWindowTitle()
         self.statusBar().showMessage('Ready')
         self.initMenus()
 
-        self.setGeometry(200, 200, 800, 600)
+        self.setGeometry(200, 200, 1200, 800)
         self.centerWindowOnScreen()
 
         self.show()
@@ -91,79 +93,124 @@ class Example(QMainWindow):
 
         viewMenu = menubar.addMenu('View')
         
-        viewStatAct = QAction('View statusbar', self, checkable=True)
-        viewStatAct.setStatusTip('View statusbar')
+        viewStatAct = QAction('Statusbar', self, checkable=True)
+        viewStatAct.setStatusTip('Statusbar')
         viewStatAct.setChecked(True)
         viewStatAct.triggered.connect(self.toggleMenu)
         
         viewMenu.addAction(viewStatAct)
 
+        self.viewMenu = viewMenu
+
         self.toolbar = self.addToolBar('Exit')
         self.toolbar.addAction(exitAct)
         self.toolbar.addAction(openFile)
 
-    def initButtons(self):
-        okButton = QPushButton("OK")
-        cancelButton = QPushButton("Cancel")
-
-        hbox = QHBoxLayout()
-        hbox.addStretch(1)
-        hbox.addWidget(okButton)
-        hbox.addWidget(cancelButton)
-
-        vbox = QVBoxLayout()
-        vbox.addStretch(1)
-        vbox.addLayout(hbox)
-
-        self.centralWidget().setLayout(vbox)
-
     def makeActionComboBox(self):
-        ae = QComboBox(self)
-        if self.data is not None:
-            for aclab in self.data.actionNames():
+        ae = None
+
+        ot = self.data.outputTypes()
+        if ot[0]["type"] == "categorical":
+            ae = QComboBox(self)
+            for aclab in ot[0]["categories"]:
                 ae.addItem(aclab)
-        ae.setInsertPolicy(QComboBox.NoInsert)
-        ae.activated[str].connect(self.actionEdited)
+            ae.setInsertPolicy(QComboBox.NoInsert)
+            ae.activated[str].connect(self.actionEdited)
+        elif ot[0]["type"] == "continuous":
+            ae = QLineEdit(self)
+            ae.setEnabled(False)
+
+        if ae is None:
+            ae = QLineEdit(self)
         return ae
 
     def initGrid(self):
+        if self.data is None:
+            return
+
+        # This needs to be generalized to handle multiple input and output types
         self.imageLabels = []
         self.actionLabels = []
-        self.indexes = []
         for i in range(self.gridWidth):
             self.imageLabels.append( QLabel(self) )
-            self.actionLabels.append( self.makeActionComboBox() )
-            idx = QLabel(self)
-            idx.setAlignment( Qt.AlignCenter )
-            self.indexes.append( idx )
-
-        sld = QSlider(Qt.Horizontal, self)
-        self.slider = sld
-        sld.setFocusPolicy(Qt.NoFocus)
-        sld.valueChanged[int].connect(self.changeValue)
+            cb = self.makeActionComboBox()
+            self.actionLabels.append( cb )
 
 
         grid = QGridLayout()
         grid.setSpacing(10)
 
+        otypes = self.data.outputTypes()
+        itypes = self.data.inputTypes()
+
         row = 1
-        grid.addWidget(QLabel('Images'), row, 0)
+        grid.addWidget(QLabel(itypes[0]["name"]), row, 0)
         for i in range(len(self.imageLabels)):
             grid.addWidget(self.imageLabels[i], row, i+1)
 
         row += 1
-        grid.addWidget(QLabel('Actions'), row, 0)
+        grid.addWidget(QLabel(otypes[0]["name"]), row, 0)
         for i in range(len(self.actionLabels)):
+#            if i == 2: # should be gridWidth / 2
+#                cbframe = QFrame(self)
+#                self.actionLabels[i].setParent( cbframe )
+#                cbframe.setStyleSheet("QFrame { border: 2px solid black; }")
+#                grid.addWidget(cbframe, row, i+1)
+#            else:
             grid.addWidget(self.actionLabels[i], row, i+1)
 
         row += 1
+        self.indexes = []
+        for i in range(self.gridWidth):
+            idx = QLabel(self)
+            idx.setAlignment( Qt.AlignCenter )
+            self.indexes.append( idx )
         for i in range(len(self.indexes)):
             grid.addWidget(self.indexes[i], row, i+1)
 
         row += 1
+        sld = QSlider(Qt.Horizontal, self)
+        self.slider = sld
+        sld.setFocusPolicy(Qt.NoFocus)
+        sld.valueChanged[int].connect(self.changeValue)
         grid.addWidget(sld, row, 0, 1, self.gridWidth+1)
 
+        self.setCentralWidget(QWidget(self))
         self.centralWidget().setLayout(grid)
+
+        if self.metaDock is None:
+            self.metaDock = QDockWidget("Drive Info", self)
+            self.addDockWidget(Qt.LeftDockWidgetArea, self.metaDock)
+            self.metaText = QTextEdit(self)
+            self.metaText.setEnabled(False)
+            self.metaText.setReadOnly(True)
+            #self.metaText.setMinimumWidth( 200.0 )
+            self.metaDock.setWidget(self.metaText)
+            self.viewMenu.addAction( self.metaDock.toggleViewAction() )
+        self.metaText.setText( self.data.meta )
+
+        if self.statsDock is None:
+            self.statsDock = QDockWidget("Action Stats", self)
+            self.addDockWidget(Qt.LeftDockWidgetArea, self.statsDock)
+            self.statsTable = QTableWidget(self)
+            self.statsTable.setEnabled(False)
+            self.statsTable.horizontalHeader().hide()
+            self.statsTable.verticalHeader().setDefaultSectionSize( 18 )
+            self.statsTable.verticalHeader().hide()
+            self.statsTable.setShowGrid(False)
+            self.statsDock.setWidget(self.statsTable)
+            self.viewMenu.addAction( self.statsDock.toggleViewAction() )
+        self.updateStats()
+
+    def updateWindowTitle(self):
+        path = ""
+        edit_msg = ""
+        if len(self.path) > 0:
+            path = ": " + os.path.basename(self.path)
+        if self.data is not None:
+            if not self.data.isClean():
+                edit_msg = " --Edited"
+        self.setWindowTitle('DAgger Tool' + path + edit_msg)
 
     def changeValue(self, value):
         self.index = value
@@ -172,6 +219,8 @@ class Example(QMainWindow):
     def actionEdited(self, newValue):
         idx = self.actionLabels.index(self.sender())
         self.data.setActionForIndex( newValue, self.index + idx )
+        self.updateWindowTitle()
+        self.updateStats()
 
     def toggleMenu(self, state):
         if state:
@@ -213,19 +262,24 @@ class Example(QMainWindow):
     def loadData(self, path):
         if not os.path.isdir(path):
             return
-        self.data = DriveFormat.Drive(path)
-        self.path = path
-        self.initGrid()
-        self.statusBar().showMessage( "{} images loaded".format( self.data.count() ) )
-        self.slider.setMinimum(0)
-        self.slider.setMaximum( self.data.count()-self.gridWidth )
-        self.slider.setSliderPosition(0)
-        self.updateImages()
+        self.data = DriveFormat.handlerForFile( path )
+        if self.data is not None:
+            self.path = path
+            self.updateWindowTitle()
+            self.initGrid()
+            self.statusBar().showMessage( "{} images loaded".format( self.data.count() ) )
+            self.slider.setMinimum(0)
+            self.slider.setMaximum( self.data.count()-self.gridWidth )
+            self.slider.setSliderPosition(0)
+            self.updateImages()
+        else:
+            QMessageBox.warning(self, 'Unknown Filetype', "The file you selected could not be opened by any available file formats.", buttons=QMessageBox.Ok, defaultButton=QMessageBox.Ok)
 
     def saveData(self):
         if self.data is not None:
             self.data.save()
             self.statusBar().showMessage( "{} actions saved to {}".format( self.data.count(), self.path ) )
+            self.updateWindowTitle()
 
     def closeEvent(self, event):
         if self.data is not None and not self.data.isClean():
@@ -234,6 +288,7 @@ class Example(QMainWindow):
             reply = QMessageBox.Yes
 
         if reply == QMessageBox.Yes:
+            self.data = None # For some reason we get here twice when quitting (as opposed to hitting escape), so clear this out
             event.accept()
         else:
             event.ignore()        
@@ -249,15 +304,21 @@ class Example(QMainWindow):
             #else:
             #    print( "Not doing key left" )
         elif e.key() == Qt.Key_Right:
-            if self.index < (self.data.count() - self.gridWidth):
+            if self.index < (self.data.count() - 1):
                 self.index += 1
                 self.slider.setSliderPosition(self.index)
                 self.updateImages()
             #else:
             #    print( "Not doing key right" )
-
-        if self.data is not None:
-            newAction = self.data.actionForKey(e.text())
+        elif e.key() == Qt.Key_Delete:
+            print( "Deleting sample" )
+            if self.data is not None:
+                self.data.deleteIndex(self.index+2)
+                self.slider.setMaximum( self.data.count()-self.gridWidth )
+                self.updateImages()
+                self.updateStats()
+        elif self.data is not None:
+            newAction = self.data.actionForKey(e.text(),oldAction=self.data.actionForIndex(self.index))
             if newAction is None:
                 e.ignore()
             else:
@@ -267,10 +328,16 @@ class Example(QMainWindow):
 
     def changeCurrentAction(self, action, label_index=2):
         # Defaults to changing the action in the middle of the screen
-        self.actionLabels[label_index].setCurrentText( action )
-        if (self.index+label_index) >= self.data.count():
+        ot = self.data.outputTypes()
+        if ot[0]["type"] == "categorical":
+            self.actionLabels[label_index].setCurrentText( action )
+        elif ot[0]["type"] == "continuous":
+            self.actionLabels[label_index].setText( str(action) )
+        if self.index >= self.data.count():
             print( "{} actions. index {}, label_index {}".format( self.data.count(), self.index, label_index ) )
-        self.data.setActionForIndex( action, self.index+label_index )
+        self.data.setActionForIndex( action, self.index )
+        self.updateWindowTitle()
+        self.updateStats()
 
     def mouseMoveEvent(self, e):
         #x = e.x()
@@ -304,14 +371,36 @@ class Example(QMainWindow):
 
     def updateImages(self):
         for i in range( len(self.imageLabels) ):
-            if self.index + i < self.data.count():
-                image = self.data.imageForIndex( self.index + i )
+            il = self.index - 2 + i
+            if il >= 0 and il < self.data.count():
+                image = self.data.imageForIndex( il )
                 image = QImage(image, image.shape[1], image.shape[0], image.shape[1] * 3, QImage.Format_RGB888)
                 self.imageLabels[i].setPixmap( QPixmap(image) )
-                self.actionLabels[i].setCurrentText( self.data.actionForIndex( self.index + i ) )
-                self.indexes[i].setText( str( self.index + i ) )
+                self.indexes[i].setText( str( il ) )
+                ot = self.data.outputTypes()
+                if ot[0]["type"] == "categorical":
+                    self.actionLabels[i].setCurrentText( self.data.actionForIndex( il ) )
+                elif ot[0]["type"] == "continuous":
+                    self.actionLabels[i].setText( str(self.data.actionForIndex( il )) )
+                self.actionLabels[i].setEnabled(True)
             else:
-                print( "Not doing updateImages for index {} + {}".format( self.index, i ) )
+                self.imageLabels[i].clear()
+                self.indexes[i].setText( "" )
+                self.actionLabels[i].setCurrentText( "" )
+                self.actionLabels[i].setEnabled(False)
+
+    def updateStats(self):
+        if self.data is not None:
+            stats = self.data.actionStats()
+            self.statsTable.setRowCount(len(stats))
+            self.statsTable.setColumnCount(2)
+            row = 0
+            for key in sorted(stats):
+                value = stats[key]
+                self.statsTable.setItem(row,0,QTableWidgetItem(key))
+                self.statsTable.setItem(row,1,QTableWidgetItem(str(value)))
+                row += 1
+
 
 def runTests(args):
     pass
@@ -339,10 +428,3 @@ if __name__ == '__main__':
     if len(args.file) > 0:
         ex.loadData(args.file[0])
     sys.exit(app.exec_())
-
-#def save( self ):
-#def isClean( self ):
-#def imageForIndex( self, index ):
-#def actionForIndex( self, index ):
-#def setActionForIndex( self, action, index ):
-#def actionNames():
