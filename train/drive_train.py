@@ -48,7 +48,7 @@ def setCPUCores( cores ):
                             allow_soft_placement=True, device_count = {'CPU': cores})
     set_session(tf.Session(config=config))
 
-def loadOneDrive( drive_dir ):
+def loadOneDrive( drive_dir, size=(120,120) ):
     actions_file = os.path.join( drive_dir, "image_actions.npy" )
     if os.path.exists(actions_file):
         actions = np.load(actions_file)
@@ -58,17 +58,12 @@ def loadOneDrive( drive_dir ):
         with open(actions_file,'r') as f:
             actions = pickle.load(f)
 
-#    drive_file = os.path.join( drive_dir, "drive.pickle" )
-#    with open(drive_file,'r') as f:
-#        data = pickle.load(f)
-#        #data = pickle.load(f fix_imports=True, encoding='bytes')
-#    actions = data['image_actions']
-
-    im_file = os.path.join( drive_dir, "images_120x120.npy" )
+    basename = "images_{}x{}".format( size[0], size[1] )
+    im_file = os.path.join( drive_dir, basename+".npy" )
     if os.path.exists(im_file):
         images = np.load(im_file)
     else:
-        im_file = os.path.join( drive_dir, "images_120x120.pickle" )
+        im_file = os.path.join( drive_dir, basename+".pickle" )
         with open(im_file,'r') as f:
             images = pickle.load(f)
 
@@ -100,14 +95,14 @@ def exp_decay(epoch):
     lrate = initial_lrate * exp(-k*t)
     return lrate
 
-def loadData( dirs, image_norm=True ):
+def loadData( dirs, size=(120,120), image_norm=True ):
     images = []
     actions = []
 
     count = 1
     for onedir in dirs:
         if len(onedir) > 0:
-            dimages, dactions = loadOneDrive( onedir )
+            dimages, dactions = loadOneDrive( onedir, size=size )
             images.extend(dimages)
             actions.extend(dactions)
             print( "Loading {} of {}: {} total samples".format( count, len(dirs), len(images) ), end='\r' )
