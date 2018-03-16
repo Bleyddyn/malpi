@@ -49,7 +49,7 @@ class DriveRecorder:
 
         self.images = []
         self.image_index = 1
-        self.max_images = 150
+        self.max_images = 10
         self.image_times = []
         self.image_actions = []
         self.actions = ["stop"]
@@ -170,7 +170,7 @@ def getOptions():
 
     if not options.episode:
         n = datetime.datetime.now()
-        options.episode = n.strftime('drive_%Y%m%d_%H%M%S') 
+        options.episode = n.strftime('%Y%m%d_%H%M%S.drive') 
 
     if not options.dir_ep:
         options.dir_ep = options.episode

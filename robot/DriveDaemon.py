@@ -251,7 +251,7 @@ class App():
     def startRecording( self, drive_name ):
         if not self.recorder:
             n = datetime.datetime.now()
-            fname = n.strftime('drive_%Y%m%d_%H%M%S')
+            fname = n.strftime('%Y%m%d_%H%M%S.drive')
             drive_dir = os.path.join( config.directories['drives'], fname )
             self.recorder = DriveRecorder.DriveRecorder( drive_dir, video_path=self.videoPath(fname), camera=self.raw, image_delay=0.1, drive_name=drive_name )
             self.recorder.startDriving()
