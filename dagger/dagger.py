@@ -311,9 +311,8 @@ class Example(QMainWindow):
             #else:
             #    print( "Not doing key right" )
         elif e.key() == Qt.Key_Delete:
-            print( "Deleting sample" )
             if self.data is not None:
-                self.data.deleteIndex(self.index+2)
+                self.data.deleteIndex(self.index)
                 self.slider.setMaximum( self.data.count()-self.gridWidth )
                 self.updateImages()
                 self.updateStats()
