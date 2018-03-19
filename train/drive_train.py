@@ -103,6 +103,7 @@ def loadData( dirs, size=(120,120), image_norm=True ):
     for onedir in dirs:
         if len(onedir) > 0:
             dimages, dactions = loadOneDrive( onedir, size=size )
+            dimages = dimages.astype(np.float)
             images.extend(dimages)
             actions.extend(dactions)
             print( "Loading {} of {}: {} total samples".format( count, len(dirs), len(images) ), end='\r' )
@@ -111,16 +112,25 @@ def loadData( dirs, size=(120,120), image_norm=True ):
 
     print("")
     images = np.array(images)
-    images = images.astype(np.float) # / 255.0
+    #images = images.astype(np.float) # / 255.0
+
+    rmean = np.mean(images[:,:,:,0])
+    gmean= np.mean(images[:,:,:,1])
+    bmean= np.mean(images[:,:,:,2])
+    rstd = np.std(images[:,:,:,0])
+    gstd = np.std(images[:,:,:,1])
+    bstd = np.std(images[:,:,:,2])
+    print( "Image means: {}/{}/{}".format( rmean, gmean, bmean ) )
+    print( "Image stds: {}/{}/{}".format( rstd, gstd, bstd ) )
 
     if image_norm:
 # should only do this for the training data, not val/test, but I'm not sure how to do that when Keras makes the train/val split
-        images[:,:,:,0] -= np.mean(images[:,:,:,0])
-        images[:,:,:,1] -= np.mean(images[:,:,:,1])
-        images[:,:,:,2] -= np.mean(images[:,:,:,2])
-        images[:,:,:,0] /= np.std(images[:,:,:,0])
-        images[:,:,:,1] /= np.std(images[:,:,:,1])
-        images[:,:,:,2] /= np.std(images[:,:,:,2])
+        images[:,:,:,0] -= rmean
+        images[:,:,:,1] -= gmean
+        images[:,:,:,2] -= bmean
+        images[:,:,:,0] /= rstd
+        images[:,:,:,1] /= gstd
+        images[:,:,:,2] /= bstd
 
     y = embedActions( actions )
     y = to_categorical( y, num_classes=5 )
