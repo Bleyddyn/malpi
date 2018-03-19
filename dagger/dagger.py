@@ -29,6 +29,8 @@ from PyQt5.QtCore import pyqtSignal, QObject
 from DriveFormat import DriveFormat
 import MalpiFormat
 import TubFormat
+from FilesDockWidget import FilesDockWidget
+from AuxDataDialog import AuxDataDialog
 
 class Communicate(QObject):
     closeApp = pyqtSignal() 
@@ -44,6 +46,7 @@ class Example(QMainWindow):
         self.viewMenu = None
         self.metaDock = None
         self.statsDock = None
+        self.filesDock = None
         self.path = ""
 
         self.initUI()
@@ -62,8 +65,15 @@ class Example(QMainWindow):
         self.statusBar().showMessage('Ready')
         self.initMenus()
 
-        self.setGeometry(200, 200, 1200, 800)
-        self.centerWindowOnScreen()
+        if self.filesDock is None:
+            self.filesDock = FilesDockWidget("Files", self)
+            self.addDockWidget(self.filesDock.preferredArea(), self.filesDock)
+            self.viewMenu.addAction( self.filesDock.toggleViewAction() )
+            self.filesDock.newFileSelected[str].connect(self.loadData)
+            self.filesDock.setVisible(False)
+
+        # Use all available space
+        self.setGeometry(QDesktopWidget().availableGeometry())
 
         self.show()
         
@@ -102,6 +112,14 @@ class Example(QMainWindow):
 
         self.viewMenu = viewMenu
 
+        self.dataMenu = menubar.addMenu('Data')
+
+        auxDataAct = QAction('Add Auxiliary Data', self)
+        auxDataAct.setStatusTip('Add Auxiliary Data to the current data file')
+        auxDataAct.triggered.connect(self.addAuxData)
+        
+        self.dataMenu.addAction(auxDataAct)
+
         self.toolbar = self.addToolBar('Exit')
         self.toolbar.addAction(exitAct)
         self.toolbar.addAction(openFile)
@@ -138,6 +156,7 @@ class Example(QMainWindow):
 
 
         grid = QGridLayout()
+        self.grid = grid
         grid.setSpacing(10)
 
         otypes = self.data.outputTypes()
@@ -151,12 +170,6 @@ class Example(QMainWindow):
         row += 1
         grid.addWidget(QLabel(otypes[0]["name"]), row, 0)
         for i in range(len(self.actionLabels)):
-#            if i == 2: # should be gridWidth / 2
-#                cbframe = QFrame(self)
-#                self.actionLabels[i].setParent( cbframe )
-#                cbframe.setStyleSheet("QFrame { border: 2px solid black; }")
-#                grid.addWidget(cbframe, row, i+1)
-#            else:
             grid.addWidget(self.actionLabels[i], row, i+1)
 
         row += 1
@@ -200,6 +213,7 @@ class Example(QMainWindow):
             self.statsTable.setShowGrid(False)
             self.statsDock.setWidget(self.statsTable)
             self.viewMenu.addAction( self.statsDock.toggleViewAction() )
+
         self.updateStats()
 
     def updateWindowTitle(self):
@@ -259,9 +273,34 @@ class Example(QMainWindow):
                 self.statusBar().showMessage( msg )
                 print( msg )
 
+    def setFileList(self, filelist):
+        if self.filesDock is not None:
+            self.filesDock.setFile(filelist)
+            self.filesDock.setVisible(True)
+
+    def unsavedDataAskUser(self, text, yesButtonText, noButtonText):
+        msgBox = QMessageBox(QMessageBox.Warning, "Unsaved changes", text)
+        #msgBox.setTitle("Unsaved changes")
+        #msgBox.setText(text)
+        pButtonYes = msgBox.addButton(yesButtonText, QMessageBox.YesRole)
+        msgBox.addButton(noButtonText, QMessageBox.NoRole)
+
+        msgBox.exec()
+
+        if msgBox.clickedButton() == pButtonYes:
+            return True
+
+        return False
+
     def loadData(self, path):
         if not os.path.isdir(path):
             return
+
+        if self.data is not None and not self.data.isClean():
+            reply = self.unsavedDataAskUser("This document has unsaved changes.\nAre you sure you want to open a new document?", "Open", "Don't Open")
+            if not reply:
+                return
+            
         self.data = DriveFormat.handlerForFile( path )
         if self.data is not None:
             self.path = path
@@ -269,7 +308,7 @@ class Example(QMainWindow):
             self.initGrid()
             self.statusBar().showMessage( "{} images loaded".format( self.data.count() ) )
             self.slider.setMinimum(0)
-            self.slider.setMaximum( self.data.count()-self.gridWidth )
+            self.slider.setMaximum( self.data.count() )
             self.slider.setSliderPosition(0)
             self.updateImages()
         else:
@@ -283,11 +322,11 @@ class Example(QMainWindow):
 
     def closeEvent(self, event):
         if self.data is not None and not self.data.isClean():
-            reply = QMessageBox.warning(self, 'Unsaved changes', "This document has unsaved changes.\nAre you sure you want to quit?", buttons=QMessageBox.Yes | QMessageBox.No, defaultButton=QMessageBox.No)
+            reply = self.unsavedDataAskUser("This document has unsaved changes.\nAre you sure you want to quit?", "Quit", "Don't Quit")
         else:
-            reply = QMessageBox.Yes
+            reply = False
 
-        if reply == QMessageBox.Yes:
+        if reply:
             self.data = None # For some reason we get here twice when quitting (as opposed to hitting escape), so clear this out
             event.accept()
         else:
@@ -301,19 +340,27 @@ class Example(QMainWindow):
                 self.index -= 1
                 self.slider.setSliderPosition(self.index)
                 self.updateImages()
-            #else:
-            #    print( "Not doing key left" )
         elif e.key() == Qt.Key_Right:
-            if self.index < (self.data.count() - 1):
-                self.index += 1
-                self.slider.setSliderPosition(self.index)
-                self.updateImages()
-            #else:
-            #    print( "Not doing key right" )
+            if self.data is not None:
+                if self.index < (self.data.count() - 1):
+                    self.index += 1
+                    self.slider.setSliderPosition(self.index)
+                    self.updateImages()
+        elif e.key() == Qt.Key_Down:
+            # TODO: Will probably need a way to have all DockWidgets handle keyPressEvents
+            if self.filesDock is not None:
+                self.filesDock.selectNext()
+        elif e.key() == Qt.Key_Up:
+            if self.filesDock is not None:
+                self.filesDock.selectPrev()
+        elif e.key() == Qt.Key_Return:
+            if self.filesDock is not None:
+                self.filesDock.handleOpenSelected()
         elif e.key() == Qt.Key_Delete:
             if self.data is not None:
                 self.data.deleteIndex(self.index)
-                self.slider.setMaximum( self.data.count()-self.gridWidth )
+                self.slider.setMaximum( self.data.count() )
+                self.slider.setSliderPosition(self.index)
                 self.updateImages()
                 self.updateStats()
         elif self.data is not None:
@@ -362,12 +409,6 @@ class Example(QMainWindow):
            if action == quitAct:
                qApp.quit()
         
-    def centerWindowOnScreen(self):
-        qr = self.frameGeometry()
-        cp = QDesktopWidget().availableGeometry().center()
-        qr.moveCenter(cp)
-        self.move(qr.topLeft())
-
     def updateImages(self):
         for i in range( len(self.imageLabels) ):
             il = self.index - 2 + i
@@ -400,6 +441,24 @@ class Example(QMainWindow):
                 self.statsTable.setItem(row,1,QTableWidgetItem(str(value)))
                 row += 1
 
+    def addAuxToGrid(self, aux):
+        row = self.centralWidget().layout().rowCount()
+        self.grid.addWidget(QLabel(aux["name"]), row, 0)
+        auxLabels = []
+        for i in range(len(self.actionLabels)):
+            auxLabels.append(QLabel("Aux"))
+            self.grid.addWidget(auxLabels[i], row, i+1)
+
+    def addAuxData(self):
+        if self.data is not None:
+            if self.data.supportsAuxData():
+                dlg = AuxDataDialog(self)
+                nMode = dlg.exec()
+                if nMode == QDialog.Accepted:
+                    print( "Meta: {}".format( dlg.getMeta() ) )
+                    self.addAuxToGrid(dlg.getMeta())
+                else:
+                    print( "Cancelled, don't create auxiliary data" )
 
 def runTests(args):
     pass
@@ -408,6 +467,7 @@ def getOptions():
 
     parser = argparse.ArgumentParser(description='Adjust action values for a drive.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('file', nargs='*', metavar="File", help='Recorded drive data file to open')
+    parser.add_argument('-f', '--file', dest="filelist", help='File with a list of files to open, one per line')
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
 
     args = parser.parse_args()
@@ -426,4 +486,6 @@ if __name__ == '__main__':
     ex = Example()
     if len(args.file) > 0:
         ex.loadData(args.file[0])
+    if args.filelist:
+        ex.setFileList(args.filelist)
     sys.exit(app.exec_())

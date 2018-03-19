@@ -19,6 +19,7 @@ class MalpiFormat(DriveFormat):
         self.path = path
         (self.images, self.actions) = self._load(path)
         self.meta = self._loadMeta(path)
+        self.auxData = {}
 
     def _loadMeta( self, path ):
         meta_file = os.path.join( path, "meta.txt" )
@@ -94,6 +95,8 @@ class MalpiFormat(DriveFormat):
         if index >= 0 and index < self.count():
             self.images = np.delete(self.images,index,axis=0)
             self.actions.pop(index)
+            for key in self.auxData:
+                self.auxData[key]["data"].pop(index)
             self.setDirty()
 
     def actionForKey(self,keybind,oldAction=None):
@@ -115,6 +118,20 @@ class MalpiFormat(DriveFormat):
             stats[action] += 1
         return stats
 
+    def supportsAuxData(self):
+        return True
+
+    def addAuxData(self, meta):
+        self.auxData[meta["name"]] = {"meta":meta, "data":[meta["default"]]*self.count()}
+        pass
+
+    def setAuxDataItemAtIndex(self, auxName, auxData, index):
+        if not auxName in self.auxData:
+            return False
+
+        self.auxData[auxName]["data"][index] = auxData
+        return True
+
     @staticmethod
     def defaultInputTypes():
         return [{"name":"Images", "type":"numpy image", "shape":(120,120,3)}]
@@ -124,7 +141,6 @@ class MalpiFormat(DriveFormat):
         if len(self.images) > 0:
             res[0]["shape"] = self.images[0].shape
         return res
-
     @staticmethod
     def defaultOutputTypes():
         return [{"name":"Actions", "type":"categorical", "categories":[ "forward", "backward", "left", "right", "stop" ]}]
