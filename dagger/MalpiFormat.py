@@ -125,7 +125,13 @@ class MalpiFormat(DriveFormat):
         self.auxData[meta["name"]] = {"meta":meta, "data":[meta["default"]]*self.count()}
         pass
 
-    def setAuxDataItemAtIndex(self, auxName, auxData, index):
+    def auxDataAtIndex(self, auxName, auxData, index):
+        if not auxName in self.auxData:
+            return None
+
+        return self.auxData[auxName]["data"][index]
+
+    def setAuxDataAtIndex(self, auxName, auxData, index):
         if not auxName in self.auxData:
             return False
 

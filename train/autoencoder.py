@@ -1,19 +1,23 @@
 from __future__ import print_function
 
 import random
+import pickle
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from scipy.stats import norm
 
-from keras.layers import Input, Dense, Conv2D, MaxPooling2D, UpSampling2D, Cropping2D, Lambda, Dropout
+from keras.layers import Input, Dense, Conv2D, MaxPooling2D, UpSampling2D, Cropping2D, Lambda, Dropout, Flatten, Reshape
 from keras.models import Model, load_model
 from keras.callbacks import EarlyStopping
 from keras import backend as K
 from keras.datasets import mnist
 from keras import metrics
+from keras import regularizers
 
 import drive_train
+import experiment
 
 def vae():
     '''This script demonstrates how to build a variational autoencoder with Keras.
@@ -159,6 +163,9 @@ def makeAEConv( input_shape ):
 def makeAEConvStrides( input_shape, dropouts=None ):
     input_img = Input(shape=input_shape)  # adapt this if using `channels_first` image data format
 
+    # Try this to train a 'denoising' autoencoder, although this won't work for MaLPi
+    #x = GaussianNoise( how_much_noise )(input_img)
+
     x = Conv2D(24, (5, 5), activation='relu', strides=(2,2), padding='same')(input_img)
     if dropouts is not None:
         x = Dropout(dropouts[0])(x)
@@ -171,11 +178,16 @@ def makeAEConvStrides( input_shape, dropouts=None ):
     x = Conv2D(64, (3, 3), activation='relu', strides=(2,2), padding='same')(x)
     if dropouts is not None:
         x = Dropout(dropouts[3])(x)
-    x = Conv2D(64, (3, 3), activation='relu', strides=(1,1), padding='same')(x)
-    encoded = x
 
+    # Add an l1 regularization to encourage a sparse representation
+    #x = Conv2D(64, (3, 3), activation='relu', strides=(1,1), padding='same', activity_regularizer=regularizers.l1(10e-5))(x)
+
+    #x = Flatten()(x)
+    x = Dense(100)(x)
+    #x = Reshape((8,8,64))(x)
+    encoded = x
     x = Conv2D(64, (3, 3), activation='relu', padding='same')(encoded)
-    x = UpSampling2D((2, 2))(x)
+    x = UpSampling2D((2, 2))(encoded)
     x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
     x = UpSampling2D((2, 2))(x)
     x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
@@ -186,7 +198,7 @@ def makeAEConvStrides( input_shape, dropouts=None ):
     decoded = Conv2D(3, (3, 3), activation='sigmoid', padding='same')(x)
 
     autoencoder = Model(input_img, decoded)
-    autoencoder.compile(optimizer='adadelta', loss='binary_crossentropy', metrics=[metrics.binary_accuracy])
+    autoencoder.compile(optimizer='adadelta', loss='binary_crossentropy' )
 
     return autoencoder
 
@@ -194,37 +206,33 @@ def train(input_dim, x_train, x_test, early_stop = False):
     callbacks = []
     if early_stop:
         callbacks.append(EarlyStopping(monitor='val_loss', min_delta=0.0005, patience=5, verbose=True, mode='auto'))
-    dropouts = None # [0.6,0.5,0.4,0.3]
+    dropouts = [0.3,0.4,0.5,0.6]
     autoencoder = makeAEConvStrides(input_dim, dropouts = dropouts)
     autoencoder.summary()
 
-    autoencoder.fit(x_train, x_train,
+    history = autoencoder.fit(x_train, x_train,
                     epochs=50,
                     batch_size=128,
                     shuffle=True,
                     validation_data=(x_test, x_test),
                     callbacks=callbacks)
 
-    #autoencoder.save( 'ae_conv_model.h5' )
-    json_string = autoencoder.to_json()
-    with open('ae_conv.json','w') as f:
-        f.write(json_string)
+    running = drive_train.runningMean(history.history['val_loss'], 5)
+    max_running = np.max( running )
+    print( "Max validation (rmean=5, at {}): {}".format( np.argmax(running), max_running ) )
 
-    autoencoder.save_weights('ae_conv_model_weights.h5')
-
-    decoded_imgs = autoencoder.predict(x_test)
+    return (history, autoencoder, max_running)
 
 def loadModel(fname):
     model = load_model(fname)
     return model
         
-def plot(input_dim, x_test):
+def plot(input_dim, x_test, model_path='ae_conv_model_weights.h5', image_path="ae_samples.png"):
     autoencoder = makeAEConvStrides(input_dim)
-    autoencoder.load_weights('ae_conv_model_weights.h5')
-    autoencoder.summary()
+    autoencoder.load_weights(model_path)
+    #autoencoder.summary()
     decoded_imgs = autoencoder.predict(x_test, batch_size=128)
-    img1 = decoded_imgs[0]
-    print( "decoded: {}".format( img1.shape ) )
+    #img1 = decoded_imgs[0]
 
     n = 10
     indexes = range(len(x_test))
@@ -232,10 +240,10 @@ def plot(input_dim, x_test):
     plt.figure(figsize=(20, 4))
     for i in range(n):
         idx = indexes[i]
-        img1 = x_test[idx]
-        print( "test: min/max/avg {}/{}/{}".format( np.min(img1), np.max(img1), np.mean(img1) ) )
-        img1 = decoded_imgs[idx]
-        print( "deco: min/max/avg {}/{}/{}\n".format( np.min(img1), np.max(img1), np.mean(img1) ) )
+        #img1 = x_test[idx]
+        #print( "test: min/max/avg {}/{}/{}".format( np.min(img1), np.max(img1), np.mean(img1) ) )
+        #img1 = decoded_imgs[idx]
+        #print( "deco: min/max/avg {}/{}/{}\n".format( np.min(img1), np.max(img1), np.mean(img1) ) )
         # display original
         ax = plt.subplot(2, n, i+1)
         plt.imshow(x_test[idx].reshape(input_dim[0], input_dim[1], input_dim[2]))
@@ -249,7 +257,7 @@ def plot(input_dim, x_test):
         #plt.gray()
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
-    plt.savefig( 'ae_conv.png')
+    plt.savefig( image_path )
     plt.show()
 
 if __name__ == "__main__":
@@ -259,11 +267,35 @@ if __name__ == "__main__":
     images, y = drive_train.loadData(args.dirs, size=(128,128), image_norm=False)
     images = images.astype('float32') / 255.
     input_dim = images[0].shape
+    num_samples = len(images)
+    num_actions = 0
+
     #autoencoder = makeAEConvStrides(input_dim)
     #autoencoder.summary()
     #exit()
 
     x_train, x_test, y_train, y_test = train_test_split(images, y, test_size=0.2, random_state=1)
 
-    train( input_dim, x_train, x_test, early_stop=args.early)
-    plot( input_dim, x_test)
+    if args.name is not None:
+        expMeta = experiment.Meta(args.name, args, num_samples=num_samples, input_dim=input_dim, num_actions=num_actions)
+
+    history, model, val = train( input_dim, x_train, x_test, early_stop=args.early)
+
+    if args.name is not None:
+        expMeta.writeAfter(model=model, histories=[history.history], results={'vals': [val]}, saveModel=True)
+
+    #json_string = model.to_json()
+    #with open('ae_conv.json','w') as f:
+    #    f.write(json_string)
+    #model.save_weights('ae_conv_model_weights.h5')
+
+    #with open("ae_histories.pickle", 'wb') as f:
+    #    pickle.dump( history, f, pickle.HIGHEST_PROTOCOL)
+
+    if args.name is not None:
+        image_path = os.path.join( expMeta.dir_name, args.name+"_samples.png" )
+        model_path = os.path.join( expMeta.dir_name, args.name+"_weights.h5" )
+    else:
+        image_path = os.path.join( "ae_samples.png" )
+        model_path = 'ae_conv_model_weights.h5'
+    plot( input_dim, x_test, model_path, image_path)

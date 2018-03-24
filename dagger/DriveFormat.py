@@ -116,6 +116,10 @@ class DriveFormat:
         TODO: Behavior isn't yet defined for continuous action spaces."""
         return {}
 
+    def supportsAuxData(self):
+        """ Does this class support adding auxiliary data types? """
+        return False
+
     @staticmethod
     def defaultInputTypes():
         """ Return an array of dicts describing the input types.
