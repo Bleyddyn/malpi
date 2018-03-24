@@ -101,6 +101,13 @@ class Experience2(object):
         states_batch, action_batch, reward_batch, done_batch, next_states_batch, probs_batch = map(np.array, zip(*samples))
         return (states_batch, action_batch, reward_batch, done_batch, next_states_batch, probs_batch)
 
+    def transitions( self, batch_size ):
+        if batch_size > len(self.memory):
+            return None
+
+        samples = random.sample(self.memory, batch_size)
+        return samples
+
     def all( self, max_size=200 ):
         if len(self.memory) > max_size:
             states_batch, action_batch, reward_batch, done_batch, next_states_batch, probs_batch = map(np.array, zip(*self.memory[-200:]))

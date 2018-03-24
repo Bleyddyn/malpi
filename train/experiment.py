@@ -46,9 +46,10 @@ class Meta(object):
             for key,value in self.hparams.iteritems():
                 f.write( "   {}: {}\n".format( key, value ) )
 
-    def writeAfter(self, model=None, histories=None, results={}):
+    def writeAfter(self, model=None, histories=None, results={}, saveModel=False):
         """ Write closing data to the experiment file.
             model: Needs to be a Keras model (with a summary method that accepts a print_fn argument)
+                It also needs to support to_json() and save_weights() methods if saveModel is True.
             results: A dictionary of any relevant results
         """
 # Write out everything new we know after running the experiment
@@ -70,6 +71,13 @@ class Meta(object):
             his_fname = os.path.join(self.dir_name, "histories.pickle")
             with open(his_fname, 'wb') as f:
                 pickle.dump( histories, f, pickle.HIGHEST_PROTOCOL)
+        if model is not None and saveModel:
+            fname = os.path.join( self.dir_name, self.name+"_model.json" )
+            with open(fname,'w') as f:
+                f.write(model.to_json())
+            fname = os.path.join( self.dir_name, self.name+"_weights.h5" )
+            model.save_weights(fname)
+
 
 def _hparamsTest():
     out = {}

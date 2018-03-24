@@ -31,6 +31,7 @@ import MalpiFormat
 import TubFormat
 from FilesDockWidget import FilesDockWidget
 from AuxDataDialog import AuxDataDialog
+from AuxDataUI import AuxDataUI
 
 class Communicate(QObject):
     closeApp = pyqtSignal() 
@@ -41,6 +42,7 @@ class Example(QMainWindow):
         super().__init__()
 
         self.data = None
+        self.aux = []
         self.index = 0
         self.gridWidth = 5
         self.viewMenu = None
@@ -432,6 +434,8 @@ class Example(QMainWindow):
                 elif ot[0]["type"] == "continuous":
                     self.actionLabels[i].setText( "" )
                 self.actionLabels[i].setEnabled(False)
+        for auxUI in self.aux:
+            auxUI.update(self.index)
 
     def updateStats(self):
         if self.data is not None:
@@ -445,15 +449,21 @@ class Example(QMainWindow):
                 self.statsTable.setItem(row,1,QTableWidgetItem(str(value)))
                 row += 1
 
+    def handleAuxDataChanged(self, auxName):
+        # May not need this
+        self.updateImages()
+
     def addAuxToGrid(self, aux):
+        auxUI = AuxDataUI.create(aux, self.data, self.gridWidth)
+        self.aux.append(auxUI)
+        auxName, auxLabels = auxUI.getUI()
+
         row = self.centralWidget().layout().rowCount()
-        self.grid.addWidget(QLabel(aux["name"]), row, 0)
-        auxLabels = []
-        for i in range(len(self.actionLabels)):
-            labels = aux["categories"] if "categories" in aux else None
-            ae = self.makeActionComboBox(atype=aux["type"], labels=labels)
-            auxLabels.append(ae)
-            self.grid.addWidget(ae, row, i+1)
+        self.grid.addWidget(auxName), row, 0)
+        for i, auxLabel in enumerate(auxLabels):
+            self.grid.addWidget(auxLabel, row, i+1)
+
+        auxUI.auxDataChanged[str].connect(self.handleAuxDataChanged)
 
     def addAuxData(self):
         if self.data is not None:
