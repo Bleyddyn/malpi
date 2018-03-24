@@ -1,5 +1,7 @@
+import sys
+
 #from PyQt5.QtWidgets import QMainWindow, QWidget, QAction, QMenu, QMessageBox, QApplication, QDesktopWidget, qApp, QPushButton
-from PyQt5.QtWidgets import QGridLayout
+from PyQt5.QtWidgets import QGridLayout, QApplication
 #from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QGridLayout
 #from PyQt5.QtWidgets import QLabel, QLineEdit, QTextEdit, QSlider, QListView, QTreeView, QAbstractItemView, QComboBox, QFrame
 from PyQt5.QtWidgets import QDialog, QLabel, QLineEdit, QPushButton, QComboBox, QDialogButtonBox
@@ -10,6 +12,14 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal, QObject
 
 # dialog box with name, type (categorical, continuous), count/range inputs
+
+class DaggerComboBox(QComboBox):
+    def keyPressEvent(self,e):
+        super(DaggerComboBox,self).keyPressEvent(e)
+
+        if e.key() == Qt.Key_Enter or e.key() == Qt.Key_Return:
+# accept enter/return events so they won't be ever propagated to the parent dialog..
+            e.accept()
 
 class AuxDataDialog(QDialog):
 
@@ -28,7 +38,7 @@ class AuxDataDialog(QDialog):
         self.dataType.setInsertPolicy(QComboBox.NoInsert)
         self.dataType.activated[str].connect(self.typeEdited)
 
-        catCountLabel = QLabel("Number of Categories")
+        catCountLabel = QLabel("Category Labels")
         self.catCount = QLineEdit()
         self.catCount.setEnabled(True)
         val = QIntValidator(self)
@@ -64,8 +74,13 @@ class AuxDataDialog(QDialog):
         grid.addWidget(self.dataType, row, 1)
 
         row += 1
+        #self.categories = QComboBox(self)
+        self.categories = DaggerComboBox(self)
+        self.categories.setInsertPolicy(QComboBox.InsertAtBottom)
+        self.categories.setEditable(True)
+        #self.categories.addItem("Category1")
         grid.addWidget(catCountLabel, row, 0)
-        grid.addWidget(self.catCount, row, 1)
+        grid.addWidget(self.categories, row, 1)
 
         row += 1
         grid.addWidget(rangeLabel, row, 0)
@@ -95,19 +110,15 @@ class AuxDataDialog(QDialog):
             self.warningLabel.setText("You must enter a name for this Auxiliary Data Type")
             return
 
-        dtype = self.dataType.currentText()
+        dtype = self.dataType.currentText().lower()
         auxMeta = {"name":auxName, "type":dtype}
-        if dtype == "Categorical":
-            try:
-                catCount = int(self.catCount.text())
-            except:
-                catCount = None
-            if catCount is None or catCount < 0:
-                self.warningLabel.setText("Number of categories must be a number greater than zero")
-                return
-            auxMeta["count"] = catCount
+        if dtype == "categorical":
             auxMeta["default"] = 0
-        elif dtype == "Continuous":
+            cats = []
+            for idx in range(self.categories.count()):
+                cats.append(self.categories.itemText(idx))
+            auxMeta["categories"] = cats
+        elif dtype == "continuous":
             try:
                 rmin = float(self.rangeMin.text())
                 rmax = float(self.rangeMax.text())
@@ -135,14 +146,25 @@ class AuxDataDialog(QDialog):
 
     def typeEdited(self, newValue):
         self.catCount.setEnabled(False)
+        self.categories.setEnabled(False)
         self.rangeMin.setEnabled(False)
         self.rangeMax.setEnabled(False)
 
-        if newValue == "Categorical":
-            self.catCount.setEnabled(True)
-        elif newValue == "Continuous":
+        if newValue.lower() == "categorical":
+            self.categories.setEnabled(True)
+        elif newValue.lower() == "continuous":
             self.rangeMin.setEnabled(True)
             self.rangeMax.setEnabled(True)
 
     def getMeta(self):
         return self.meta
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    #sys.exit(app.exec_())
+    dlg = AuxDataDialog(None)
+    nMode = dlg.exec()
+    if nMode == QDialog.Accepted:
+        print( "Meta: {}".format( dlg.getMeta() ) )
+    else:
+        print( "Cancelled, don't create auxiliary data" )

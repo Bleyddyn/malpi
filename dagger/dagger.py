@@ -124,17 +124,16 @@ class Example(QMainWindow):
         self.toolbar.addAction(exitAct)
         self.toolbar.addAction(openFile)
 
-    def makeActionComboBox(self):
+    def makeActionComboBox(self, atype, labels=None):
         ae = None
 
-        ot = self.data.outputTypes()
-        if ot[0]["type"] == "categorical":
+        if atype == "categorical":
             ae = QComboBox(self)
-            for aclab in ot[0]["categories"]:
+            for aclab in labels:
                 ae.addItem(aclab)
             ae.setInsertPolicy(QComboBox.NoInsert)
             ae.activated[str].connect(self.actionEdited)
-        elif ot[0]["type"] == "continuous":
+        elif atype == "continuous":
             ae = QLineEdit(self)
             ae.setEnabled(False)
 
@@ -151,7 +150,9 @@ class Example(QMainWindow):
         self.actionLabels = []
         for i in range(self.gridWidth):
             self.imageLabels.append( QLabel(self) )
-            cb = self.makeActionComboBox()
+            ot = self.data.outputTypes()
+            labels = ot[0]["categories"] if "categories" in ot[0] else None
+            cb = self.makeActionComboBox( atype=ot[0]["type"], labels=labels)
             self.actionLabels.append( cb )
 
 
@@ -412,12 +413,12 @@ class Example(QMainWindow):
     def updateImages(self):
         for i in range( len(self.imageLabels) ):
             il = self.index - 2 + i
+            ot = self.data.outputTypes()
             if il >= 0 and il < self.data.count():
                 image = self.data.imageForIndex( il )
                 image = QImage(image, image.shape[1], image.shape[0], image.shape[1] * 3, QImage.Format_RGB888)
                 self.imageLabels[i].setPixmap( QPixmap(image) )
                 self.indexes[i].setText( str( il ) )
-                ot = self.data.outputTypes()
                 if ot[0]["type"] == "categorical":
                     self.actionLabels[i].setCurrentText( self.data.actionForIndex( il ) )
                 elif ot[0]["type"] == "continuous":
@@ -426,7 +427,10 @@ class Example(QMainWindow):
             else:
                 self.imageLabels[i].clear()
                 self.indexes[i].setText( "" )
-                self.actionLabels[i].setCurrentText( "" )
+                if ot[0]["type"] == "categorical":
+                    self.actionLabels[i].setCurrentText( "" )
+                elif ot[0]["type"] == "continuous":
+                    self.actionLabels[i].setText( "" )
                 self.actionLabels[i].setEnabled(False)
 
     def updateStats(self):
@@ -446,8 +450,10 @@ class Example(QMainWindow):
         self.grid.addWidget(QLabel(aux["name"]), row, 0)
         auxLabels = []
         for i in range(len(self.actionLabels)):
-            auxLabels.append(QLabel("Aux"))
-            self.grid.addWidget(auxLabels[i], row, i+1)
+            labels = aux["categories"] if "categories" in aux else None
+            ae = self.makeActionComboBox(atype=aux["type"], labels=labels)
+            auxLabels.append(ae)
+            self.grid.addWidget(ae, row, i+1)
 
     def addAuxData(self):
         if self.data is not None:
