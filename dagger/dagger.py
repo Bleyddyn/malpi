@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/local/bin/python3
 # -*- coding: utf-8 -*-
 
 """ A tool for modifying data collected by MaLPi.
@@ -166,16 +166,7 @@ class Example(QMainWindow):
         itypes = self.data.inputTypes()
 
         row = 1
-        grid.addWidget(QLabel(itypes[0]["name"]), row, 0)
-        for i in range(len(self.imageLabels)):
-            grid.addWidget(self.imageLabels[i], row, i+1)
-
-        row += 1
-        grid.addWidget(QLabel(otypes[0]["name"]), row, 0)
-        for i in range(len(self.actionLabels)):
-            grid.addWidget(self.actionLabels[i], row, i+1)
-
-        row += 1
+        grid.addWidget(QLabel("Index"), row, 0)
         self.indexes = []
         for i in range(self.gridWidth):
             idx = QLabel(self)
@@ -185,14 +176,27 @@ class Example(QMainWindow):
             grid.addWidget(self.indexes[i], row, i+1)
 
         row += 1
+        grid.addWidget(QLabel(itypes[0]["name"]), row, 0)
+        for i in range(len(self.imageLabels)):
+            grid.addWidget(self.imageLabels[i], row, i+1)
+
+        row += 1
+        grid.addWidget(QLabel(otypes[0]["name"]), row, 0)
+        for i in range(len(self.actionLabels)):
+            grid.addWidget(self.actionLabels[i], row, i+1)
+
+        vlay = QVBoxLayout()
+        vlay.addLayout(grid)
+        row += 1
         sld = QSlider(Qt.Horizontal, self)
         self.slider = sld
         sld.setFocusPolicy(Qt.NoFocus)
         sld.valueChanged[int].connect(self.changeValue)
-        grid.addWidget(sld, row, 0, 1, self.gridWidth+1)
+        #grid.addWidget(sld, row, 0, 1, self.gridWidth+1)
+        vlay.addWidget(sld)
 
         self.setCentralWidget(QWidget(self))
-        self.centralWidget().setLayout(grid)
+        self.centralWidget().setLayout(vlay)
 
         if self.metaDock is None:
             self.metaDock = QDockWidget("Drive Info", self)
@@ -307,12 +311,16 @@ class Example(QMainWindow):
         self.data = DriveFormat.handlerForFile( path )
         if self.data is not None:
             self.path = path
+            self.aux = []
+            self.index = 0
             self.updateWindowTitle()
             self.initGrid()
             self.statusBar().showMessage( "{} images loaded".format( self.data.count() ) )
             self.slider.setMinimum(0)
             self.slider.setMaximum( self.data.count() )
             self.slider.setSliderPosition(0)
+            for key, value in self.data.getAuxMeta().items():
+                self.addAuxToGrid(value)
             self.updateImages()
         else:
             QMessageBox.warning(self, 'Unknown Filetype', "The file you selected could not be opened by any available file formats.", buttons=QMessageBox.Ok, defaultButton=QMessageBox.Ok)
@@ -369,6 +377,10 @@ class Example(QMainWindow):
         elif self.data is not None:
             newAction = self.data.actionForKey(e.text(),oldAction=self.data.actionForIndex(self.index))
             if newAction is None:
+                for auxUI in self.aux:
+                    if auxUI.handleKeyPressEvent( e, self.index):
+                        e.accept()
+                        return
                 e.ignore()
             else:
                 self.changeCurrentAction( newAction )
@@ -458,8 +470,8 @@ class Example(QMainWindow):
         self.aux.append(auxUI)
         auxName, auxLabels = auxUI.getUI()
 
-        row = self.centralWidget().layout().rowCount()
-        self.grid.addWidget(auxName), row, 0)
+        row = self.grid.rowCount()
+        self.grid.addWidget(auxName, row, 0)
         for i, auxLabel in enumerate(auxLabels):
             self.grid.addWidget(auxLabel, row, i+1)
 

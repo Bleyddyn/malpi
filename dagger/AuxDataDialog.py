@@ -113,7 +113,7 @@ class AuxDataDialog(QDialog):
         dtype = self.dataType.currentText().lower()
         auxMeta = {"name":auxName, "type":dtype}
         if dtype == "categorical":
-            auxMeta["default"] = 0
+            auxMeta["default"] = self.categories.itemText(0)
             cats = []
             for idx in range(self.categories.count()):
                 cats.append(self.categories.itemText(idx))

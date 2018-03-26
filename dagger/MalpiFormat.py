@@ -1,5 +1,6 @@
 import os
 import pickle
+import json
 from DriveFormat import DriveFormat
 from collections import defaultdict
 import numpy as np
@@ -17,9 +18,10 @@ class MalpiFormat(DriveFormat):
             raise IOError( "MalpiFormat path is not a directory: {}".format( path ) )
 
         self.path = path
-        (self.images, self.actions) = self._load(path)
-        self.meta = self._loadMeta(path)
+        self.auxMeta = {}
         self.auxData = {}
+        self.meta = self._loadMeta(path)
+        (self.images, self.actions) = self._load(path)
 
     def _loadMeta( self, path ):
         meta_file = os.path.join( path, "meta.txt" )
@@ -63,6 +65,23 @@ class MalpiFormat(DriveFormat):
         act_str = []
         for act in actions:
             act_str.append(str(act))
+
+        aux_file = os.path.join( self.path, "aux.json" )
+        if os.path.exists(aux_file):
+            with open(aux_file,'r') as f:
+                self.auxMeta = json.load(f)
+
+            for key, value in self.auxMeta.items():
+                ofname = os.path.join( self.path, key+'_aux.npy' )
+                if not os.path.exists(ofname):
+                    print( "Missing auxiliary data file: {}".format( ofname ) )
+                else:
+                    data = np.load(ofname)
+                    data_str = []
+                    for act in data:
+                        data_str.append(str(act))
+                    self.auxData[key] = data_str
+
         return images, act_str
 
     def save( self ):
@@ -75,7 +94,18 @@ class MalpiFormat(DriveFormat):
         actions = actions.astype('str')
         ofname = os.path.join( self.path, 'image_actions.npy' )
         np.save(ofname, actions)
+
+        aux_file = os.path.join( self.path, "aux.json" )
+        with open(aux_file,'w') as f:
+            json.dump(self.auxMeta,f)
+
+        for key, value in self.auxData.items():
+            data = np.array(value)
+            ofname = os.path.join( self.path, key+'_aux.npy' )
+            np.save(ofname, data)
+
         self.setClean()
+
 
     def count( self ):
         return len(self.images)
@@ -96,7 +126,7 @@ class MalpiFormat(DriveFormat):
             self.images = np.delete(self.images,index,axis=0)
             self.actions.pop(index)
             for key in self.auxData:
-                self.auxData[key]["data"].pop(index)
+                self.auxData[key].pop(index)
             self.setDirty()
 
     def actionForKey(self,keybind,oldAction=None):
@@ -121,21 +151,26 @@ class MalpiFormat(DriveFormat):
     def supportsAuxData(self):
         return True
 
-    def addAuxData(self, meta):
-        self.auxData[meta["name"]] = {"meta":meta, "data":[meta["default"]]*self.count()}
-        pass
+    def getAuxMeta(self):
+        return self.auxMeta
 
-    def auxDataAtIndex(self, auxName, auxData, index):
+    def addAuxData(self, meta):
+        # TODO Check to make sure the meta data is all the same
+        if meta["name"] not in self.auxMeta:
+            self.auxMeta[meta["name"]] = meta
+            self.auxData[meta["name"]] = [meta["default"]]*self.count()
+
+    def auxDataAtIndex(self, auxName, index):
         if not auxName in self.auxData:
             return None
-
-        return self.auxData[auxName]["data"][index]
+        return self.auxData[auxName][index]
 
     def setAuxDataAtIndex(self, auxName, auxData, index):
         if not auxName in self.auxData:
             return False
-
-        self.auxData[auxName]["data"][index] = auxData
+        if self.auxData[auxName][index] != auxData:
+            self.auxData[auxName][index] = auxData
+            self.setDirty()
         return True
 
     @staticmethod
