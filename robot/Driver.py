@@ -149,7 +149,7 @@ def getOptions():
 
     if not options.episode:
         n = datetime.datetime.now()
-        options.episode = n.strftime('drive_%Y%m%d_%H%M%S') 
+        options.episode = n.strftime('%Y%m%d_%H%M%S.drive') 
 
     if not options.dir_ep:
         options.dir_ep = options.episode
