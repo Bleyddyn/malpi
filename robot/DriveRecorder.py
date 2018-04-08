@@ -46,10 +46,11 @@ class DriveRecorder:
         if drive_name is None:
             drive_name = "Manual Drive"
         self.drive_name = drive_name
+        self.accel = None
 
         self.images = []
         self.image_index = 1
-        self.max_images = 150
+        self.max_images = 10
         self.image_times = []
         self.image_actions = []
         self.actions = ["stop"]
@@ -116,7 +117,7 @@ class DriveRecorder:
             os.makedirs(self.drive_dir)
 
         self.accel_path = os.path.join( self.drive_dir, "accel.pkl" )
-        self.accel = Popen([config.directories['accelerometer_script'], self.accel_path])
+        #self.accel = Popen([config.directories['accelerometer_script'], self.accel_path])
         if self.camera:
             if self.image_delay and self.image_delay > 0.0:
                 Thread(target=self.captureImage, args=()).start()

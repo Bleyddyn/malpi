@@ -233,12 +233,13 @@ class App():
                     self.last_command(spInt)
 
     def startDrive( self, model_name ):
+        if not model_name:
+            model_name = "default.h5"
+        model_path = os.path.join( config.directories['models'], model_name )
+        # This doesn't work. crashes when trying to load weights
+        #if self.driver and model_path != self.driver.model_path:
+        #    self.driver = None
         if not self.driver:
-            if not model_name:
-                #model_name = "home_19k_weights.h5"
-                #model_name = "home_19k_gru_extra_stride_weights.h5"
-                model_name = "home_19k_fc_extra_stride_weights.h5"
-            model_path = os.path.join( config.directories['models'], model_name )
             self.driver = Driver.Driver( model_path, camera=self.raw, controller=self )
         self.driver.startDriving()
 
@@ -251,7 +252,7 @@ class App():
     def startRecording( self, drive_name ):
         if not self.recorder:
             n = datetime.datetime.now()
-            fname = n.strftime('drive_%Y%m%d_%H%M%S')
+            fname = n.strftime('%Y%m%d_%H%M%S.drive')
             drive_dir = os.path.join( config.directories['drives'], fname )
             self.recorder = DriveRecorder.DriveRecorder( drive_dir, video_path=self.videoPath(fname), camera=self.raw, image_delay=0.1, drive_name=drive_name )
             self.recorder.startDriving()
