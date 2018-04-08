@@ -375,15 +375,17 @@ class Example(QMainWindow):
                 self.updateImages()
                 self.updateStats()
         elif self.data is not None:
-            newAction = self.data.actionForKey(e.text(),oldAction=self.data.actionForIndex(self.index))
-            if newAction is None:
-                for auxUI in self.aux:
-                    if auxUI.handleKeyPressEvent( e, self.index):
-                        e.accept()
-                        return
-                e.ignore()
-            else:
-                self.changeCurrentAction( newAction )
+            if self.data is not None:
+                if self.index < (self.data.count() - 1):
+                    newAction = self.data.actionForKey(e.text(),oldAction=self.data.actionForIndex(self.index))
+                    if newAction is None:
+                        for auxUI in self.aux:
+                            if auxUI.handleKeyPressEvent( e, self.index):
+                                e.accept()
+                                return
+                        e.ignore()
+                    else:
+                        self.changeCurrentAction( newAction )
         else:
             e.ignore()
 

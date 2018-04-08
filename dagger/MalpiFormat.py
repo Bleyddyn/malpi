@@ -21,7 +21,7 @@ class MalpiFormat(DriveFormat):
         self.auxMeta = {}
         self.auxData = {}
         self.meta = self._loadMeta(path)
-        (self.images, self.actions) = self._load(path)
+        self._load(path)
 
     def _loadMeta( self, path ):
         meta_file = os.path.join( path, "meta.txt" )
@@ -66,6 +66,10 @@ class MalpiFormat(DriveFormat):
         for act in actions:
             act_str.append(str(act))
 
+        # self.images needs to be set before loading aux data, in case we need to fill in default values
+        self.images = images
+        self.actions = act_str
+
         aux_file = os.path.join( self.path, "aux.json" )
         if os.path.exists(aux_file):
             with open(aux_file,'r') as f:
@@ -74,7 +78,8 @@ class MalpiFormat(DriveFormat):
             for key, value in self.auxMeta.items():
                 ofname = os.path.join( self.path, key+'_aux.npy' )
                 if not os.path.exists(ofname):
-                    print( "Missing auxiliary data file: {}".format( ofname ) )
+                    print( "Adding missing auxiliary data file: {}".format( ofname ) )
+                    self.addAuxData(value)
                 else:
                     data = np.load(ofname)
                     data_str = []
@@ -158,6 +163,7 @@ class MalpiFormat(DriveFormat):
         # TODO Check to make sure the meta data is all the same
         if meta["name"] not in self.auxMeta:
             self.auxMeta[meta["name"]] = meta
+        if meta["name"] not in self.auxData:
             self.auxData[meta["name"]] = [meta["default"]]*self.count()
 
     def auxDataAtIndex(self, auxName, index):
