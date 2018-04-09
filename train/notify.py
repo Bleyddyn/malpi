@@ -12,8 +12,8 @@ from email.mime.text import MIMEText
 try:
     import config
 except:
-    print "Failed to load config file config.py."
-    print "Try copying config_empty.py to config.py, fill in the details, and re-run."
+    print( "Failed to load config file config.py." )
+    print( "Try copying config_empty.py to config.py, fill in the details, and re-run." )
     exit()
 
 try:

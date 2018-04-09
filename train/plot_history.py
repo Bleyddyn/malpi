@@ -15,7 +15,7 @@ def describeDriveData( data ):
             pass
 
 def loadHistory( fname="histories.pickle" ):
-    with open(fname,'r') as f:
+    with open(fname,'rb') as f:
         data = pickle.load(f)
     return data
 
