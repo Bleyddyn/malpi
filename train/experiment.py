@@ -40,10 +40,10 @@ class Meta(object):
             self._writeOne( f, "Input dims", self.input_dim )
             self._writeOne( f, "Num actions", self.num_actions )
             f.write( "Command line arguments:\n" )
-            for key,value in vars(self.args).iteritems():
+            for key,value in vars(self.args).items():
                 f.write( "   {}: {}\n".format( key, value ) )
             f.write( "Hyperparameters:\n" )
-            for key,value in self.hparams.iteritems():
+            for key,value in self.hparams.items():
                 f.write( "   {}: {}\n".format( key, value ) )
 
     def writeAfter(self, model=None, histories=None, results={}, saveModel=False):
@@ -65,7 +65,7 @@ class Meta(object):
                 for summ in summ_list:
                     f.write( '   {}\n'.format(summ) )
             f.write( "Results:\n" )
-            for key,value in results.iteritems():
+            for key,value in results.items():
                 f.write( "   {}: {}\n".format( key, value ) )
         if histories is not None:
             his_fname = os.path.join(self.dir_name, "histories.pickle")

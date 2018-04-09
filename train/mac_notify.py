@@ -1,4 +1,4 @@
-from PyObjCTools import AppHelper
+#from PyObjCTools import AppHelper
 import Foundation
 import objc
 import AppKit

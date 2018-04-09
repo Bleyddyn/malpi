@@ -18,10 +18,18 @@ import keras.backend as K
 
 import experiment
 import notify
+from load_aux import loadAuxData
+
+# For python2/3 compatibility when calling isinstance(x,basestring)
+# From: https://stackoverflow.com/questions/11301138/how-to-check-if-variable-is-string-with-python-2-and-3-compatibility
+try:
+  basestring
+except NameError:
+  basestring = str
 
 def describeDriveData( data ):
     print( data.keys() )
-    for key, value in data.iteritems():
+    for key, value in data.items():
         try:
             print( "{} length {}".format( key, len(value) ) )
         except:
@@ -321,6 +329,7 @@ def getOptions():
     parser.add_argument('--early', action="store_true", default=False, help='Stop training early if learning plateaus')
     parser.add_argument('--runs', type=int, default=1, help='How many runs to train')
     parser.add_argument('--name', help='Display name for this training experiment')
+    parser.add_argument('--aux', default=None, help='Use this auxiliary data in place of standard actions')
     parser.add_argument('--notify', help='Email address to notify when the training is finished')
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
     parser.add_argument('--random', action="store_true", default=False, help='Test an untrained model, then exit')
@@ -355,7 +364,13 @@ if __name__ == "__main__":
     K.set_learning_phase(True)
     setCPUCores( 4 )
 
+    if args.aux is not None:
+        auxData = loadAuxData( args.dirs, args.aux )
+
     images, y = loadData(args.dirs)
+
+    if args.aux is not None:
+        y = auxData
     input_dim = images[0].shape
     num_actions = len(y[0])
     num_samples = len(images)
@@ -413,7 +428,7 @@ if __name__ == "__main__":
         best_model.save_weights(name + '_weights.h5')
 
     if not args.random:
-        expMeta.writeAfter(model=model, histories=histories, results={'vals': vals})
+        expMeta.writeAfter(model=model, histories=histories, results={'vals': vals}, saveModel=True)
 
 #    with open("histories.pickle", 'wb') as f:
 #        pickle.dump( histories, f, pickle.HIGHEST_PROTOCOL)
