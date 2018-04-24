@@ -117,6 +117,34 @@ def makeSmallImages( drive_dir, data, size=(120,120), indent="" ):
     else:
         print( "{}Small Images file already exists".format( indent ) )
 
+def extractNewImages( drive_dir, data, prefix, size=(120,120), indent="" ):
+    ofname = os.path.join( drive_dir, '{}_{}x{}.npy'.format( prefix, size[0], size[1] ) )
+    if not os.path.exists(ofname):
+        smallImages = []
+        image_files = []
+        for fname in os.listdir(drive_dir):
+            if fname.startswith("images_") and fname.endswith(".pickle"):
+                image_files.append(fname)
+        image_files.sort(key=natural_keys)
+        for fname in image_files:
+            ifname = os.path.join( drive_dir, fname )
+            print( "{}Reading {}".format( indent, fname ) )
+            im1 = getImagesFrom(ifname, size=size)
+            smallImages.extend(im1)
+
+        if len(smallImages) == 0 and 'images' in data:
+            img_data = data['images']
+            for img in img_data:
+                img = imresize(img, size, interp='nearest' )
+                smallImages.append(img)
+
+        print( "{}Writing {} small images".format( indent, len(smallImages) ) )
+
+        images = np.array(smallImages)
+        np.save(ofname, images)
+    else:
+        print( "{}Small Images file already exists".format( indent ) )
+
 def writeToSeparateFiles():
     for key in ["action_times", "image_actions", "actions", "image_times", "images"]:
         dumpArrayToFile( data, key )
@@ -218,6 +246,7 @@ def getOptions():
     group.add_argument('--sample', action="store_true", default=False, help='Display sample images, then exit')
     group.add_argument('--stats', action="store_true", default=False, help='Display image stats for each directory')
     group.add_argument('--py2py3', action="store_true", default=False, help='Read pickle files and save to numpy files')
+    group.add_argument('--extract', help='Extract images from original file(s) into a new file with this prefix')
 
     args = parser.parse_args()
 
@@ -271,6 +300,8 @@ if __name__ == "__main__":
                         with open(meta, 'w') as f:
                             f.write("Format: MaLPi v1.1\n")
                             f.write(output)
+                elif args.extract is not None:
+                    extractNewImages( adir, data, args.extract, indent=indent )
                 else:
                     if not 'model' in data:
                         print( "{}No model name in drive.pickle. Possibly an older drive format".format( indent ) )
