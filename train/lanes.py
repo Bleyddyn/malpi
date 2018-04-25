@@ -77,7 +77,7 @@ def getOptions():
     parser.add_argument('model', help='Path to the model json file')
     parser.add_argument('dirs', nargs='*', metavar="Directory", help='A directory containing recorded robot data')
     parser.add_argument('-f', '--file', help='File with one directory per line')
-    parser.add_argument('--name', help='Display name for this training experiment')
+    parser.add_argument('--pred', help='For each directory, run the model on an image file with this prefix and write predictions to a new file in the same directory')
     parser.add_argument('--aux', default="LanePosition", help='Use this auxiliary data in place of standard actions')
     parser.add_argument('--notify', help='Email address to notify when the training is finished')
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
@@ -125,10 +125,16 @@ if __name__ == "__main__":
         images = loadOneDrive( onedir )
         images = images.astype(np.float)
         normalize( images )
-        auxData = loadAuxData( [onedir], args.aux )
 
-        out = model.evaluate( x=images, y=auxData )
-        print( "{} {}: {}".format( onedir, model.metrics_names, out ) )
+        if args.pred is not None:
+            out = model.predict( x=images )
+            basename = "{}_pred.npy".format( args.pred )
+            pred_file = os.path.join( onedir, basename )
+            np.save( pred_file, out )
+        else:
+            auxData = loadAuxData( [onedir], args.aux )
+            out = model.evaluate( x=images, y=auxData )
+            print( "{} {}: {}".format( onedir, model.metrics_names, out ) )
 
     #msg2 = "Model " + args.name
     #notify.notify( "Lane testing complete", subTitle=msg2, message=msg, email_to=args.notify )
