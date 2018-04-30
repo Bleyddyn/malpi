@@ -106,6 +106,9 @@ class App():
         elif action.startswith( 'speed', 0, len('speed') ):
             self.setSpeed( action[len('speed '):] )
             self.recordCommand(action)
+        elif action.startswith( 'throttles', 0, len('throttles') ):
+            alist = self.continuous(action)
+            self.recordCommand(alist)
 
         elif action.startswith( 'record_start', 0, len('record_start') ):
             name = None
@@ -230,6 +233,7 @@ class App():
             if spInt >= 0 and spInt < 256 and spInt != self.speed:
                 self.speed = spInt
                 if self.last_command:
+                    # Rerun the last command (as a method) with the new speed
                     self.last_command(spInt)
 
     def startDrive( self, model_name ):
@@ -295,6 +299,7 @@ class App():
                     myMotor.run(Adafruit_MotorHAT.BACKWARD)
                 sent = True
             except Exception as ex:
+                #print( "Exc: {}".format( ex ) )
                 sent = False
             if sent:
                 break
@@ -302,7 +307,7 @@ class App():
             fwd = "backward"
             if forward:
                 fwd = "forward"
-            print( "Failed to send motor command: {} {}".format( mnum, fwd ) )
+            print( "Failed to send motor command: {} {} {}".format( mnum, fwd, speed ) )
 
     def driveForward( self, speed=150 ):
         self.last_command = self.driveForward
@@ -338,6 +343,31 @@ class App():
         self.mh.getMotor(2).run(Adafruit_MotorHAT.RELEASE)
         self.mh.getMotor(3).run(Adafruit_MotorHAT.RELEASE)
         self.mh.getMotor(4).run(Adafruit_MotorHAT.RELEASE)
+
+    def continuous(self, action):
+        lval = 0.0
+        rval = 0.0
+        acts = action.split(" ")
+        try:
+            lval = float(acts[1])
+            ltf = True if lval > 0.0 else False
+            lts = int(abs( lval * 255.0 ))
+             
+            rval = float(acts[2])
+            rtf = True if rval > 0.0 else False
+            rts = int(abs( rval * 255.0 ))
+
+            self.setMotor( 1, ltf, lts )
+            self.setMotor( 2, ltf, lts )
+            self.setMotor( 3, rtf, rts )
+            self.setMotor( 4, rtf, rts )
+            self.last_command = None
+        except Exception as ex:
+            print( "continuous action failed: {}".format( action ) )
+            print( "    {}".format( ex ) )
+            self.stopMotors()
+
+        return (lval,rval)
 
 var_path = os.path.join( config.directories['drives'], 'var' )
 app = App( var_path )
