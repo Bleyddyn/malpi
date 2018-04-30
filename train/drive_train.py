@@ -122,23 +122,38 @@ def loadData( dirs, size=(120,120), image_norm=True ):
     images = np.array(images)
     #images = images.astype(np.float) # / 255.0
 
-    rmean = np.mean(images[:,:,:,0])
-    gmean= np.mean(images[:,:,:,1])
-    bmean= np.mean(images[:,:,:,2])
-    rstd = np.std(images[:,:,:,0])
-    gstd = np.std(images[:,:,:,1])
-    bstd = np.std(images[:,:,:,2])
-    print( "Image means: {}/{}/{}".format( rmean, gmean, bmean ) )
-    print( "Image stds: {}/{}/{}".format( rstd, gstd, bstd ) )
-
     if image_norm:
-# should only do this for the training data, not val/test, but I'm not sure how to do that when Keras makes the train/val split
+        rmean = 92.93206363205326
+        gmean = 85.80540021330793
+        bmean = 54.14884297660608
+        rstd = 57.696159704394354
+        gstd = 53.739380109203445
+        bstd = 47.66536771313241
+
+        print( "Default normalization" )
         images[:,:,:,0] -= rmean
         images[:,:,:,1] -= gmean
         images[:,:,:,2] -= bmean
         images[:,:,:,0] /= rstd
         images[:,:,:,1] /= gstd
         images[:,:,:,2] /= bstd
+
+#        rmean = np.mean(images[:,:,:,0])
+#        gmean= np.mean(images[:,:,:,1])
+#        bmean= np.mean(images[:,:,:,2])
+#        rstd = np.std(images[:,:,:,0])
+#        gstd = np.std(images[:,:,:,1])
+#        bstd = np.std(images[:,:,:,2])
+#        print( "Image means: {}/{}/{}".format( rmean, gmean, bmean ) )
+#        print( "Image stds: {}/{}/{}".format( rstd, gstd, bstd ) )
+#
+## should only do this for the training data, not val/test, but I'm not sure how to do that when Keras makes the train/val split
+#        images[:,:,:,0] -= rmean
+#        images[:,:,:,1] -= gmean
+#        images[:,:,:,2] -= bmean
+#        images[:,:,:,0] /= rstd
+#        images[:,:,:,1] /= gstd
+#        images[:,:,:,2] /= bstd
 
     y = embedActions( actions )
     y = to_categorical( y, num_classes=5 )
@@ -201,15 +216,12 @@ def makeOptimizer( optimizer, learning_rate ):
 
     return optimizer
 
-def fitFC( input_dim, images, y, verbose=1, dkconv=False, early_stop=False, epochs=40, timesteps=None, l2_reg=0.005, dropouts=[0.25,0.25,0.25,0.25,0.25],
-           learning_rate=0.003, validation_split=0.15, batch_size=32, optimizer="RMSprop" ):
+def fitFC( input_dim, images, y, val_set=None, verbose=1, dkconv=False, early_stop=False, epochs=40, timesteps=None, l2_reg=0.005,
+           dropouts=[0.25,0.25,0.25,0.25,0.25], learning_rate=0.003, validation_split=0.15, batch_size=32, optimizer="RMSprop" ):
     num_actions = len(y[0])
     callbacks = None
 
     callbacks = []
-#    if verbose:
-#        save_chk = ModelCheckpoint("weights_{epoch:02d}_{val_categorical_accuracy:.2f}.hdf5", monitor='val_loss', verbose=0, save_best_only=True, save_weights_only=False, mode='auto', period=1)
-#        callbacks.append(save_chk)
 
     if early_stop:
         callbacks.append(EarlyStopping(monitor='val_loss', min_delta=0.0005, patience=5, verbose=verbose, mode='auto'))
@@ -218,11 +230,8 @@ def fitFC( input_dim, images, y, verbose=1, dkconv=False, early_stop=False, epoc
     
     model = model_keras.make_model_fc( num_actions, input_dim, dkconv=dkconv, optimizer=optimizer, dropouts=dropouts )
 
-    history = model.fit( images, y, validation_split=validation_split, epochs=epochs, verbose=verbose, batch_size=batch_size, callbacks=callbacks )
-
-#    if verbose:
-#        model.save( 'best_model.h5' )
-#        model.save_weights('best_model_weights.h5')
+    # validation_data: tuple (x_val, y_val)
+    history = model.fit( images, y, validation_split=validation_split, validation_data=val_set, epochs=epochs, verbose=verbose, batch_size=batch_size, callbacks=callbacks )
 
     running = runningMean(history.history['val_categorical_accuracy'], 5)
     max_running = np.max( running )
@@ -330,6 +339,7 @@ def getOptions():
     parser.add_argument('--runs', type=int, default=1, help='How many runs to train')
     parser.add_argument('--name', help='Display name for this training experiment')
     parser.add_argument('--aux', default=None, help='Use this auxiliary data in place of standard actions')
+    parser.add_argument('--val', default=None, help='A file with a list of directories to be used for validation')
     parser.add_argument('--notify', help='Email address to notify when the training is finished')
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
     parser.add_argument('--random', action="store_true", default=False, help='Test an untrained model, then exit')
@@ -351,6 +361,16 @@ def getOptions():
             del args.dirs[i]
         elif len(args.dirs[i]) == 0:
             del args.dirs[i]
+
+    if args.val is not None:
+        with open(args.val, "r") as f:
+            tmp_dirs = f.read().split('\n')
+            args.val = tmp_dirs
+        for i in reversed(range(len(args.val))):
+            if args.val[i].startswith("#"):
+                del args.val[i]
+            elif len(args.val[i]) == 0:
+                del args.val[i]
             
     return args
 
@@ -375,11 +395,23 @@ if __name__ == "__main__":
     num_actions = len(y[0])
     num_samples = len(images)
 
+    val_xy = None
+    if args.val is not None:
+        print( "Loading validation set: {}".format( args.val ) )
+        val_x, val_y = loadData(args.val)
+        if args.aux is not None:
+            auxData = loadAuxData( args.val, args.aux )
+            val_y = auxData
+        val_xy = (val_x, val_y)
+
     print( "Samples: {}   Input: {}  Output: {}".format( num_samples, input_dim, num_actions ) )
     print( "Shape of y: {}".format( y.shape ) )
     print( "Image 0 data: {} {}".format( np.min(images[0]), np.max(images[0]) ) )
     print( "Images: {}".format( images.shape ) )
     print( "Labels: {}".format( y.shape ) )
+    if args.val is not None:
+        print( "Validation Images: {}".format( val_x.shape ) )
+        print( "Validation Labels: {}".format( val_y.shape ) )
 
     if args.fc:
         print( "Fully connected layer, no RNN" )
@@ -407,7 +439,7 @@ if __name__ == "__main__":
         if args.random:
             val, his, model = evaluateRandom( input_dim, images, y, args, hparams )
         elif args.fc:
-            val, his, model = fitFC( input_dim, images, y, verbose=verbose, dkconv=args.dk, early_stop=args.early, **hparams )
+            val, his, model = fitFC( input_dim, images, y, val_set=val_xy, verbose=verbose, dkconv=args.dk, early_stop=args.early, **hparams )
         else:
             val, his, model = fitLSTM( input_dim, images, y, verbose=verbose, dkconv=args.dk, early_stop=args.early, **hparams )
         # Return all history from the fit methods and pickle
