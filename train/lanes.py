@@ -5,6 +5,7 @@ import pickle
 import json
 from time import time
 import argparse
+from collections import defaultdict
 
 import numpy as np
 
@@ -36,8 +37,8 @@ def setCPUCores( cores ):
                             allow_soft_placement=True, device_count = {'CPU': cores})
     set_session(tf.Session(config=config))
 
-def loadOneDrive( drive_dir, size=(120,120) ):
-    basename = "images_{}x{}".format( size[0], size[1] )
+def loadOneDrive( drive_dir, size=(120,120), prefix="images" ):
+    basename = "{}_{}x{}".format( prefix, size[0], size[1] )
     im_file = os.path.join( drive_dir, basename+".npy" )
     if os.path.exists(im_file):
         images = np.load(im_file)
@@ -65,6 +66,30 @@ def normalize( images ):
 
     return images
 
+def stats( onedir, auxName ):
+    order = ["OutsideTrack", "OutsideLine", "LeftLane", "CenterLine", "RightLane", "InsideLine", "InsideTrack"]
+    auxFile = os.path.join( onedir, "{}_aux.npy".format(auxName ) )
+    if os.path.exists(auxFile):
+        actions = np.load(auxFile)
+        actions = actions.astype('str')
+    stats = defaultdict(int)
+    for label in actions:
+        stats[str(label)] += 1
+    statstr = ""
+    for lane in order:
+        statstr += str(stats[lane]) + "\t"
+    print( "{}\t{}\t{}".format( onedir, len(actions), statstr ) )
+
+def rewards( onedir ):
+    order = [-10.0, -5.0, 0.5, 0.5, 1.0, -5.0, -10.0]
+    lanesFile = os.path.join( onedir, "lanes_pred.npy" )
+    lanes = np.load(lanesFile)
+    lanes = np.argmax(lanes, axis=1)
+    reward = 0.0
+    for lane in lanes:
+        reward += order[lane]
+    print( "{}\t{}\t{}".format( onedir, len(lanes), reward ) )
+
 def runningMean(x, N):
     return np.convolve(x, np.ones((N,))/N, mode='valid')
 
@@ -78,7 +103,9 @@ def getOptions():
     parser.add_argument('dirs', nargs='*', metavar="Directory", help='A directory containing recorded robot data')
     parser.add_argument('-f', '--file', help='File with one directory per line')
     parser.add_argument('--pred', help='For each directory, run the model on an image file with this prefix and write predictions to a new file in the same directory')
+    parser.add_argument('--stats', action="store_true", default=False, help='Read the aux files and count total number of labels and count each label')
     parser.add_argument('--aux', default="LanePosition", help='Use this auxiliary data in place of standard actions')
+    parser.add_argument('--rewards', action="store_true", default=False, help='Calculate rewards based on predicted lane position')
     parser.add_argument('--notify', help='Email address to notify when the training is finished')
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
 
@@ -92,6 +119,11 @@ def getOptions():
     if len(args.dirs) == 0 and not args.test_only:
         parser.print_help()
         print( "\nNo directories supplied" )
+        exit()
+
+    if args.stats and args.aux is None:
+        parser.print_help()
+        print( "\n--stats requires --aux" )
         exit()
 
     for i in reversed(range(len(args.dirs))):
@@ -119,22 +151,33 @@ if __name__ == "__main__":
     model.load_weights(weights)
     model.compile(loss='categorical_crossentropy', optimizer="adam", metrics=[metrics.categorical_accuracy] )
 
+    if args.stats:
+        print( "Drive	Count	OutsideTrack	OutsideLine	LeftLane	CenterLine	RightLane	InsideLine	InsideTrack" )
+
     # Redo this so that we load, evaluate and output results for one directory at a time
     for onedir in args.dirs:
-        print( "{}".format( onedir ) )
-        images = loadOneDrive( onedir )
-        images = images.astype(np.float)
-        normalize( images )
-
-        if args.pred is not None:
-            out = model.predict( x=images )
-            basename = "{}_pred.npy".format( args.pred )
-            pred_file = os.path.join( onedir, basename )
-            np.save( pred_file, out )
+        if args.stats:
+            stats( onedir, args.aux )
+        elif args.rewards:
+            rewards( onedir )
         else:
-            auxData = loadAuxData( [onedir], args.aux )
-            out = model.evaluate( x=images, y=auxData )
-            print( "{} {}: {}".format( onedir, model.metrics_names, out ) )
+            print( "{}".format( onedir ) )
+            prefix = "images"
+            if args.pred is not None:
+                prefix = args.pred
+            images = loadOneDrive( onedir, prefix=prefix )
+            images = images.astype(np.float)
+            normalize( images )
+
+            if args.pred is not None:
+                out = model.predict( x=images )
+                basename = "{}_pred.npy".format( args.pred )
+                pred_file = os.path.join( onedir, basename )
+                np.save( pred_file, out )
+            else:
+                auxData = loadAuxData( [onedir], args.aux )
+                out = model.evaluate( x=images, y=auxData )
+                print( "{} {}: {}".format( onedir, model.metrics_names, out ) )
 
     #msg2 = "Model " + args.name
     #notify.notify( "Lane testing complete", subTitle=msg2, message=msg, email_to=args.notify )
