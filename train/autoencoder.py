@@ -183,6 +183,9 @@ def makeAEConvStrides( input_shape, dropouts=None ):
     # Add an l1 regularization to encourage a sparse representation
     #x = Conv2D(64, (3, 3), activation='relu', strides=(1,1), padding='same', activity_regularizer=regularizers.l1(10e-5))(x)
 # Conv2DTranspose
+# From: https://distill.pub/2016/deconv-checkerboard/
+# Try replacing Conv2DTranspose with an image resize, followed by a normal Conv2D
+# Impl: https://stackoverflow.com/questions/42260265/resizing-an-input-image-in-a-keras-lambda-layer
 
     #x = Flatten()(x)
     x = Dense(100)(x)
