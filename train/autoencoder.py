@@ -8,13 +8,14 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from scipy.stats import norm
 
-from keras.layers import Input, Dense, Conv2D, MaxPooling2D, UpSampling2D, Cropping2D, Lambda, Dropout, Flatten, Reshape
+from keras.layers import Input, Dense, Conv2D, Conv2DTranspose, MaxPooling2D, UpSampling2D, Cropping2D, Lambda, Dropout, Flatten, Reshape
 from keras.models import Model, load_model
 from keras.callbacks import EarlyStopping
 from keras import backend as K
 from keras.datasets import mnist
 from keras import metrics
 from keras import regularizers
+from keras import optimizers
 
 import drive_train
 import experiment
@@ -181,24 +182,31 @@ def makeAEConvStrides( input_shape, dropouts=None ):
 
     # Add an l1 regularization to encourage a sparse representation
     #x = Conv2D(64, (3, 3), activation='relu', strides=(1,1), padding='same', activity_regularizer=regularizers.l1(10e-5))(x)
+# Conv2DTranspose
+# From: https://distill.pub/2016/deconv-checkerboard/
+# Try replacing Conv2DTranspose with an image resize, followed by a normal Conv2D
+# Impl: https://stackoverflow.com/questions/42260265/resizing-an-input-image-in-a-keras-lambda-layer
 
     #x = Flatten()(x)
     x = Dense(100)(x)
     #x = Reshape((8,8,64))(x)
     encoded = x
-    x = Conv2D(64, (3, 3), activation='relu', padding='same')(encoded)
-    x = UpSampling2D((2, 2))(encoded)
-    x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
-    x = UpSampling2D((2, 2))(x)
-    x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
-    x = UpSampling2D((2, 2))(x)
-    x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
-    x = UpSampling2D((2, 2))(x)
+    x = Conv2DTranspose(64, (3, 3), strides=(2,2), activation='relu', padding='same')(encoded)
+    #x = UpSampling2D((2, 2))(encoded)
+    x = Conv2DTranspose(64, (3, 3), strides=(2,2), activation='relu', padding='same')(x)
+    #x = UpSampling2D((2, 2))(x)
+    x = Conv2DTranspose(64, (3, 3), strides=(2,2), activation='relu', padding='same')(x)
+    #x = UpSampling2D((2, 2))(x)
+    x = Conv2DTranspose(64, (3, 3), strides=(2,2), activation='relu', padding='same')(x)
+    #x = UpSampling2D((2, 2))(x)
     #x = Cropping2D(4)(x)
     decoded = Conv2D(3, (3, 3), activation='sigmoid', padding='same')(x)
 
     autoencoder = Model(input_img, decoded)
-    autoencoder.compile(optimizer='adadelta', loss='binary_crossentropy' )
+    #optimizer = optimizers.RMSprop(lr=0.003, rho=0.9, epsilon=1e-08, decay=0.005)
+    #optimizer = optimizers.Adam(lr=0.01, decay=0.003)
+    optimizer = "adam"
+    autoencoder.compile(optimizer=optimizer, loss='binary_crossentropy' )
 
     return autoencoder
 
@@ -206,6 +214,8 @@ def train(input_dim, x_train, x_test, early_stop = False):
     callbacks = []
     if early_stop:
         callbacks.append(EarlyStopping(monitor='val_loss', min_delta=0.0005, patience=5, verbose=True, mode='auto'))
+    callbacks.append( drive_train.SGDLearningRateTracker() )
+
     dropouts = [0.3,0.4,0.5,0.6]
     autoencoder = makeAEConvStrides(input_dim, dropouts = dropouts)
     autoencoder.summary()
@@ -235,7 +245,7 @@ def plot(input_dim, x_test, model_path='ae_conv_model_weights.h5', image_path="a
     #img1 = decoded_imgs[0]
 
     n = 10
-    indexes = range(len(x_test))
+    indexes = list(range(len(x_test)))
     random.shuffle(indexes)
     plt.figure(figsize=(20, 4))
     for i in range(n):
@@ -270,9 +280,10 @@ if __name__ == "__main__":
     num_samples = len(images)
     num_actions = 0
 
-    #autoencoder = makeAEConvStrides(input_dim)
-    #autoencoder.summary()
-    #exit()
+    if args.test_only:
+        autoencoder = makeAEConvStrides(input_dim)
+        autoencoder.summary()
+        exit()
 
     x_train, x_test, y_train, y_test = train_test_split(images, y, test_size=0.2, random_state=1)
 
