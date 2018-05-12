@@ -345,15 +345,22 @@ class App():
         self.mh.getMotor(4).run(Adafruit_MotorHAT.RELEASE)
 
     def continuous(self, action):
+        min_ctrl = 0.1
         lval = 0.0
         rval = 0.0
         acts = action.split(" ")
         try:
             lval = float(acts[1])
+            rval = float(acts[2])
+
+            if abs(lval) < min_ctrl and abs(rval) < min_ctrl:
+                # Cutoff for low control values, to make it easier to stop
+                lval = 0.0
+                rval = 0.0
+
             ltf = True if lval > 0.0 else False
             lts = int(abs( lval * 255.0 ))
              
-            rval = float(acts[2])
             rtf = True if rval > 0.0 else False
             rts = int(abs( rval * 255.0 ))
 

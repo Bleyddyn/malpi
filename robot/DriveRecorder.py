@@ -53,7 +53,7 @@ class DriveRecorder:
         self.max_images = 10
         self.image_times = []
         self.image_actions = []
-        self.actions = ["stop"]
+        self.actions = [(0.0,0.0)]
         self.action_times = []
 
     def setVideoFilename(filename):

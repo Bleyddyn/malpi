@@ -155,9 +155,18 @@ def loadData( dirs, size=(120,120), image_norm=True ):
 #        images[:,:,:,1] /= gstd
 #        images[:,:,:,2] /= bstd
 
-    y = embedActions( actions )
-    y = to_categorical( y, num_classes=5 )
-    return images, y
+    categorical = True
+    if isinstance(actions[0], basestring):
+        actions = embedActions( actions )
+        actions = to_categorical( actions, num_classes=5 )
+        categorical = True
+    elif type(actions) == list:
+        actions = np.array(actions)
+        categorical = False
+    else:
+        print("Unknown actions format: {} {} as {}".format( type(actions), actions[0], type(actions[0]) ))
+
+    return images, actions, categorical
 
 def runningMean(x, N):
     return np.convolve(x, np.ones((N,))/N, mode='valid')
@@ -216,7 +225,7 @@ def makeOptimizer( optimizer, learning_rate ):
 
     return optimizer
 
-def fitFC( input_dim, images, y, val_set=None, verbose=1, dkconv=False, early_stop=False, epochs=40, timesteps=None, l2_reg=0.005,
+def fitFC( input_dim, images, y, val_set=None, verbose=1, dkconv=False, early_stop=False, categorical=True, epochs=40, timesteps=None, l2_reg=0.005,
            dropouts=[0.25,0.25,0.25,0.25,0.25], learning_rate=0.003, validation_split=0.15, batch_size=32, optimizer="RMSprop" ):
     num_actions = len(y[0])
     callbacks = None
@@ -228,7 +237,7 @@ def fitFC( input_dim, images, y, val_set=None, verbose=1, dkconv=False, early_st
 
     optimizer = makeOptimizer( optimizer, learning_rate )
     
-    model = model_keras.make_model_fc( num_actions, input_dim, dkconv=dkconv, optimizer=optimizer, dropouts=dropouts )
+    model = model_keras.make_model_fc( num_actions, input_dim, dkconv=dkconv, optimizer=optimizer, dropouts=dropouts, categorical=categorical )
 
     # validation_data: tuple (x_val, y_val)
     history = model.fit( images, y, validation_split=validation_split, validation_data=val_set, epochs=epochs, verbose=verbose, batch_size=batch_size, callbacks=callbacks )
@@ -328,6 +337,11 @@ def runTests(args):
         print( "Dropouts with 'up' did NOT work" )
     print( args.dirs )
 
+    images, y, cat = loadData(args.dirs)
+    print( "Images: {}".format( len(images) ) )
+    print( "Actions: {}".format( len(y) ) )
+    print( "Actions: {}".format( y[0:5] ) )
+
 def getOptions():
 
     parser = argparse.ArgumentParser(description='Train on robot image/action data.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -387,7 +401,7 @@ if __name__ == "__main__":
     if args.aux is not None:
         auxData = loadAuxData( args.dirs, args.aux )
 
-    images, y = loadData(args.dirs)
+    images, y, cat = loadData(args.dirs)
 
     if args.aux is not None:
         y = auxData
@@ -406,6 +420,8 @@ if __name__ == "__main__":
 
     print( "Samples: {}   Input: {}  Output: {}".format( num_samples, input_dim, num_actions ) )
     print( "Shape of y: {}".format( y.shape ) )
+    if not cat:
+        print( "   Continuous actions" )
     print( "Image 0 data: {} {}".format( np.min(images[0]), np.max(images[0]) ) )
     print( "Images: {}".format( images.shape ) )
     print( "Labels: {}".format( y.shape ) )
@@ -426,7 +442,7 @@ if __name__ == "__main__":
     hparams = {'epochs': 40, 'optimizer': 'Adam', 'learning_rate': 0.0006482854972491668, 'dropouts': 'up', 'batch_size': 71.0, 'l2_reg': 0.00115070702991493}
     #hparams = {'epochs': 40, 'optimizer': 'Adam', 'learning_rate': 0.0005897214669321487, 'dropouts': 'up', 'batch_size': 60.0, 'l2_reg': 0.0074109846420101}
     hparams = hparamsToDict( hparamsToArray( hparams ) )
-    if not args.random:
+    if not args.random and args.name is not None:
         expMeta = experiment.Meta(args.name, args, num_samples=num_samples, input_dim=input_dim, num_actions=num_actions, hparams=hparams)
 
     best_model = None
@@ -439,7 +455,7 @@ if __name__ == "__main__":
         if args.random:
             val, his, model = evaluateRandom( input_dim, images, y, args, hparams )
         elif args.fc:
-            val, his, model = fitFC( input_dim, images, y, val_set=val_xy, verbose=verbose, dkconv=args.dk, early_stop=args.early, **hparams )
+            val, his, model = fitFC( input_dim, images, y, val_set=val_xy, verbose=verbose, dkconv=args.dk, early_stop=args.early, categorical=cat, **hparams )
         else:
             val, his, model = fitLSTM( input_dim, images, y, verbose=verbose, dkconv=args.dk, early_stop=args.early, **hparams )
         # Return all history from the fit methods and pickle
@@ -459,7 +475,7 @@ if __name__ == "__main__":
             f.write(json_string)
         best_model.save_weights(name + '_weights.h5')
 
-    if not args.random:
+    if not args.random and args.name is not None:
         expMeta.writeAfter(model=model, histories=histories, results={'vals': vals}, saveModel=True)
 
 #    with open("histories.pickle", 'wb') as f:

@@ -175,10 +175,10 @@ def sendCommand( steering, throttle, recording ):
         print( "Failed to send command" )
 
 def sendContinuousCommand( left_throttle, right_throttle, recording ):
-    min_ctrl = 0.1
-    if abs(left_throttle) < min_ctrl and abs(right_throttle) < min_ctrl:
-        left_throttle = 0.0
-        right_throttle = 0.0
+    #min_ctrl = 0.1
+    #if abs(left_throttle) < min_ctrl and abs(right_throttle) < min_ctrl:
+    #    left_throttle = 0.0
+    #    right_throttle = 0.0
 
     if recording is not None:
         direction = recording
@@ -250,5 +250,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pass
     finally:
-        sendCommand( 0.0, -1.0, 'record_end' )
+        sendContinuousCommand( 0.0, 0.0, 'record_end' )
         ctr.shutdown()

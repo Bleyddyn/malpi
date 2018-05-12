@@ -140,7 +140,7 @@ def make_conv_layers_fc( model, dkconv=False, l2_reg=0.005, dropouts=[0.25,0.25,
     model.add(Dropout(dropouts[3]))
     model.add(Flatten())
 
-def make_model_fc( num_actions, input_dim, dkconv=False, l2_reg=0.005, optimizer=None, dropouts=[0.25,0.25,0.25,0.25,0.25] ):
+def make_model_fc( num_actions, input_dim, dkconv=False, l2_reg=0.005, optimizer=None, dropouts=[0.25,0.25,0.25,0.25,0.25], categorical=True ):
     model = Sequential()
     model.add(Dropout(dropouts[0], input_shape=input_dim))
     make_conv_layers_fc( model, dkconv, l2_reg=l2_reg, dropouts=dropouts )
@@ -156,7 +156,13 @@ def make_model_fc( num_actions, input_dim, dkconv=False, l2_reg=0.005, optimizer
     if optimizer is None:
         optimizer = optimizers.RMSprop(lr=0.003, rho=0.9, epsilon=1e-08, decay=0.005)
 
-    model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=[metrics.categorical_accuracy] )
+    if categorical:
+        loss='categorical_crossentropy'
+        metrics_arr=[metrics.categorical_accuracy]
+    else:
+        loss='mse'
+        metrics_arr=None
+    model.compile(loss=loss, optimizer=optimizer, metrics=metrics_arr )
 
     return model
 
