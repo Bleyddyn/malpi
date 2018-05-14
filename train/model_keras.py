@@ -151,7 +151,12 @@ def make_model_fc( num_actions, input_dim, dkconv=False, l2_reg=0.005, optimizer
     else:
         model.add(Dropout(dropouts[4]))
         model.add(Dense(256, activation='relu', kernel_regularizer=regularizers.l2(l2_reg)))
-    model.add(Dense(num_actions, activation='softmax', kernel_regularizer=regularizers.l2(l2_reg)))
+    
+    if categorical:
+        act = 'softmax'
+    else:
+        act = 'linear'
+    model.add(Dense(num_actions, activation=act, kernel_regularizer=regularizers.l2(l2_reg)))
 
     if optimizer is None:
         optimizer = optimizers.RMSprop(lr=0.003, rho=0.9, epsilon=1e-08, decay=0.005)
@@ -161,7 +166,7 @@ def make_model_fc( num_actions, input_dim, dkconv=False, l2_reg=0.005, optimizer
         metrics_arr=[metrics.categorical_accuracy]
     else:
         loss='mse'
-        metrics_arr=None
+        metrics_arr=['mse']
     model.compile(loss=loss, optimizer=optimizer, metrics=metrics_arr )
 
     return model

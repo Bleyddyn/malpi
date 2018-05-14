@@ -242,7 +242,11 @@ def fitFC( input_dim, images, y, val_set=None, verbose=1, dkconv=False, early_st
     # validation_data: tuple (x_val, y_val)
     history = model.fit( images, y, validation_split=validation_split, validation_data=val_set, epochs=epochs, verbose=verbose, batch_size=batch_size, callbacks=callbacks )
 
-    running = runningMean(history.history['val_categorical_accuracy'], 5)
+    if categorical:
+        rm = 'val_categorical_accuracy'
+    else:
+        rm = 'val_mean_squared_error'
+    running = runningMean(history.history[rm], 5)
     max_running = np.max( running )
     print( "Max validation (rmean=5, at {}): {}".format( np.argmax(running), max_running ) )
 
@@ -487,5 +491,8 @@ if __name__ == "__main__":
     else:
         msg = "Validation accuracy {}".format( vals )
 
-    msg2 = "Model " + args.name
+    msg2 = ""
+    if args.name is not None:
+        msg2 = "Model " + args.name
+
     notify.notify( "Training complete", subTitle=msg2, message=msg, email_to=args.notify )
