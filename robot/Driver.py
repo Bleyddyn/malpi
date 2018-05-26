@@ -49,11 +49,15 @@ class Driver:
         led.turnLEDOn( True, 11 )
         led.turnLEDOn( True, 13 )
         self.isRNN = False
+        self.continuous = False
         if self.isRNN:
             self.model = model_keras.make_model_lstm( len(self.embedding), (120,120,3), batch_size=1, timesteps=1, stateful=True, dropouts=[0.25,0.25,0.25,0.25,0.25] )
         else:
             #self.model = model_keras.make_model_test( len(self.embedding), (120,120,3), dropouts=[0.25,0.25,0.25,0.25,0.25] )
-            self.model = model_keras.make_model_fc( len(self.embedding), (120,120,3), dkconv=True, dropouts=[0.25,0.25,0.25,0.25,0.25] )
+            if self.continuous:
+                self.model = model_keras.make_model_fc( 2, (120,120,3), dkconv=True, dropouts=[0.25,0.25,0.25,0.25,0.25] )
+            else:
+                self.model = model_keras.make_model_fc( len(self.embedding), (120,120,3), dkconv=True, dropouts=[0.25,0.25,0.25,0.25,0.25] )
         self.model.load_weights( model_path )
         self.model._make_predict_function()
         self.graph = tf.get_default_graph()
@@ -88,11 +92,15 @@ class Driver:
                 actions = actions[0]
             t4 = time()
             #print( "Actions: {}".format( actions ) )
-            action = np.argmax(actions) # No exploration, just choose the best
             #if action == 0:
             #    action = np.argmax( actions[1:] ) + 1
             #    #print( "skipping stop action" )
-            self.controller.do_action( self.embedding[action] )
+            if self.continuous:
+                action = 'throttles {} {}'.format( actions[0], actions[1] )
+                self.controller.do_action( action )
+            else:
+                action = np.argmax(actions) # No exploration, just choose the best
+                self.controller.do_action( self.embedding[action] )
             #print( "Times; {} {}".format( t3-t2, t4-t3 ) )
 
     def _drive( self ):
@@ -179,7 +187,7 @@ if __name__ == "__main__":
         test(options)
 
     #def __init__(self, drive_dir, video_path=None, camera=None, image_delay=None):
-    with Driver( os.path.expanduser("~/drive/test1") ) as adrive:
+    with Driver( os.path.expanduser("~/models/cont1.h5") ) as adrive:
         adrive.startDriving( options )
         sleep(20)
         adrive.endDriving()
