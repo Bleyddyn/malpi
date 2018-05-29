@@ -181,10 +181,20 @@ if __name__ == "__main__":
         val_loss=[]
         val_acc=[]
         for hist in data:
-            loss.append(hist['loss'])
-            acc.append(hist['categorical_accuracy'])
-            val_loss.append(hist['val_loss'])
-            val_acc.append(hist['val_categorical_accuracy'])
+            loss.append(np.array(hist['loss']))
+            val_loss.append(np.array(hist['val_loss']))
+            if 'categorical_accuracy' in hist:
+                acc.append(np.array(hist['categorical_accuracy']))
+                val_acc.append(np.array(hist['val_categorical_accuracy']))
+            elif 'mean_squared_error' in hist:
+                acc.append(np.array(hist['mean_squared_error']))
+                val_acc.append(np.array(hist['val_mean_squared_error']))
+
+        loss = np.array(loss)
+        acc = np.array(acc)
+        val_loss = np.array(val_loss)
+        val_acc = np.array(val_acc)
+
         #for i in range(len(loss)):
         #    plt.plot( loss[i] )
         #plt.show()

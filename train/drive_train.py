@@ -60,7 +60,6 @@ def loadOneDrive( drive_dir, size=(120,120) ):
     actions_file = os.path.join( drive_dir, "image_actions.npy" )
     if os.path.exists(actions_file):
         actions = np.load(actions_file)
-        actions = actions.astype('str')
     else:
         actions_file = os.path.join( drive_dir, "image_actions.pickle" )
         with open(actions_file,'r') as f:
@@ -111,6 +110,8 @@ def loadData( dirs, size=(120,120), image_norm=True ):
     for onedir in dirs:
         if len(onedir) > 0:
             dimages, dactions = loadOneDrive( onedir, size=size )
+            if dimages.shape[0] != dactions.shape[0]:
+                print( "Data mismatch in {}: {} != {}".format( onedir, dimages.shape[0], dactions.shape[0] ) )
             dimages = dimages.astype(np.float)
             images.extend(dimages)
             actions.extend(dactions)
@@ -157,6 +158,7 @@ def loadData( dirs, size=(120,120), image_norm=True ):
 
     categorical = True
     if isinstance(actions[0], basestring):
+        actions = actions.astype('str')
         actions = embedActions( actions )
         actions = to_categorical( actions, num_classes=5 )
         categorical = True
@@ -403,12 +405,13 @@ if __name__ == "__main__":
     setCPUCores( 4 )
 
     if args.aux is not None:
-        auxData = loadAuxData( args.dirs, args.aux )
+        auxData, cat_aux = loadAuxData( args.dirs, args.aux )
 
     images, y, cat = loadData(args.dirs)
 
     if args.aux is not None:
         y = auxData
+        cat = cat_aux
     input_dim = images[0].shape
     num_actions = len(y[0])
     num_samples = len(images)
@@ -418,7 +421,7 @@ if __name__ == "__main__":
         print( "Loading validation set: {}".format( args.val ) )
         val_x, val_y = loadData(args.val)
         if args.aux is not None:
-            auxData = loadAuxData( args.val, args.aux )
+            auxData, cat_aux = loadAuxData( args.val, args.aux )
             val_y = auxData
         val_xy = (val_x, val_y)
 
