@@ -40,6 +40,10 @@ def setCPUCores( cores ):
     set_session(tf.Session(config=config))
 
 def loadOneDrive( drive_dir, size=(120,120), prefix="images" ):
+    actions_file = os.path.join( drive_dir, "image_actions.npy" )
+    if os.path.exists(actions_file):
+        actions = np.load(actions_file)
+
     basename = "{}_{}x{}".format( prefix, size[0], size[1] )
     im_file = os.path.join( drive_dir, basename+".npy" )
     if os.path.exists(im_file):
@@ -49,7 +53,7 @@ def loadOneDrive( drive_dir, size=(120,120), prefix="images" ):
         with open(im_file,'r') as f:
             images = pickle.load(f)
 
-    return images
+    return images, actions
 
 def normalize( images ):
     rmean = 92.93206363205326
@@ -130,19 +134,12 @@ if __name__ == "__main__":
 
     for onedir in args.dirs:
         print( "{}".format( onedir ) )
-        images = loadOneDrive( onedir )
+        images, actions = loadOneDrive( onedir )
         images = images.astype(np.float)
         normalize( images )
 
-        if args.pred is not None:
-            out = model.predict( x=images )
-            basename = "{}_pred.npy".format( args.pred )
-            pred_file = os.path.join( onedir, basename )
-            np.save( pred_file, out )
-#            else:
-#                auxData = loadAuxData( [onedir], args.aux )
-#                out = model.evaluate( x=images, y=auxData )
-#                print( "{} {}: {}".format( onedir, model.metrics_names, out ) )
-
-    #msg2 = "Model " + args.name
-    #notify.notify( "Lane testing complete", subTitle=msg2, message=msg, email_to=args.notify )
+        out = model.predict( x=images )
+        #basename = "{}_pred.npy".format( args.pred )
+        #pred_file = os.path.join( onedir, basename )
+        #np.save( pred_file, out )
+# For each action plot out - actions

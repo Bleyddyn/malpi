@@ -80,7 +80,7 @@ def printLearningRate(model):
     optimizer = model.optimizer
     lr = K.eval(optimizer.lr * (1. / (1. + optimizer.decay * tf.cast(optimizer.iterations, tf.float32) )))
     print('      LR: {:.6f}'.format(lr))
-    
+
 class SGDLearningRateTracker(Callback):
     def on_epoch_end(self, epoch, logs={}):
         optimizer = self.model.optimizer
@@ -238,7 +238,7 @@ def fitFC( input_dim, images, y, val_set=None, verbose=1, dkconv=False, early_st
         callbacks.append(EarlyStopping(monitor='val_loss', min_delta=0.0005, patience=5, verbose=verbose, mode='auto'))
 
     optimizer = makeOptimizer( optimizer, learning_rate )
-    
+
     model = model_keras.make_model_fc( num_actions, input_dim, dkconv=dkconv, optimizer=optimizer, dropouts=dropouts, categorical=categorical )
 
     # validation_data: tuple (x_val, y_val)
@@ -391,7 +391,7 @@ def getOptions():
                 del args.val[i]
             elif len(args.val[i]) == 0:
                 del args.val[i]
-            
+
     return args
 
 if __name__ == "__main__":
