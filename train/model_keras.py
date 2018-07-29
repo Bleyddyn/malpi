@@ -140,7 +140,7 @@ def make_conv_layers_fc( model, dkconv=False, l2_reg=0.005, dropouts=[0.25,0.25,
     model.add(Dropout(dropouts[3]))
     model.add(Flatten())
 
-def make_model_fc( num_actions, input_dim, dkconv=False, l2_reg=0.005, optimizer=None, dropouts=[0.25,0.25,0.25,0.25,0.25], categorical=True ):
+def make_model_fc( num_actions, input_dim, dkconv=False, l2_reg=0.005, optimizer=None, dropouts=[0.25,0.25,0.25,0.25,0.25], categorical=True, pre_model=None ):
     model = Sequential()
     model.add(Dropout(dropouts[0], input_shape=input_dim))
     make_conv_layers_fc( model, dkconv, l2_reg=l2_reg, dropouts=dropouts )
@@ -158,6 +158,17 @@ def make_model_fc( num_actions, input_dim, dkconv=False, l2_reg=0.005, optimizer
         act = 'linear'
     model.add(Dense(num_actions, activation=act, kernel_regularizer=regularizers.l2(l2_reg)))
 
+    if pre_model is not None:
+        model.load_weights(pre_model)
+        freeze_layers = False
+        if freeze_layers:
+            num_to_freeze = len(model.layers) - 2
+            #num_to_freeze = len(model.layers) - cfg.NUM_LAST_LAYERS_TO_TRAIN
+            print('freezing %d layers' % num_to_freeze)
+            for i in range(num_to_freeze):
+                model.layers[i].trainable = False
+
+
     if optimizer is None:
         optimizer = optimizers.RMSprop(lr=0.003, rho=0.9, epsilon=1e-08, decay=0.005)
 
@@ -166,6 +177,7 @@ def make_model_fc( num_actions, input_dim, dkconv=False, l2_reg=0.005, optimizer
         metrics_arr=[metrics.categorical_accuracy]
     else:
         loss='mse'
+        #loss='mean_absolute_error'
         metrics_arr=['mse']
     model.compile(loss=loss, optimizer=optimizer, metrics=metrics_arr )
 

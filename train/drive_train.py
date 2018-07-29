@@ -158,6 +158,7 @@ def loadData( dirs, size=(120,120), image_norm=True ):
 
     categorical = True
     if isinstance(actions[0], basestring):
+        actions = np.array(actions)
         actions = actions.astype('str')
         actions = embedActions( actions )
         actions = to_categorical( actions, num_classes=5 )
@@ -227,8 +228,9 @@ def makeOptimizer( optimizer, learning_rate ):
 
     return optimizer
 
-def fitFC( input_dim, images, y, val_set=None, verbose=1, dkconv=False, early_stop=False, categorical=True, epochs=40, timesteps=None, l2_reg=0.005,
-           dropouts=[0.25,0.25,0.25,0.25,0.25], learning_rate=0.003, validation_split=0.15, batch_size=32, optimizer="RMSprop" ):
+def fitFC( input_dim, images, y, val_set=None, verbose=1, dkconv=False, early_stop=False, categorical=True, pre_model=None, epochs=40,
+           timesteps=None, l2_reg=0.005, dropouts=[0.25,0.25,0.25,0.25,0.25], learning_rate=0.003, validation_split=0.15,
+           batch_size=32, optimizer="RMSprop" ):
     num_actions = len(y[0])
     callbacks = None
 
@@ -239,7 +241,8 @@ def fitFC( input_dim, images, y, val_set=None, verbose=1, dkconv=False, early_st
 
     optimizer = makeOptimizer( optimizer, learning_rate )
     
-    model = model_keras.make_model_fc( num_actions, input_dim, dkconv=dkconv, optimizer=optimizer, dropouts=dropouts, categorical=categorical )
+    model = model_keras.make_model_fc( num_actions, input_dim, dkconv=dkconv, optimizer=optimizer, dropouts=dropouts,
+                categorical=categorical, pre_model=pre_model )
 
     # validation_data: tuple (x_val, y_val)
     history = model.fit( images, y, validation_split=validation_split, validation_data=val_set, epochs=epochs, verbose=verbose, batch_size=batch_size, callbacks=callbacks )
@@ -249,10 +252,14 @@ def fitFC( input_dim, images, y, val_set=None, verbose=1, dkconv=False, early_st
     else:
         rm = 'val_mean_squared_error'
     running = runningMean(history.history[rm], 5)
-    max_running = np.max( running )
-    print( "Max validation (rmean=5, at {}): {}".format( np.argmax(running), max_running ) )
+    if categorical:
+        best_running = np.max( running )
+        print( "Max validation (rmean=5, at {}): {}".format( np.argmax(running), best_running ) )
+    else:
+        best_running = np.min( running )
+        print( "Min loss (rmean=5, at {}): {}".format( np.argmin(running), best_running ) )
 
-    return (max_running, history, model)
+    return (best_running, history, model)
 
 def fitLSTM( input_dim, images, y, verbose=1, dkconv=False, early_stop=False, epochs=40, timesteps=10, l2_reg=0.005, dropouts=[0.25,0.25,0.25,0.25,0.25],
              learning_rate=0.003, validation_split=0.15, batch_size=5, optimizer="RMSprop" ):
@@ -359,6 +366,7 @@ def getOptions():
     parser.add_argument('--runs', type=int, default=1, help='How many runs to train')
     parser.add_argument('--name', help='Display name for this training experiment')
     parser.add_argument('--aux', default=None, help='Use this auxiliary data in place of standard actions')
+    parser.add_argument('--model', default=None, help='A file containing weights to pre-load the model')
     parser.add_argument('--val', default=None, help='A file with a list of directories to be used for validation')
     parser.add_argument('--notify', help='Email address to notify when the training is finished')
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
@@ -453,7 +461,7 @@ if __name__ == "__main__":
         expMeta = experiment.Meta(args.name, args, num_samples=num_samples, input_dim=input_dim, num_actions=num_actions, hparams=hparams)
 
     best_model = None
-    best_val = 0.0
+    best_val = 0.0 if cat else 1000.0
     vals = []
     histories = []
     count = args.runs
@@ -462,14 +470,14 @@ if __name__ == "__main__":
         if args.random:
             val, his, model = evaluateRandom( input_dim, images, y, args, hparams )
         elif args.fc:
-            val, his, model = fitFC( input_dim, images, y, val_set=val_xy, verbose=verbose, dkconv=args.dk, early_stop=args.early, categorical=cat, **hparams )
+            val, his, model = fitFC( input_dim, images, y, val_set=val_xy, verbose=verbose, dkconv=args.dk, early_stop=args.early, categorical=cat, pre_model=args.model, **hparams )
         else:
             val, his, model = fitLSTM( input_dim, images, y, verbose=verbose, dkconv=args.dk, early_stop=args.early, **hparams )
         # Return all history from the fit methods and pickle
         vals.append(val)
         if his is not None:
             histories.append(his.history)
-        if val > best_val:
+        if (cat and (val > best_val)) or (not cat and (val < best_val)) :
             best_val = val
             best_model = model
 

@@ -10,6 +10,7 @@ import argparse
 from collections import defaultdict
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
@@ -33,6 +34,29 @@ try:
 except NameError:
   basestring = str
 
+def plotActions( actions, pred, name="Continuous Actions", plot_dir="." ):
+
+    plt.figure(1,figsize=(10, 14), dpi=80)
+    plt.suptitle( name, fontsize=16 )
+    plt.subplot(2, 1, 1)
+    plt.plot(actions[:,0].astype(np.float32))
+    plt.plot(pred[:,0].astype(np.float32))
+    plt.title('Left Motors')
+    plt.ylabel('Action')
+    plt.xlabel('Timesteps')
+    plt.legend(['actions', 'predicted'], loc='upper left')
+    plt.locator_params(axis='y', nbins=10)
+
+    plt.subplot(2, 1, 2)
+    plt.plot(actions[:,1].astype(np.float32))
+    plt.plot(pred[:,1].astype(np.float32))
+    plt.title('Right Motors')
+    plt.ylabel('Action')
+    plt.xlabel('Timesteps')
+    plt.legend(['actions', 'predicted'], loc='upper left')
+    #plt.savefig( os.path.join( plot_dir, name.replace(' ', '_') + '.png' ) )
+    plt.show()
+
 def setCPUCores( cores ):
     # Actual device_count seems to have less effect than number of threads
     config = tf.ConfigProto(intra_op_parallelism_threads=cores, inter_op_parallelism_threads=cores,
@@ -40,6 +64,10 @@ def setCPUCores( cores ):
     set_session(tf.Session(config=config))
 
 def loadOneDrive( drive_dir, size=(120,120), prefix="images" ):
+    actions_file = os.path.join( drive_dir, "image_actions.npy" )
+    if os.path.exists(actions_file):
+        actions = np.load(actions_file)
+
     basename = "{}_{}x{}".format( prefix, size[0], size[1] )
     im_file = os.path.join( drive_dir, basename+".npy" )
     if os.path.exists(im_file):
@@ -49,7 +77,7 @@ def loadOneDrive( drive_dir, size=(120,120), prefix="images" ):
         with open(im_file,'r') as f:
             images = pickle.load(f)
 
-    return images
+    return images, actions
 
 def normalize( images ):
     rmean = 92.93206363205326
@@ -118,7 +146,9 @@ if __name__ == "__main__":
     with open(args.model, "r") as jfile:
         model = model_from_json(jfile.read())
 
-    weights = os.path.splitext(args.model)[0] + '_weights.h5'
+    #weights = os.path.splitext(args.model)[0] + '_weights.h5'
+    weights = os.path.join( os.path.dirname(args.model), os.path.basename(args.model).split('_')[0] + '_weights.h5' )
+    print( weights )
     model.load_weights(weights)
     if args.categorical:
         loss='categorical_crossentropy'
@@ -130,19 +160,19 @@ if __name__ == "__main__":
 
     for onedir in args.dirs:
         print( "{}".format( onedir ) )
-        images = loadOneDrive( onedir )
+        images, actions = loadOneDrive( onedir )
         images = images.astype(np.float)
         normalize( images )
 
-        if args.pred is not None:
-            out = model.predict( x=images )
-            basename = "{}_pred.npy".format( args.pred )
-            pred_file = os.path.join( onedir, basename )
-            np.save( pred_file, out )
-#            else:
-#                auxData = loadAuxData( [onedir], args.aux )
-#                out = model.evaluate( x=images, y=auxData )
-#                print( "{} {}: {}".format( onedir, model.metrics_names, out ) )
-
-    #msg2 = "Model " + args.name
-    #notify.notify( "Lane testing complete", subTitle=msg2, message=msg, email_to=args.notify )
+        pred = model.predict( x=images )
+        print( "Actions shape: {}".format( actions.shape ) )
+        print( "Pred shape: {}".format( pred.shape ) )
+        print( "Mean: {}".format( np.mean(pred) ) )
+        print( "std: {}".format( np.std(pred) ) )
+        print( "min: {}".format( np.min(pred) ) )
+        print( "max: {}".format( np.max(pred) ) )
+        plotActions( actions, pred, name="Continuous Actions", plot_dir="." )
+        #basename = "{}_pred.npy".format( args.pred )
+        #pred_file = os.path.join( onedir, basename )
+        #np.save( pred_file, out )
+# For each action plot out - actions
