@@ -172,6 +172,7 @@ if __name__ == "__main__":
         print( "min: {}".format( np.min(pred) ) )
         print( "max: {}".format( np.max(pred) ) )
         plotActions( actions, pred, name="Continuous Actions", plot_dir="." )
+        #out = model.predict( x=images )
         #basename = "{}_pred.npy".format( args.pred )
         #pred_file = os.path.join( onedir, basename )
         #np.save( pred_file, out )

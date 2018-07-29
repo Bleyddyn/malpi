@@ -274,16 +274,17 @@ if __name__ == "__main__":
     drive_train.setCPUCores(4)
 
     args = drive_train.getOptions()
+
+    if args.test_only:
+        autoencoder = makeAEConvStrides((120,120,3))
+        autoencoder.summary()
+        exit()
+
     images, y = drive_train.loadData(args.dirs, size=(128,128), image_norm=False)
     images = images.astype('float32') / 255.
     input_dim = images[0].shape
     num_samples = len(images)
     num_actions = 0
-
-    if args.test_only:
-        autoencoder = makeAEConvStrides(input_dim)
-        autoencoder.summary()
-        exit()
 
     x_train, x_test, y_train, y_test = train_test_split(images, y, test_size=0.2, random_state=1)
 
