@@ -7,7 +7,7 @@ import argparse
 def addMalpiOptions( parser, test_only=True):
 
     parser.add_argument('dirs', nargs='*', metavar="Directory", help='A directory containing recorded robot data')
-    parser.add_argument('-f', '--file', help='File with one directory per line')
+    parser.add_argument('-f', '--file', action="append", help='File with one directory per line')
     if test_only:
         parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
 
@@ -20,9 +20,10 @@ def removeComments( dir_list ):
 
 def preprocessOptions( args ):
     if args.file is not None:
-        with open(args.file, "r") as f:
-            tmp_dirs = f.read().split('\n')
-            args.dirs.extend(tmp_dirs)
+        for afile in args.file:
+            with open(afile, "r") as f:
+                tmp_dirs = f.read().split('\n')
+                args.dirs.extend(tmp_dirs)
 
     removeComments( args.dirs )
 

@@ -40,6 +40,16 @@ def loadOneAux( drive_dir, aux ):
 
     return actions
 
+def getAuxFromMeta( drive_dir, auxName ):
+    
+    aux_file = os.path.join( drive_dir, "aux.json" )
+    if os.path.exists(aux_file):
+        with open(aux_file,'r') as f:
+            auxMeta = json.load(f)
+        if auxName in auxMeta:
+            return auxMeta[auxName]
+    return None
+
 def loadAuxData( dirs, auxName ):
 
     actions = []
@@ -48,30 +58,20 @@ def loadAuxData( dirs, auxName ):
 
     for onedir in dirs:
         if len(onedir) > 0:
-            aux_file = os.path.join( onedir, "aux.json" )
-            if os.path.exists(aux_file):
-                with open(aux_file,'r') as f:
-                    auxMeta = json.load(f)
-                if auxName in auxMeta:
-                    nc = auxMeta[auxName]
-                    if aux is None:
-                        aux = nc
-                    elif not sameAux( aux, nc ):
-                        print( "Error: Inconsistent auxiliary meta data:\n{}\n{}".format(aux,nc) )
-                        return None
-                    dactions = loadOneAux( onedir, aux )
-                    #try:
-                    #    tmpy = embedAux( dactions, aux )
-                    #except:
-                    #    print( "embed failed: {}".format( onedir ) )
-                    actions.extend(dactions)
-                    print( "Loading {} of {}: {} auxiliary data".format( count, len(dirs), len(actions) ), end='\r' )
-                    sys.stdout.flush()
-                    count += 1
-                else:
-                    print( "Error: Missing auxiliary meta data for {} in {}".format( auxName, onedir ) )
+            nc = getAuxFromMeta( onedir, auxName )
+            if nc is not None:
+                if aux is None:
+                    aux = nc
+                elif not sameAux( aux, nc ):
+                    print( "Error: Inconsistent auxiliary meta data:\n{}\n{}".format(aux,nc) )
+                    return None
+                dactions = loadOneAux( onedir, aux )
+                actions.extend(dactions)
+                print( "Loading {} of {}: {} auxiliary data".format( count, len(dirs), len(actions) ), end='\r' )
+                sys.stdout.flush()
+                count += 1
             else:
-                print( "Error: Missing auxiliary meta data for: {}".format( onedir ) )
+                print( "Error: Missing auxiliary meta data for {} in {}".format( auxName, onedir ) )
 
     print("")
 
@@ -140,7 +140,7 @@ def getDirs(fname):
     return dirs
 
 if __name__ == "__main__":
-    dirs = getDirs("dirs.txt")
+    dirs = getDirs("dirs_lanes.txt")
     aux = "TestAux"
 
     #auxData = loadAuxData( dirs, aux )
