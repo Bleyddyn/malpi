@@ -199,6 +199,9 @@ class DriveDataGenerator(Sequence):
         elif self.categorical != categorical:
             print( "Mixed cat/non-cat action space: {}".format( drive_dir ) )
 
+        if not self.categorical:
+            actions = self.addActionDiff(actions)
+
         if self.num_actions is None:
             self.num_actions = len(actions[0])
 
@@ -235,6 +238,13 @@ class DriveDataGenerator(Sequence):
             count += self.loadOneDrive( onefile, count_only=True)
         return count
 
+    def addActionDiff(self, actions):
+        diff = actions[:,0] - actions[:,1]
+        diff *= 10.0
+        diff = np.reshape( diff, (diff.shape[0], 1) )
+        actions = np.hstack( (actions, diff)  )
+        return actions
+
 def runTests(args):
     pass
 
@@ -259,6 +269,21 @@ if __name__ == "__main__":
 
     print( "# samples: {}".format( gen.count ) )
     print( "# batches: {}".format( len(gen) ) )
+
+    _, actions = gen[0]
+    print( "Actions: {}".format( actions.shape ) )
+    print( "   mean: {}".format( np.mean(actions, axis=0) ) )
+    print( "  stdev: {}".format( np.std(actions, axis=0) ) )
+    #diff = actions[:,0] - actions[:,1]
+    #print( "  Diffs: {}".format( diff.shape ) )
+    #print( "   mean: {}".format( np.mean(diff, axis=0) ) )
+    #print( "  stdev: {}".format( np.std(diff, axis=0) ) )
+    #diff = np.reshape( diff, (diff.shape[0], 1) )
+    #actions = np.hstack( (actions, diff)  )
+    #print( "Actions: {}".format( actions.shape ) )
+
+    exit()
+
     for i in range(len(gen)):
         images, actions = gen[i]
         #print( "Batch {}: {} {}".format( i, images.shape, actions.shape ), end='\r' )
