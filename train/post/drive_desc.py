@@ -282,7 +282,8 @@ if __name__ == "__main__":
         if data is not None:
             sampleImages( args.dirs[0], data, indent=indent )
         exit()
-        
+
+    count = 0
     for adir in args.dirs:
         print( adir )
         if args.stats:
@@ -295,6 +296,8 @@ if __name__ == "__main__":
             if data is not None:
                 if args.desc:
                     output = describeData( data, indent=indent )
+                    cnt = len(data['image_actions'])
+                    count += cnt
                     meta = os.path.join( adir, 'meta.txt' )
                     if not os.path.exists(meta):
                         with open(meta, 'w') as f:
@@ -308,6 +311,8 @@ if __name__ == "__main__":
                     else:
                         print( "{}Model: {}".format( indent, data['model'] ) )
                     makeActions( adir, data, indent=indent )
-                    isize = (128,128)
+                    isize = (120,120)
                     makeSmallImages( adir, data, size=isize, indent=indent )
                     convertDriveToNumpy( adir, size=isize, indent=indent )
+    if args.desc:
+        print( "Total samples: {}".format( count ) )

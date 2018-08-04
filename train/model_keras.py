@@ -15,6 +15,7 @@ import numpy as np
 import json
 import time
 
+import tensorflow as tf
 from keras.models import Sequential
 from keras.models import Model
 from keras.layers import Dense, Dropout, Activation, Flatten, Input
@@ -153,7 +154,8 @@ def make_model_fc( num_actions, input_dim, dkconv=False, l2_reg=0.005, optimizer
         model.add(Dense(256, activation='relu', kernel_regularizer=regularizers.l2(l2_reg)))
     
     if categorical:
-        act = 'softmax'
+        #act = 'softmax'
+        act = Activation(tf.nn.softmax)
     else:
         act = 'linear'
     model.add(Dense(num_actions, activation=act, kernel_regularizer=regularizers.l2(l2_reg)))
@@ -233,13 +235,16 @@ def save_model( model, model_dir, model_name ):
         json.dump(model.to_json(), outfile)
 
 def read_model( model_dir, model_name ):
-    filename = os.path.join( model_dir, model_name+'.json')
+    filename = os.path.join( model_dir, model_name+'_model.json')
     with open(filename, "r") as jfile:
-        model = model_from_json(json.load(jfile))
+        #model = model_from_json(json.load(jfile))
+        model = model_from_json(jfile.read())
 
-    filename = os.path.join( model_dir, model_name+'.hdf5')
-    model.load_weights( filename )
     model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+    filename = os.path.join( model_dir, model_name+'_weights.h5')
+    model.load_weights( filename )
+
     return model
 
 if __name__ == "__main__":

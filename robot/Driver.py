@@ -32,7 +32,7 @@ def log( message, options ):
         outf.write(datestr + ": " + message + "\n")
 
 class Driver:
-    def __init__(self, model_path, camera, controller):
+    def __init__(self, model_path, camera, controller, model_name=None):
         """ model_path: location of the saved keras model
             camera: A instance of PiVideoStream
             controller: DriveDaemon which handles creating the camera and sending motor commands
@@ -55,10 +55,12 @@ class Driver:
         else:
             #self.model = model_keras.make_model_test( len(self.embedding), (120,120,3), dropouts=[0.25,0.25,0.25,0.25,0.25] )
             if self.continuous:
-                self.model = model_keras.make_model_fc( 2, (120,120,3), dkconv=True, dropouts=[0.25,0.25,0.25,0.25,0.25] )
+                self.model = model_keras.make_model_fc( 3, (120,120,3), dkconv=True, dropouts=[0.25,0.25,0.25,0.25,0.25], categorical=False )
+                #self.model = model_keras.read_model( model_path, model_name )
             else:
-                self.model = model_keras.make_model_fc( len(self.embedding), (120,120,3), dkconv=True, dropouts=[0.25,0.25,0.25,0.25,0.25] )
-        self.model.load_weights( model_path )
+                self.model = model_keras.read_model( model_path, model_name )
+                #self.model = model_keras.make_model_fc( len(self.embedding), (120,120,3), dkconv=True, dropouts=[0.25,0.25,0.25,0.25,0.25] )
+        #self.model.load_weights( os.path.join( model_path, model_name+"_weights.h5" )
         self.model._make_predict_function()
         self.graph = tf.get_default_graph()
         #self.graph = K.get_session().graph # This should work, too
@@ -187,7 +189,8 @@ if __name__ == "__main__":
         test(options)
 
     #def __init__(self, drive_dir, video_path=None, camera=None, image_delay=None):
-    with Driver( os.path.expanduser("~/models/cont1.h5") ) as adrive:
-        adrive.startDriving( options )
+    #with Driver( os.path.expanduser("~/models/default.h5"), None, None ) as adrive:
+    with Driver( os.path.expanduser("~/models"), None, None, model_name="default" ) as adrive:
+        adrive.startDriving()
         sleep(20)
         adrive.endDriving()
