@@ -229,7 +229,6 @@ def sampleImages( drive_dir, data, indent="", count=5 ):
 
         plt.show()
 
-
 def runTests(args, data):
     pass
 
@@ -283,7 +282,7 @@ if __name__ == "__main__":
             sampleImages( args.dirs[0], data, indent=indent )
         exit()
 
-    count = 0
+    count = 0        
     for adir in args.dirs:
         print( adir )
         if args.stats:
@@ -296,8 +295,7 @@ if __name__ == "__main__":
             if data is not None:
                 if args.desc:
                     output = describeData( data, indent=indent )
-                    cnt = len(data['image_actions'])
-                    count += cnt
+                    count += len(data['image_times'])
                     meta = os.path.join( adir, 'meta.txt' )
                     if not os.path.exists(meta):
                         with open(meta, 'w') as f:

@@ -4,9 +4,17 @@ import json
 import numpy as np
 from keras.utils import to_categorical
 
+try:
+  basestring
+except NameError:
+  basestring = str
+
 def sameAux( aux1, aux2 ):
-    for idx in ["name", "type", "categories"]:
+    for idx in ["name", "type"]:
         if aux1[idx] != aux2[idx]:
+            return False
+    if "categorical" == aux1["type"]:
+        if aux1["categories"] != aux2["categories"]:
             return False
     return True
 
@@ -32,6 +40,16 @@ def loadOneAux( drive_dir, aux ):
 
     return actions
 
+def getAuxFromMeta( drive_dir, auxName ):
+    
+    aux_file = os.path.join( drive_dir, "aux.json" )
+    if os.path.exists(aux_file):
+        with open(aux_file,'r') as f:
+            auxMeta = json.load(f)
+        if auxName in auxMeta:
+            return auxMeta[auxName]
+    return None
+
 def loadAuxData( dirs, auxName ):
 
     actions = []
@@ -40,32 +58,35 @@ def loadAuxData( dirs, auxName ):
 
     for onedir in dirs:
         if len(onedir) > 0:
-            aux_file = os.path.join( onedir, "aux.json" )
-            if os.path.exists(aux_file):
-                with open(aux_file,'r') as f:
-                    auxMeta = json.load(f)
-                if auxName in auxMeta:
-                    nc = auxMeta[auxName]
-                    if aux is None:
-                        aux = nc
-                    elif not sameAux( aux, nc ):
-                        print( "Error: Inconsistent auxiliary meta data:\n{}\n{}".format(aux,nc) )
-                        return None
-                    dactions = loadOneAux( onedir, aux )
-                    try:
-                        tmpy = embedAux( dactions, aux )
-                    except:
-                        print( "embed failed: {}".format( onedir ) )
-                    actions.extend(dactions)
-                    print( "Loading {} of {}: {} auxiliary data".format( count, len(dirs), len(actions) ), end='\r' )
-                    sys.stdout.flush()
-                    count += 1
+            nc = getAuxFromMeta( onedir, auxName )
+            if nc is not None:
+                if aux is None:
+                    aux = nc
+                elif not sameAux( aux, nc ):
+                    print( "Error: Inconsistent auxiliary meta data:\n{}\n{}".format(aux,nc) )
+                    return None
+                dactions = loadOneAux( onedir, aux )
+                actions.extend(dactions)
+                print( "Loading {} of {}: {} auxiliary data".format( count, len(dirs), len(actions) ), end='\r' )
+                sys.stdout.flush()
+                count += 1
+            else:
+                print( "Error: Missing auxiliary meta data for {} in {}".format( auxName, onedir ) )
 
     print("")
 
-    y = embedAux( actions, aux )
-    y = to_categorical( y, num_classes=len(aux["categories"]) )
-    return y
+    categorical = True
+    if isinstance(actions[0], basestring):
+        actions = embedAux( actions, aux )
+        actions = to_categorical( actions, num_classes=len(aux["categories"]) )
+        categorical = True
+    elif type(actions) == list:
+        actions = np.array(actions)
+        categorical = False
+    else:
+        print("Unknown aux actions format: {} {} as {}".format( type(actions), actions[0], type(actions[0]) ))
+
+    return actions, categorical
 
 def badAuxData( dirs, auxName ):
 #{"LanePosition": {"name": "LanePosition", "type": "categorical", "default": "CenterLine", "categories": ["OutsideTrack", "OutsideLine", "LeftLane", "CenterLine", "RightLane", "InsideLine", "InsideTrack"]}}
@@ -119,7 +140,7 @@ def getDirs(fname):
     return dirs
 
 if __name__ == "__main__":
-    dirs = getDirs("dirs.txt")
+    dirs = getDirs("dirs_lanes.txt")
     aux = "TestAux"
 
     #auxData = loadAuxData( dirs, aux )

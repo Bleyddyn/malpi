@@ -174,17 +174,32 @@ if __name__ == "__main__":
 
     if len(data) == 1:
         hist0 = data[0]
-        plotHistory( hist0['loss'], hist0['categorical_accuracy'], hist0['val_loss'], hist0['val_categorical_accuracy'], plot_name, plot_dir )
+        if 'categorical_accuracy' in hist0:
+            plotHistory( hist0['loss'], hist0['categorical_accuracy'], hist0['val_loss'], hist0['val_categorical_accuracy'], plot_name, plot_dir )
+        elif 'mean_squared_error' in hist0:
+#        dict_keys(['val_loss', 'val_mean_squared_error', 'loss', 'mean_squared_error'])
+            plotHistory( hist0['loss'], hist0['mean_squared_error'], hist0['val_loss'], hist0['val_mean_squared_error'], plot_name, plot_dir )
     elif len(data) > 1:
         loss=[]
         acc=[]
         val_loss=[]
         val_acc=[]
         for hist in data:
-            loss.append(hist['loss'])
-            acc.append(hist['categorical_accuracy'])
-            val_loss.append(hist['val_loss'])
-            val_acc.append(hist['val_categorical_accuracy'])
+            print( hist.keys() )
+            loss.append(np.array(hist['loss']))
+            val_loss.append(np.array(hist['val_loss']))
+            if 'categorical_accuracy' in hist:
+                acc.append(np.array(hist['categorical_accuracy']))
+                val_acc.append(np.array(hist['val_categorical_accuracy']))
+            elif 'mean_squared_error' in hist:
+                acc.append(np.array(hist['mean_squared_error']))
+                val_acc.append(np.array(hist['val_mean_squared_error']))
+
+        loss = np.array(loss)
+        acc = np.array(acc)
+        val_loss = np.array(val_loss)
+        val_acc = np.array(val_acc)
+
         #for i in range(len(loss)):
         #    plt.plot( loss[i] )
         #plt.show()
