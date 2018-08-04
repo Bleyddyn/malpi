@@ -312,5 +312,5 @@ if __name__ == "__main__":
                     isize = (120,120)
                     makeSmallImages( adir, data, size=isize, indent=indent )
                     convertDriveToNumpy( adir, size=isize, indent=indent )
-    if count > 0:
+    if args.desc:
         print( "Total samples: {}".format( count ) )

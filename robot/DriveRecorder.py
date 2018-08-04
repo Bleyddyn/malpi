@@ -48,12 +48,16 @@ class DriveRecorder:
         self.drive_name = drive_name
         self.accel = None
 
+        self.continuous = True
         self.images = []
         self.image_index = 1
         self.max_images = 10
         self.image_times = []
         self.image_actions = []
-        self.actions = [(0.0,0.0)]
+        if self.continuous:
+            self.actions = [(0.0,0.0)]
+        else:
+            self.actions = ["stop"]
         self.action_times = []
 
     def setVideoFilename(filename):
@@ -77,6 +81,9 @@ class DriveRecorder:
         led.turnAllLEDOn( False )
 
     def addAction(self,action):
+        if self.continuous:
+            if type(action) is not list and type(action) is not tuple:
+                print( "Invalid continuous action in DriveRecorder.addAction: {} {}".format( action, type(action) ) )
         self.actions.append(action)
         self.action_times.append(time())
 
@@ -156,6 +163,8 @@ class DriveRecorder:
         image_pkg["images"] = images
         image_pkg["image_times"] = image_times
         image_pkg["image_actions"] = image_actions
+        if len(images) != len(image_actions):
+            print( "Data mismatch in DriveRecorder.packageImages: {} != {}".format( len(images), len(image_actions) ) )
         return image_pkg
 
 def getOptions():

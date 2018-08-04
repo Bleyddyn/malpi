@@ -238,13 +238,15 @@ class App():
 
     def startDrive( self, model_name ):
         if not model_name:
-            model_name = "default.h5"
+            #model_name = "default.h5"
+            model_name = "default"
         model_path = os.path.join( config.directories['models'], model_name )
+        model_path = config.directories['models']
         # This doesn't work. crashes when trying to load weights
         #if self.driver and model_path != self.driver.model_path:
         #    self.driver = None
         if not self.driver:
-            self.driver = Driver.Driver( model_path, camera=self.raw, controller=self )
+            self.driver = Driver.Driver( model_path, camera=self.raw, controller=self, model_name=model_name )
         self.driver.startDriving()
 
     def endDrive( self ):
