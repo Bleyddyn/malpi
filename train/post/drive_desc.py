@@ -90,13 +90,15 @@ def makeActions( drive_dir, data, indent="" ):
         print( "{}Image actions already exists".format( indent ) )
 
 def makeSmallImages( drive_dir, data, size=(120,120), indent="" ):
+    skip_other = re.compile("images_[0-9]+x[0-9]+.pickle")
     ofname = os.path.join( drive_dir, 'images_{}x{}.pickle'.format( size[0], size[1] ) )
     if not os.path.exists(ofname):
         smallImages = []
         image_files = []
         for fname in os.listdir(drive_dir):
             if fname.startswith("images_") and fname.endswith(".pickle"):
-                image_files.append(fname)
+                if skip_other.match(fname) is None:
+                    image_files.append(fname)
         image_files.sort(key=natural_keys)
         for fname in image_files:
             ifname = os.path.join( drive_dir, fname )
@@ -229,14 +231,15 @@ def sampleImages( drive_dir, data, indent="", count=5 ):
 
         plt.show()
 
-def runTests(args, data):
-    pass
+def runTests(args):
+    print( "Size = {}".format( list(args.size) ) )
 
 def getOptions():
 
     parser = argparse.ArgumentParser(description='View or post-process collected drive data.')
     parser.add_argument('dirs', nargs='*', metavar="Directory", help='A directory containing recorded robot data')
     parser.add_argument('-f', '--file', help='File with one directory per line')
+    parser.add_argument('--size', type=int, nargs=2, help='Size of images (height, width) to generate')
 
     group = parser.add_mutually_exclusive_group()
 
@@ -246,7 +249,6 @@ def getOptions():
     group.add_argument('--stats', action="store_true", default=False, help='Display image stats for each directory')
     group.add_argument('--py2py3', action="store_true", default=False, help='Read pickle files and save to numpy files')
     group.add_argument('--extract', help='Extract images from original file(s) into a new file with this prefix')
-
     args = parser.parse_args()
 
     if args.file is not None:
@@ -309,7 +311,7 @@ if __name__ == "__main__":
                     else:
                         print( "{}Model: {}".format( indent, data['model'] ) )
                     makeActions( adir, data, indent=indent )
-                    isize = (120,120)
+                    isize = args.size
                     makeSmallImages( adir, data, size=isize, indent=indent )
                     convertDriveToNumpy( adir, size=isize, indent=indent )
     if args.desc:
