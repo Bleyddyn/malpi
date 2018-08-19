@@ -199,8 +199,9 @@ class DriveDataGenerator(Sequence):
         elif self.categorical != categorical:
             print( "Mixed cat/non-cat action space: {}".format( drive_dir ) )
 
-        if not self.categorical:
-            actions = self.addActionDiff(actions)
+        # Need an option for this
+        #if not self.categorical:
+        #    actions = self.addActionDiff(actions)
 
         if self.num_actions is None:
             self.num_actions = len(actions[0])
@@ -240,7 +241,7 @@ class DriveDataGenerator(Sequence):
 
     def addActionDiff(self, actions):
         diff = actions[:,0] - actions[:,1]
-        diff *= 10.0
+        #diff *= 10.0
         diff = np.reshape( diff, (diff.shape[0], 1) )
         actions = np.hstack( (actions, diff)  )
         return actions
