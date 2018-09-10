@@ -199,6 +199,10 @@ class DriveDataGenerator(Sequence):
         elif self.categorical != categorical:
             print( "Mixed cat/non-cat action space: {}".format( drive_dir ) )
 
+        # Try training only the steering actions
+        actions = actions[:,0]
+        self.num_actions = 1
+
         # Need an option for this
         #if not self.categorical:
         #    actions = self.addActionDiff(actions)
