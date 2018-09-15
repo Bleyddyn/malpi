@@ -60,7 +60,7 @@ class Driver:
             else:
                 self.model = model_keras.read_model( model_path, model_name )
                 #self.model = model_keras.make_model_fc( len(self.embedding), (120,120,3), dkconv=True, dropouts=[0.25,0.25,0.25,0.25,0.25] )
-        #self.model.load_weights( os.path.join( model_path, model_name+"_weights.h5" )
+        self.model.load_weights( os.path.join( model_path, model_name+"_weights.h5" ) )
         self.model._make_predict_function()
         self.graph = tf.get_default_graph()
         #self.graph = K.get_session().graph # This should work, too

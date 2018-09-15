@@ -109,6 +109,9 @@ class App():
         elif action.startswith( 'throttles', 0, len('throttles') ):
             alist = self.continuous(action)
             self.recordCommand(alist)
+        elif action.startswith( 'dk', 0, len('dk') ):
+            alist = self.dk_actions(action)
+            self.recordCommand(alist)
 
         elif action.startswith( 'record_start', 0, len('record_start') ):
             name = None
@@ -377,6 +380,60 @@ class App():
             self.stopMotors()
 
         return (lval,rval)
+
+    def dk_actions(self, action):
+        """ Take in steering and throttle, as if for a donkeycar, and output commands appropriate for malpi.
+        """
+        min_ctrl = 0.1
+        radius = 0.3 # Simulate a turning radius
+        steering = 0.0
+        throttle = 0.0
+        acts = action.split(" ")
+        try:
+            steering = float(acts[1])
+            throttle = float(acts[2])
+            forward = True if throttle > 0.0 else False
+            throttle = abs(throttle)
+
+            if abs(throttle) < min_ctrl:
+                # Cutoff for low throttle values, to make it easier to stop
+                throttle = 0.0
+                steering = 0.0
+                lts = 0
+                rts = 0
+            else:
+                if abs(steering) < min_ctrl:
+                    # straight ahead
+                    lts = throttle
+                    rts = throttle
+                else:
+                    diff = steering * radius * throttle
+                    lts = throttle + diff
+                    rts = throttle - diff
+                    if lts > 1.0:
+                        diff = lts - 1.0
+                        lts = 1.0
+                        rts -= diff
+                    elif rts > 1.0:
+                        diff = rts - 1.0
+                        rts = 1.0
+                        lts -= diff
+
+                lts = int(abs( lts * 255.0 ))
+                rts = int(abs( rts * 255.0 ))
+                logger.info("dk-raw {} {} {} {} {}".format( steering, throttle, forward, lts, rts ) )
+
+            self.setMotor( 1, forward, lts )
+            self.setMotor( 2, forward, lts )
+            self.setMotor( 3, forward, rts )
+            self.setMotor( 4, forward, rts )
+            self.last_command = None
+        except Exception as ex:
+            print( "dk action failed: {}".format( action ) )
+            print( "    {}".format( ex ) )
+            self.stopMotors()
+
+        return (steering,throttle)
 
 var_path = os.path.join( config.directories['drives'], 'var' )
 app = App( var_path )

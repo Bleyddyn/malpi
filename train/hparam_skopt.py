@@ -1,129 +1,72 @@
 import pickle
 import datetime
+import numpy as np
 from skopt.space import Real, Integer, Categorical, Dimension, Identity
 from skopt.utils import use_named_args
 from skopt import gp_minimize
 from skopt import dump, load
 
-from drive_train import *
+# Requires the latest version:
+# pip3 install git+https://github.com/scikit-optimize/scikit-optimize/
+from skopt.callbacks import CheckpointSaver
 
-class Constant(Dimension):
-    def __init__(self, value, prior=None, transform=None, name=None):
-        """Search space dimension with a constant value.
-        For convenience when passing hyperparameters to the learned function.
-        Doesn't currently work.
+from train import fitFC, setCPUCores, hparamsToDict, hparamsToArray
+from load_drives import DriveDataGenerator
 
-        Parameters
-        ----------
-        * `value` [float or integer]:
-            Constant value.
-
-        * `prior` [list, shape=(categories,), default=None]:
-            Prior probabilities for each category. By default all categories
-            are equally likely.
-
-        * `transform` ["identity", default="identity"] :
-            - "identity", the transformed space is the same as the original
-              space.
-
-        * `name` [str or None]:
-            Name associated with dimension, e.g., "colors".
-        """
-        self.value = value
-        self.name = name
-
-        if transform is None:
-            transform = "identity"
-        self.transform_ = "identity"
-        if transform not in ["identity"]:
-            raise ValueError("Expected transform to be 'identity' or None got {}".format(transform))
-        self.transformer = Identity()
-        self.prior = prior
-
-        self.prior_ = prior
-
-    def __eq__(self, other):
-        return (type(self) is type(other) and self.value == other.value)
-
-    def __repr__(self):
-        return "Constant(value={})".format(self.value)
-
-    def rvs(self, n_samples=None, random_state=None):
-        if n_samples is None:
-            return self.value
-        else:
-            return [self.value] * n_samples
-
-    @property
-    def transformed_size(self):
-        return 1
-
-    @property
-    def bounds(self):
-        return [self.value]
-
-    def __contains__(self, point):
-        return point == self.value
-
-    @property
-    def transformed_bounds(self):
-        return (0.0, 1.0)
-
-    def distance(self, a, b):
-        """Compute distance between category `a` and `b`.
-
-        As categories have no order the distance between two points is one
-        if a != b and zero otherwise.
-
-        Parameters
-        ----------
-        * `a` [category]
-            First category.
-
-        * `b` [category]
-            Second category.
-        """
-        return 1 if a != b else 0
+import keras.backend as K
 
 class Holder:
-    def __init__(self, input_dim, images, y, isFC=False):
-        self.input_dim = input_dim
-        self.images = images
-        self.y = y
+    def __init__(self, dirs, log_to=None):
+        self.dirs = dirs
         self.vals = []
         self.run = 0
-        self.isFC = isFC
+        self.log_to = log_to
+        self.input_dim = (120,120,3)
+
+    def _makeGenerators(self, dirs, batch_size):
+        val_split = 0.2
+        last = int(len(dirs) * val_split)
+        np.random.shuffle(dirs)
+        test = dirs[:last]
+        train = dirs[last:]
+        dirs = train
+        val = test
+        image_size = (120,120)
+        gen = DriveDataGenerator(dirs, image_size=image_size, batch_size=batch_size, shuffle=True, max_load=20000, auxName=None )
+        val = DriveDataGenerator(val, image_size=image_size, batch_size=batch_size, shuffle=True, max_load=10000, auxName=None )
+        #cat = gen.categorical
+        return gen, val
 
 #    @use_named_args(space)
     def __call__(self, args):
         print( args )
-        if self.isFC:
-            l2_reg, dropouts, learning_rate, batch_size, optimizer = args
-        else:
-            l2_reg, dropouts, learning_rate, batch_size, optimizer, timesteps = args
+        l2_reg, dropouts, learning_rate, batch_size, optimizer = args
         arg_dict = { 'l2_reg': l2_reg,
                      'dropouts': dropouts,
                      'learning_rate': learning_rate,
                      'batch_size': batch_size,
                      'optimizer': optimizer }
-        if not self.isFC:
-            arg_dict['timesteps'] = timesteps
 
         self.run += 1
         hparams = hparamsToDict( hparamsToArray( arg_dict ) )
+
+        gen, val = self._makeGenerators(self.dirs, batch_size)
+        num_actions = gen.num_actions
+        num_samples = gen.count
+
         print( "Run {}".format( self.run ) )
         print( "   Args {}".format( args ) )
         print( "   Hparams {}".format( hparams ) )
-        if self.isFC:
-            val, his, model = fitFC( self.input_dim, self.images, self.y, verbose=0, **hparams )
-        else:
-            val, his, model = fitLSTM( self.input_dim, self.images, self.y, verbose=0, **hparams )
+        val, his, model = fitFC( self.input_dim, num_actions, gen, val, val_set=None, verbose=0, dkconv=True, early_stop=True,
+                categorical=gen.categorical, pre_model=None, **hparams )
         self.vals.append(val)
         print( "   Val acc {}".format( val ) )
-        with open( 'skopt_current.txt', 'a' ) as f:
-            f.write( "{}\n".format( val ) )
-        #ret = { 'loss': 1.0 - val, 'status': STATUS_OK, 'history':pickle.dumps(his.history), 'val':val }
-        return 1.0 - val
+        if self.log_to is not None:
+            with open( self.log_to, 'a' ) as f:
+                f.write( "Run {}".format( self.run ) )
+                f.write( "   Hparams {}".format( hparams ) )
+                f.write( "   Val loss {}\n".format( val ) )
+        return val
 
 
 def runParamTests(args):
@@ -153,7 +96,15 @@ def runParamTests(args):
         print( "Validation accuracy {} {} ({})".format( np.mean(vals), np.std(vals), vals ) )
 
 if __name__ == "__main__":
-    args = getOptions()
+    import argparse
+    import malpiOptions
+
+    parser = argparse.ArgumentParser(description='Hyperparameter Optimizer.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-n', '--number', type=int, default=100, help='Number of test runs')
+
+    malpiOptions.addMalpiOptions( parser )
+    args = parser.parse_args()
+    malpiOptions.preprocessOptions(args)
 
     K.set_learning_phase(True)
     setCPUCores( 4 )
@@ -162,30 +113,11 @@ if __name__ == "__main__":
         runParamTests(args)
         exit()
 
-    images, y = loadData(args.dirs)
-    input_dim = images[0].shape
-    num_actions = len(y[0])
-    num_samples = len(images)
+    logfile = "skopt_current.txt"
+    holder = Holder( args.dirs, log_to=logfile )
 
-    holder = Holder(input_dim, images, y, args.fc)
+    max_batch = 128
 
-    if args.fc:
-        max_batch = 128
-    else:
-        max_batch = 20
-
-    """
-    space  = [
-              Constant(0, 0, name='timesteps'),
-              Real(10**-10, 10**-3, "log-uniform", name='l2_reg'),
-              Categorical(["low","mid","high","up","down"], name='dropouts'),
-              Real(10**-9, 10**-4, "log-uniform", name='learning_rate'),
-              Constant(0.2, 0.2, name='validation_split'),
-              Integer(5, max_batch, name='batch_size'),
-              Categorical(["RMSProp", "Adagrad", "Adadelta", "Adam"], name='optimizer'),
-              Constant(40, 40, name='epochs')
-              ]
-    """
     space  = [
               Real(10**-10, 10**-3, "log-uniform", name='l2_reg'),
               Categorical(["low","mid","high","up","down"], name='dropouts'),
@@ -194,14 +126,10 @@ if __name__ == "__main__":
               Categorical(["RMSProp", "Adagrad", "Adadelta", "Adam"], name='optimizer'),
               ]
 
-    if not args.fc:
-        space.append( Integer(5,20,name='timesteps') )
+    with open( logfile, 'a' ) as f:
+        f.write( "#{} {} {}\n".format( "FC", "DK", datetime.datetime.now() ) )
 
-
-    with open( 'skopt_current.txt', 'a' ) as f:
-        f.write( "#{} {} {}\n".format( ("FC" if args.fc else "RNN"), ("DK" if args.dk else "DM"), datetime.datetime.now() ) )
-
-    res_gp = gp_minimize(holder, space, n_calls=100)
+    res_gp = gp_minimize(holder, space, n_calls=args.number)
  
     print( "Best: {}".format( res_gp.fun ) )
     print("""Best parameters:

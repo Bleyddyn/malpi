@@ -174,7 +174,7 @@ def sendCommand( steering, throttle, recording ):
     except Exception as inst:
         print( "Failed to send command" )
 
-def sendContinuousCommand( left_throttle, right_throttle, recording ):
+def sendContinuousCommand( left_throttle, right_throttle, recording, dk=False ):
     #min_ctrl = 0.1
     #if abs(left_throttle) < min_ctrl and abs(right_throttle) < min_ctrl:
     #    left_throttle = 0.0
@@ -183,6 +183,8 @@ def sendContinuousCommand( left_throttle, right_throttle, recording ):
     if recording is not None:
         direction = recording
         print( "Recording: {}".format( direction ) )
+    elif dk:
+        direction = "dk {} {}".format(left_throttle, right_throttle)
     else:
         direction = "throttles {} {}".format(left_throttle, right_throttle)
     try:
@@ -203,7 +205,8 @@ if __name__ == "__main__":
     ctr = JoystickController(max_throttle=JOYSTICK_MAX_THROTTLE,
                              steering_scale=JOYSTICK_STEERING_SCALE,
                              auto_record_on_throttle=AUTO_RECORD_ON_THROTTLE,
-                             verbose=True)
+                             throttle_axis='ry')
+                             #verbose=True)
 
     rate_hz=10
     max_loop_count=None
@@ -236,8 +239,9 @@ if __name__ == "__main__":
 
             #sendCommand( outputs[0], outputs[1], rec )
             #print( "{}".format(outputs) )
-            sendContinuousCommand( outputs[4], outputs[1], rec )
-            #print( "L/R: {} {}".format(outputs[4],outputs[1]) )
+            #sendContinuousCommand( outputs[4], outputs[1], rec )
+            sendContinuousCommand( outputs[0], outputs[1], rec, dk=True )
+            #print( "L/R: {} {}".format(outputs[0],outputs[1]) )
 
             #stop drive loop if loop_count exceeds max_loopcount
             if max_loop_count and loop_count > max_loop_count:

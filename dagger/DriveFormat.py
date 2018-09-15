@@ -9,7 +9,7 @@
 class DriveFormat:
     """ A base class to represent a drive on disc.
     Callers can call handlerForFile(path) to get an object that can read/write the given file.
-    Sub classes need to call registerFormat(...) so they will be know to DriveFormat.
+    Sub classes need to call registerFormat(...) so they will be known to DriveFormat.
     """
 
     _formats = {}

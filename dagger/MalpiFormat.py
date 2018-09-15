@@ -5,6 +5,13 @@ from DriveFormat import DriveFormat
 from collections import defaultdict
 import numpy as np
 
+# For python2/3 compatibility when calling isinstance(x,basestring)
+# From: https://stackoverflow.com/questions/11301138/how-to-check-if-variable-is-string-with-python-2-and-3-compatibility
+try:
+  basestring
+except NameError:
+  basestring = str
+
 class MalpiFormat(DriveFormat):
     """ A class to represent a MaLPi drive on disc.
     """
@@ -35,12 +42,40 @@ class MalpiFormat(DriveFormat):
         actions_file = os.path.join( drive_dir, "image_actions.npy" )
         if os.path.exists(actions_file):
             actions = np.load(actions_file)
-            actions = actions.astype(str)
         else:
             actions_file = os.path.join( drive_dir, "image_actions.pickle" )
             with open(actions_file,'r') as f:
                 actions = pickle.load(f)
                 actions = np.array(actions,dtype=str)
+
+        categorical = True
+        if isinstance(actions[0], basestring):
+            actions = actions.astype(str)
+            act_str = []
+            for act in actions:
+                act_str.append(str(act))
+            actions = act_str
+            #actions = embedActions( actions )
+            #actions = to_categorical( actions, num_classes=5 )
+            categorical = True
+        elif type(actions) == list:
+            actions = np.array(actions).astype('float')
+            act_str = []
+            for act in actions:
+                act_str.append(act)
+            actions = act_str
+            categorical = False
+        elif type(actions) == np.ndarray:
+            actions = np.array(actions).astype('float')
+            act_str = []
+            for act in actions:
+                act_str.append(act)
+            actions = act_str
+            categorical = False
+        else:
+            print("Unknown actions format: {} {} as {}".format( type(actions), actions[0], type(actions[0]) ))
+
+        self.categorical = categorical
 
         im_file = os.path.join( drive_dir, "images_120x120.npy" )
         if os.path.exists(im_file):
@@ -61,14 +96,9 @@ class MalpiFormat(DriveFormat):
         if len(images) != len(actions):
             print( "Images/actions: {}/{}".format( len(self.images), len(self.actions) ) )
 
-        # A numpy array has a fixed string size, need this to be a python array
-        act_str = []
-        for act in actions:
-            act_str.append(str(act))
-
         # self.images needs to be set before loading aux data, in case we need to fill in default values
         self.images = images
-        self.actions = act_str
+        self.actions = actions
 
         aux_file = os.path.join( self.path, "aux.json" )
         if os.path.exists(aux_file):
@@ -87,7 +117,7 @@ class MalpiFormat(DriveFormat):
                         data_str.append(str(act))
                     self.auxData[key] = data_str
 
-        return images, act_str
+        return images, actions
 
     def save( self ):
         # Ignoring images for now
@@ -122,7 +152,15 @@ class MalpiFormat(DriveFormat):
         return self.actions[index]
 
     def setActionForIndex( self, new_action, index ):
-        if self.actions[index] != new_action:
+        diff = False
+        if self.categorical:
+            if self.actions[index] != new_action:
+                diff = True
+        else:
+            if not np.array_equal( self.actions[index], new_action ):
+                diff = True
+
+        if diff:
             self.actions[index] = new_action
             self.setDirty()
 
@@ -135,23 +173,43 @@ class MalpiFormat(DriveFormat):
             self.setDirty()
 
     def actionForKey(self,keybind,oldAction=None):
-        if keybind == 'w':
-            return 'forward'
-        elif keybind == 'a':
-            return 'left'
-        elif keybind == 'd':
-            return 'right'
-        elif keybind == 's':
-            return 'stop'
-        elif keybind == 'x':
-            return 'backward'
+        if self.categorical:
+            if keybind == 'w':
+                return 'forward'
+            elif keybind == 'a':
+                return 'left'
+            elif keybind == 'd':
+                return 'right'
+            elif keybind == 's':
+                return 'stop'
+            elif keybind == 'x':
+                return 'backward'
+        else:
+            oldAction = np.copy(oldAction)
+            if keybind == 'w':
+                oldAction[1] += 0.1
+            elif keybind == 'a':
+                oldAction[0] -= 0.1
+            elif keybind == 'd':
+                oldAction[0] += 0.1
+            elif keybind == 's':
+                oldAction = [0.0,0.0]
+            elif keybind == 'x':
+                oldAction[1] -= 0.1
+            return np.clip(oldAction, -1.0, 1.0)
         return None
 
     def actionStats(self):
-        stats = defaultdict(int)
-        for action in self.actions:
-            stats[action] += 1
-        return stats
+        if self.categorical:
+            stats = defaultdict(int)
+            for action in self.actions:
+                stats[action] += 1
+            return stats
+        else:
+            stats = {}
+            stats["Mean"] = np.mean(self.actions)
+            stats["StdDev"] = np.std(self.actions)
+            return stats
 
     def supportsAuxData(self):
         return True
@@ -193,7 +251,10 @@ class MalpiFormat(DriveFormat):
         return [{"name":"Actions", "type":"categorical", "categories":[ "forward", "backward", "left", "right", "stop" ]}]
 
     def outputTypes(self):
-        res = MalpiFormat.defaultOutputTypes()
+        if self.categorical:
+            res = MalpiFormat.defaultOutputTypes()
+        else:
+            res = [{"name":"Actions", "type":"continuous" }]
         return res
 
     @classmethod

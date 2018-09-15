@@ -81,6 +81,35 @@ def convertDriveToNumpy( drive_dir, size=(120,120), indent="" ):
     else:
             print( "{}Missing {}.pickle".format( indent, basename ) )
 
+def convertToDKActions( drive_dir, indent="" ):
+    ofname = os.path.join( drive_dir, 'image_actions.npy' )
+    if not os.path.exists(ofname):
+        print( "{}Missing image_actions.pickle".format( indent ) )
+    else:
+        actions = np.load(ofname).astype(np.float)
+        np.save( os.path.join( drive_dir, 'save_ia.npy' ), actions ) # Save a copy
+        actions[:,0] = actions[:,0] - actions[:,1]
+        actions[:,1] = 1.0
+        np.clip(actions, -1.0, 1.0, out=actions)
+        np.save(ofname, actions)
+
+def convertImagesToSmallerImages( drive_dir, indent="" ):
+    ifname = os.path.join( drive_dir, 'images_120x120.npy' )
+    if not os.path.exists(ifname):
+        print( "{}Missing images_120x120.npy".format( indent ) )
+        return
+
+    images = np.load(ifname)
+
+    small = []
+    for img in images:
+        img = imresize(img, (64,64), interp='nearest' )
+        small.append(img)
+
+    ofname = os.path.join( drive_dir, 'images_64x64.npy' )
+    images = np.array(small)
+    np.save(ofname, images)
+
 def makeActions( drive_dir, data, indent="" ):
     ofname = os.path.join( drive_dir, 'image_actions.pickle' )
     if not os.path.exists(ofname):
@@ -205,28 +234,17 @@ def describeData( data, indent="", do_print=True ):
         output += describeKey( key, data[key], indent=indent, do_print=do_print ) + "\n"
     return output
 
-def sampleImages( drive_dir, data, indent="", count=5 ):
+def sampleImages( drive_dir, data, indent="", count=5, size=(120,120) ):
 
-    images = data['images']
-    with open(os.path.join( drive_dir, 'images_120x120.pickle' ),'r') as f:
-        small_images = pickle.load(f)
-
-    print( "Image array lengths (S/L): {}/{}".format( len(small_images), len(images) ) )
-
-    if len(images) == 0 or (len(images) != len(small_images)):
-        print( "Mismatched image array lengths" )
-        return
+    small_images = np.load(os.path.join( drive_dir, 'images_{}x{}.npy'.format( size[0], size[1] ) ))
 
     for i in range(count):
-        idx = np.random.randint(0,len(images))
+        idx = np.random.randint(0,len(small_images))
 
-        img_large = images[idx]
         img_small = small_images[idx]
 
-        plt.figure(1,figsize=(16, 18), dpi=80)
+        plt.figure(1,figsize=(10, 10), dpi=80)
         ax1=plt.subplot(211)
-        ax1.imshow(img_large)
-        ax1=plt.subplot(212)
         ax1.imshow(img_small)
 
         plt.show()
@@ -239,7 +257,7 @@ def getOptions():
     parser = argparse.ArgumentParser(description='View or post-process collected drive data.')
     parser.add_argument('dirs', nargs='*', metavar="Directory", help='A directory containing recorded robot data')
     parser.add_argument('-f', '--file', help='File with one directory per line')
-    parser.add_argument('--size', type=int, nargs=2, help='Size of images (height, width) to generate')
+    parser.add_argument('--size', type=int, nargs=2, default=(120,120), help='Size of images (height, width) to generate')
 
     group = parser.add_mutually_exclusive_group()
 
@@ -249,6 +267,8 @@ def getOptions():
     group.add_argument('--stats', action="store_true", default=False, help='Display image stats for each directory')
     group.add_argument('--py2py3', action="store_true", default=False, help='Read pickle files and save to numpy files')
     group.add_argument('--extract', help='Extract images from original file(s) into a new file with this prefix')
+    group.add_argument('--convert1', action="store_true", default=False, help='Convert skid steering actions in DK-style steering/throttle')
+    group.add_argument('--convert2', action="store_true", default=False, help='Extract images from images_120x120 into smaller size for vae')
     args = parser.parse_args()
 
     if args.file is not None:
@@ -279,9 +299,7 @@ if __name__ == "__main__":
         exit()
 
     if args.sample:
-        data = loadDrive( args.dirs[0], indent=indent )
-        if data is not None:
-            sampleImages( args.dirs[0], data, indent=indent )
+        sampleImages( args.dirs[0], None, indent=indent, size=args.size )
         exit()
 
     count = 0        
@@ -291,6 +309,10 @@ if __name__ == "__main__":
             imageStats( adir, indent=indent )
         elif args.py2py3:
             convertDriveToNumpy( adir, indent=indent )
+        elif args.convert1:
+            convertToDKActions( adir, indent=indent )
+        elif args.convert2:
+            convertImagesToSmallerImages( adir, indent=indent )
         else:
             data = loadDrive( adir, indent=indent )
 
