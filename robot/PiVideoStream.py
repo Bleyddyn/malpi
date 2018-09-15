@@ -20,6 +20,8 @@ class PiVideoStream:
         self.camera = PiCamera()
         self.camera.resolution = resolution
         self.camera.framerate = framerate
+        #Might help with motion induced blur. From: https://github.com/wroscoe/donkey/pull/282/commits/d1740484013ca155c7718ade354055cfc170de75
+        #self.camera.exposure_mode = 'sports'
         if brightness:
             self.camera.brightness = brightness
         self.rawCapture = PiRGBArray(self.camera, size=resolution)
