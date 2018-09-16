@@ -426,7 +426,7 @@ if __name__ == "__main__":
         print( "DeepMind style convolution layers (3)" )
 
     # Get default params
-    hparams = {'epochs': 100, 'optimizer': 'Adam', 'learning_rate': 0.0006482854972491668, 'dropouts': 'up', 'batch_size': 71.0, 'l2_reg': 0.00115070702991493}
+    hparams = {'epochs': 100, 'optimizer': 'Adam', 'learning_rate': 0.0001, 'dropouts': 'low', 'batch_size': 10.0, 'l2_reg': 5.2e-07}
     #hparams = {'epochs': 40, 'optimizer': 'Adam', 'learning_rate': 0.0005897214669321487, 'dropouts': 'up', 'batch_size': 60.0, 'l2_reg': 0.0074109846420101}
     hparams = hparamsToDict( hparamsToArray( hparams ) )
     if not args.random and args.name is not None:

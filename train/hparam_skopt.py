@@ -22,6 +22,7 @@ class Holder:
         self.run = 0
         self.log_to = log_to
         self.input_dim = (120,120,3)
+        self.error_value = 10000
 
     def _makeGenerators(self, dirs, batch_size):
         val_split = 0.2
@@ -39,35 +40,46 @@ class Holder:
 
 #    @use_named_args(space)
     def __call__(self, args):
-        print( args )
-        l2_reg, dropouts, learning_rate, batch_size, optimizer = args
-        arg_dict = { 'l2_reg': l2_reg,
-                     'dropouts': dropouts,
-                     'learning_rate': learning_rate,
-                     'batch_size': batch_size,
-                     'optimizer': optimizer }
+        try:
+            print( args )
+            l2_reg, dropouts, learning_rate, batch_size, optimizer = args
+            arg_dict = { 'l2_reg': l2_reg,
+                         'dropouts': dropouts,
+                         'learning_rate': learning_rate,
+                         'batch_size': batch_size,
+                         'optimizer': optimizer }
 
-        self.run += 1
-        hparams = hparamsToDict( hparamsToArray( arg_dict ) )
+            self.run += 1
+            hparams = hparamsToDict( hparamsToArray( arg_dict ) )
 
-        gen, val = self._makeGenerators(self.dirs, batch_size)
-        num_actions = gen.num_actions
-        num_samples = gen.count
+            gen, val = self._makeGenerators(self.dirs, batch_size)
+            num_actions = gen.num_actions
+            num_samples = gen.count
 
-        print( "Run {}".format( self.run ) )
-        print( "   Args {}".format( args ) )
-        print( "   Hparams {}".format( hparams ) )
-        val, his, model = fitFC( self.input_dim, num_actions, gen, val, val_set=None, verbose=0, dkconv=True, early_stop=True,
-                categorical=gen.categorical, pre_model=None, **hparams )
-        self.vals.append(val)
-        print( "   Val acc {}".format( val ) )
-        if self.log_to is not None:
-            with open( self.log_to, 'a' ) as f:
-                f.write( "Run {}".format( self.run ) )
-                f.write( "   Hparams {}".format( hparams ) )
-                f.write( "   Val loss {}\n".format( val ) )
-        return val
+            print( "Run {}".format( self.run ) )
+            print( "   Args {}".format( args ) )
+            print( "   Hparams {}".format( hparams ) )
+            val, his, model = fitFC( self.input_dim, num_actions, gen, val, val_set=None, verbose=0, dkconv=True, early_stop=True,
+                    categorical=gen.categorical, pre_model=None, **hparams )
+            self.vals.append(val)
+            print( "   Val acc {}".format( val ) )
+            if self.log_to is not None:
+                with open( self.log_to, 'a' ) as f:
+                    f.write( "Run {}".format( self.run ) )
+                    f.write( "   Hparams {}".format( hparams ) )
+                    f.write( "   Val loss {}\n".format( val ) )
+            return val
+        except:
+            return self.error_value
 
+def previousRuns(filename):
+
+    data = load(filename)
+
+    x0 = data['x_iters']
+    y0 = data['func_vals']
+
+    return x0, y0
 
 def runParamTests(args):
     best = {'timesteps': 7.0, 'learning_rate': 0.001306236693845287, 'batch_size': 8.0}
@@ -101,6 +113,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Hyperparameter Optimizer.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-n', '--number', type=int, default=100, help='Number of test runs')
+    parser.add_argument('--prev', default=None, help='Skopt pickle file with data from a previous run')
 
     malpiOptions.addMalpiOptions( parser )
     args = parser.parse_args()
@@ -121,7 +134,7 @@ if __name__ == "__main__":
     space  = [
               Real(10**-10, 10**-3, "log-uniform", name='l2_reg'),
               Categorical(["low","mid","high","up","down"], name='dropouts'),
-              Real(10**-9, 10**-4, "log-uniform", name='learning_rate'),
+              Real(10**-9, 10**-1, "log-uniform", name='learning_rate'),
               Integer(5, max_batch, name='batch_size'),
               Categorical(["RMSProp", "Adagrad", "Adadelta", "Adam"], name='optimizer'),
               ]
@@ -129,7 +142,12 @@ if __name__ == "__main__":
     with open( logfile, 'a' ) as f:
         f.write( "#{} {} {}\n".format( "FC", "DK", datetime.datetime.now() ) )
 
-    res_gp = gp_minimize(holder, space, n_calls=args.number)
+    x0 = None
+    y0 = None
+    if args.prev is not None:
+        x0, y0 = previousRuns(args.prev)
+
+    res_gp = gp_minimize(holder, space, n_calls=args.number, n_random_starts=0, x0=x0, y0=y0)
  
     print( "Best: {}".format( res_gp.fun ) )
     print("""Best parameters:
