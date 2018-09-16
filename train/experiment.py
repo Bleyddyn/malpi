@@ -2,12 +2,16 @@
 E.g. Command line arguments, hyperparameters, input and output sizes, model description, results
 """
 import os
+import sys
 import argparse
 import datetime
 import pickle
 
 class Meta(object):
-    def __init__(self, exp_name, args, exp_dir='experiments', num_samples=None, input_dim=None, num_actions=None, hparams={}):
+    def __init__(self, exp_name, args, exp_dir='experiments', num_samples=None, input_dim=None, num_actions=None, hparams={}, modules=None):
+        """ modules: iterable with python modules that have __name__ and __version__ attributes.
+                if modules is not None, python version info will be added
+        """
         if not os.path.exists(exp_dir):
             os.makedirs(exp_dir)
         self.dir_name = os.path.join( exp_dir, exp_name )
@@ -23,6 +27,7 @@ class Meta(object):
         self.input_dim = input_dim
         self.num_actions = num_actions
         self.hparams = hparams
+        self.modules = modules
         self.start = datetime.datetime.now()
         self.writeBefore()
 
@@ -41,10 +46,11 @@ class Meta(object):
             self._writeOne( f, "Num actions", self.num_actions )
             f.write( "Command line arguments:\n" )
             for key,value in vars(self.args).items():
-                f.write( "   {}: {}\n".format( key, value ) )
+                self._writeOne( f, key, value, indent="   ")
             f.write( "Hyperparameters:\n" )
             for key,value in self.hparams.items():
-                f.write( "   {}: {}\n".format( key, value ) )
+                self._writeOne( f, key, value, indent="   ")
+            self._writeVersions(f)
 
     def writeAfter(self, model=None, histories=None, results={}, saveModel=False):
         """ Write closing data to the experiment file.
@@ -78,6 +84,26 @@ class Meta(object):
             fname = os.path.join( self.dir_name, self.name+"_weights.h5" )
             model.save_weights(fname)
 
+    def pythonVersionString(self):
+        """Current system python version as string major.minor.micro [(alpha|beta|etc)]"""
+        vstring = "{0}.{1}.{2}".format(sys.version_info.major, sys.version_info.minor, sys.version_info.micro)
+        if sys.version_info.releaselevel != "final":
+            vstring += " ({})".format( sys.version_info.releaselevel )
+        if sys.version_info.serial != 0:
+            vstring += " (serial: {})".format( sys.version_info.serial )
+        return vstring
+
+    def _writeVersions(self, fileobj):
+        if self.modules is None or len(self.modules) == 0:
+            return
+
+        fileobj.write( "Module Versions:\n" )
+        self._writeOne( fileobj, "Python", self.pythonVersionString(), indent="   " )
+        for mod in self.modules:
+            self._writeOne( fileobj, mod.__name__, mod.__version__, indent="   " )
+
+        self.modules = None
+
 
 def _hparamsTest():
     out = {}
@@ -96,13 +122,17 @@ def _runTests(args):
     else:
         print( "No exception raised when meta file already exists: FAIL" )
     
+    import keras
+    import tensorflow as tf
+    import numpy as np
+
     if args.file is None:
         n = datetime.datetime.now()
         testname = n.strftime('expMetaTest_%Y%m%d_%H%M%S')
     else:
         testname = args.file
     print( "testname: {}".format( testname ) )
-    exp2 = Meta( testname, args, exp_dir="test_experiments", num_samples=10000, input_dim=(120,120,3), hparams=_hparamsTest() )
+    exp2 = Meta( testname, args, exp_dir="test_experiments", num_samples=10000, input_dim=(120,120,3), hparams=_hparamsTest(), modules=[np, tf, keras] )
 
     from keras.models import Sequential
     from keras.layers import Dense
