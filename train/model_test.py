@@ -140,7 +140,7 @@ if __name__ == "__main__":
         runTests(args)
         exit()
 
-    K.set_learning_phase(True)
+    K.set_learning_phase(False)
     setCPUCores( 4 )
 
     with open(args.model, "r") as jfile:
@@ -165,6 +165,7 @@ if __name__ == "__main__":
         normalize( images )
 
         pred = model.predict( x=images )
+        #pred = pred / 10.0
         print( "Actions shape: {}".format( actions.shape ) )
         print( "Pred shape: {}".format( pred.shape ) )
         print( "Mean: {}".format( np.mean(pred) ) )

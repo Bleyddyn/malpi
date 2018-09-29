@@ -207,6 +207,10 @@ class DriveDataGenerator(Sequence):
         #if not self.categorical:
         #    actions = self.addActionDiff(actions)
 
+        # Try scaling the action values up to get it to train
+        if not self.categorical:
+            actions *= 100.0
+
         if self.num_actions is None:
             self.num_actions = len(actions[0])
 
