@@ -14,7 +14,7 @@ from keras.utils import Sequence
 
 import malpiOptions
 from load_aux import getAuxFromMeta, loadOneAux
-from augmentor import ImageAugmentor
+from augmentor import ImageAugmenter
 
 # For python2/3 compatibility when calling isinstance(x,basestring)
 # From: https://stackoverflow.com/questions/11301138/how-to-check-if-variable-is-string-with-python-2-and-3-compatibility
@@ -79,14 +79,13 @@ def embedActions( actions ):
 class DriveDataGenerator(Sequence):
     """ Loads MaLPi drive data
         From: https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly.html"""
-    def __init__(self, filelist, image_size=(120,120), batch_size=32, shuffle=True, max_load=30000, auxName=None, images_only=False ):
+    def __init__(self, filelist, image_size=(120,120), batch_size=32, shuffle=True, max_load=30000, auxName=None, images_only=False, augmenter=None, aug_factor=1 ):
         """ Input a list of drive directories.
             Pre-load each to count number of samples.
             load one file and use it to generate batches until we run out.
             load the next file, repeat
             Re-shuffle on each epoch end
         """
-        'Initialization'
         self.files = filelist
         self.size = image_size
         self.batch_size = batch_size
@@ -94,6 +93,10 @@ class DriveDataGenerator(Sequence):
         self.max_load = max_load
         self.auxName = auxName
         self.images_only = images_only
+        self.augment_factor = aug_factor
+        self.augmenter = augmenter
+        if aug_factor != 1 and augmenter is None:
+            self.augmenter = ImageAugmenter( 1.0 / aug_factor )
         self.image_norm = False
         self.next_dir_index = 0
         self.images = []
@@ -103,6 +106,8 @@ class DriveDataGenerator(Sequence):
         self.input_dim = None
         self.num_actions = None
         self.batch_shape = (self.batch_size,) + self.size + (3,)
+        for i in range(1,self.augment_factor):
+            self.files.extend( self.files )
         self.count = self.__count()
         self.on_epoch_end()
 
@@ -179,6 +184,9 @@ class DriveDataGenerator(Sequence):
 
         if self.image_norm:
             normalize_images(images)
+
+        if self.augmenter is not None:
+            self.augmenter(images)
 
         return images, actions
 
@@ -274,8 +282,21 @@ class DriveDataGenerator(Sequence):
         actions = np.hstack( (actions, diff)  )
         return actions
 
-def runTests(args):
+def displayImages(images):
     import matplotlib.pyplot as plt
+
+    n = 10
+    plt.figure(figsize=(20, 4))
+    plt.suptitle( "Sample Images", fontsize=16 )
+    for i in range(n):
+        ax = plt.subplot(2, n, i+1)
+        plt.imshow(images[i])
+        #plt.imshow(samples[i].reshape(input_dim[0], input_dim[1], input_dim[2]))
+        ax.get_xaxis().set_visible(False)
+        ax.get_yaxis().set_visible(False)
+    plt.show()
+
+def runTests(args):
 
     n = 10
     gen = DriveDataGenerator(args.dirs, batch_size=n, shuffle=True, max_load=2000, images_only=True )
@@ -299,18 +320,9 @@ def runTests(args):
 #    images[:,:,:,1] += gmean
 #    images[:,:,:,2] += bmean
 
-    aug = ImageAugmentor( 50.0 )
+    aug = ImageAugmenter( 0.5 )
     aug(images)
-
-    plt.figure(figsize=(20, 4))
-    plt.suptitle( "Sample Images", fontsize=16 )
-    for i in range(n):
-        ax = plt.subplot(2, n, i+1)
-        plt.imshow(images[i])
-        #plt.imshow(samples[i].reshape(input_dim[0], input_dim[1], input_dim[2]))
-        ax.get_xaxis().set_visible(False)
-        ax.get_yaxis().set_visible(False)
-    plt.show()
+    displayImages(images)
 
 def getOptions():
 
@@ -329,15 +341,17 @@ if __name__ == "__main__":
         runTests(args)
         exit()
 
-    gen = DriveDataGenerator(args.dirs, batch_size=32, shuffle=True, max_load=2000, auxName="Continuous" )
+    images_only = True
+    gen = DriveDataGenerator(args.dirs, batch_size=32, shuffle=True, max_load=2000, images_only=images_only, aug_factor=2 )
 
     print( "# samples: {}".format( gen.count ) )
     print( "# batches: {}".format( len(gen) ) )
 
-    _, actions = gen[0]
-    print( "Actions: {}".format( actions.shape ) )
-    print( "   mean: {}".format( np.mean(actions, axis=0) ) )
-    print( "  stdev: {}".format( np.std(actions, axis=0) ) )
+    if not images_only:
+        _, actions = gen[0]
+        print( "Actions: {}".format( actions.shape ) )
+        print( "   mean: {}".format( np.mean(actions, axis=0) ) )
+        print( "  stdev: {}".format( np.std(actions, axis=0) ) )
     #diff = actions[:,0] - actions[:,1]
     #print( "  Diffs: {}".format( diff.shape ) )
     #print( "   mean: {}".format( np.mean(diff, axis=0) ) )
@@ -346,12 +360,19 @@ if __name__ == "__main__":
     #actions = np.hstack( (actions, diff)  )
     #print( "Actions: {}".format( actions.shape ) )
 
-    exit()
+    #exit()
 
     for i in range(len(gen)):
-        images, actions = gen[i]
+        if images_only:
+            images = gen[i]
+            print( "Batch {}: {}".format( i, images.shape ), end='\r' )
+        else:
+            images, actions = gen[i]
         #print( "Batch {}: {} {}".format( i, images.shape, actions.shape ), end='\r' )
-        print( "action[0]: {}".format( actions[0] ) )
+            print( "action[0]: {}".format( actions[0] ) )
+
+        if i == 0:
+            displayImages(images)
         sys.stdout.flush()
         time.sleep(0.1)
     print("")

@@ -3,13 +3,14 @@ from skimage import draw
 import math
 import numpy as np
 
-class ImageAugmentor():
+class ImageAugmenter():
     """ Modify input images for data augmentation.
     Draw ellipse_count ellipses, each with a random color in the part of the image given by 'area'.
     Area is height x width
+    fraction is from 0.0 to 1.0
     """
-    def __init__(self, percent, image_shape=(120,120,3), area=(30,120) ):
-        self.percent = percent / 100.0
+    def __init__(self, fraction, image_shape=(120,120,3), area=(30,120) ):
+        self.percent = fraction
         self.image_shape = image_shape
         self.area = area
         self.area_shape = (area[0], area[1], image_shape[2])
@@ -110,7 +111,7 @@ def runTests():
     n = 10
     images = np.zeros( (n,120,120,3) )
 
-    aug = ImageAugmentor( 50.0 )
+    aug = ImageAugmenter( 0.5 )
     aug(images)
 
     plt.figure(figsize=(20, 4))
