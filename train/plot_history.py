@@ -32,15 +32,19 @@ def plotHistory( loss, acc, val_loss, val_acc, name, plot_dir ):
     plt.ylabel('accuracy')
     plt.xlabel('epoch')
     plt.legend(['train', 'validation'], loc='upper left')
+    #plt.ylim(0.8,4.0)
 
     # summarize history for loss
     plt.subplot(2, 1, 2)
     plt.plot(loss)
     plt.plot(val_loss)
+    #plt.semilogy( loss )
     plt.title('model loss')
     plt.ylabel('loss')
     plt.xlabel('epoch')
     plt.legend(['train', 'validation'], loc='upper left')
+    #plt.ylim(0.05,0.2)
+    #plt.ylim(0.04,1.0)
     plt.savefig( os.path.join( plot_dir, name.replace(' ', '_') + '.png' ) )
     plt.show()
 

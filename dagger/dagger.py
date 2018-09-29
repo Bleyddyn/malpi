@@ -23,7 +23,7 @@ from PyQt5.QtWidgets import QLabel, QLineEdit, QTextEdit, QSlider, QListView, QT
 from PyQt5.QtWidgets import QDialog, QFileDialog, QDockWidget, QTableWidget, QTableWidgetItem
 from PyQt5.QtGui import QIcon
 from PyQt5.QtGui import QPixmap, QImage
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QEvent
 from PyQt5.QtCore import pyqtSignal, QObject
 
 from DriveFormat import DriveFormat
@@ -138,6 +138,9 @@ class Example(QMainWindow):
         elif atype == "continuous":
             ae = QLineEdit(self)
             ae.setEnabled(False)
+            ae.setReadOnly(True)
+            ae.setFocusPolicy(Qt.NoFocus)
+            ae.installEventFilter(self)
 
         if ae is None:
             ae = QLineEdit(self)
@@ -388,6 +391,14 @@ class Example(QMainWindow):
                         self.changeCurrentAction( newAction )
         else:
             e.ignore()
+
+
+    def eventFilter( self, obj, event ):
+        if event.type() == QEvent.MouseButtonDblClick:
+            if obj in self.actionLabels:
+                obj.setEnabled(True)
+                obj.setReadOnly(False)
+        return False;
 
     def changeCurrentAction(self, action, label_index=2):
         # Defaults to changing the action in the middle of the screen

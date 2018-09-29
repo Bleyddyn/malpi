@@ -47,13 +47,13 @@ def plotActions( actions, pred, name="Continuous Actions", plot_dir="." ):
     plt.legend(['actions', 'predicted'], loc='upper left')
     plt.locator_params(axis='y', nbins=10)
 
-    plt.subplot(2, 1, 2)
-    plt.plot(actions[:,1].astype(np.float32))
-    plt.plot(pred[:,1].astype(np.float32))
-    plt.title('Right Motors')
-    plt.ylabel('Action')
-    plt.xlabel('Timesteps')
-    plt.legend(['actions', 'predicted'], loc='upper left')
+    #plt.subplot(2, 1, 2)
+    #plt.plot(actions[:,1].astype(np.float32))
+    #plt.plot(pred[:,1].astype(np.float32))
+    #plt.title('Right Motors')
+    #plt.ylabel('Action')
+    #plt.xlabel('Timesteps')
+    #plt.legend(['actions', 'predicted'], loc='upper left')
     #plt.savefig( os.path.join( plot_dir, name.replace(' ', '_') + '.png' ) )
     plt.show()
 
@@ -140,7 +140,7 @@ if __name__ == "__main__":
         runTests(args)
         exit()
 
-    K.set_learning_phase(True)
+    K.set_learning_phase(False)
     setCPUCores( 4 )
 
     with open(args.model, "r") as jfile:
@@ -165,6 +165,7 @@ if __name__ == "__main__":
         normalize( images )
 
         pred = model.predict( x=images )
+        #pred = pred / 10.0
         print( "Actions shape: {}".format( actions.shape ) )
         print( "Pred shape: {}".format( pred.shape ) )
         print( "Mean: {}".format( np.mean(pred) ) )
