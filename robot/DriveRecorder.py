@@ -81,9 +81,9 @@ class DriveRecorder:
         led.turnAllLEDOn( False )
 
     def addAction(self,action):
-        if self.continuous:
-            if type(action) is not list and type(action) is not tuple:
-                print( "Invalid continuous action in DriveRecorder.addAction: {} {}".format( action, type(action) ) )
+        #if self.continuous:
+        #    if type(action) is not list and type(action) is not tuple:
+        #        print( "Invalid continuous action in DriveRecorder.addAction: {} {}".format( action, type(action) ) )
         self.actions.append(action)
         self.action_times.append(time())
 
@@ -112,6 +112,7 @@ class DriveRecorder:
                 return
 
     def saveImages( self ):
+        #print( "saveImages (i/a): {} {}".format( len(self.image_times), len(self.actions) ) )
         # Save current image array and empty it.
         images_filename = os.path.join( self.drive_dir, "images_{}.pickle".format(self.image_index) )
         with open(images_filename, 'wb') as f:
@@ -163,8 +164,8 @@ class DriveRecorder:
         image_pkg["images"] = images
         image_pkg["image_times"] = image_times
         image_pkg["image_actions"] = image_actions
-        if len(images) != len(image_actions):
-            print( "Data mismatch in DriveRecorder.packageImages: {} != {}".format( len(images), len(image_actions) ) )
+        if len(image_times) != len(image_actions):
+            print( "Data mismatch in DriveRecorder.packageImages: {} != {}".format( len(image_times), len(image_actions) ) )
         return image_pkg
 
 def getOptions():

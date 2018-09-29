@@ -205,8 +205,8 @@ if __name__ == "__main__":
     ctr = JoystickController(max_throttle=JOYSTICK_MAX_THROTTLE,
                              steering_scale=JOYSTICK_STEERING_SCALE,
                              auto_record_on_throttle=AUTO_RECORD_ON_THROTTLE,
-                             throttle_axis='ry')
-                             #verbose=True)
+                             throttle_axis='ry',
+                             verbose=False)
 
     rate_hz=10
     max_loop_count=None
