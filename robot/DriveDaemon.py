@@ -421,7 +421,7 @@ class App():
 
                 lts = int(abs( lts * 255.0 ))
                 rts = int(abs( rts * 255.0 ))
-                logger.info("dk-raw {} {} {} {} {}".format( steering, throttle, forward, lts, rts ) )
+                #logger.info("dk-raw {} {} {} {} {}".format( steering, throttle, forward, lts, rts ) )
 
             self.setMotor( 1, forward, lts )
             self.setMotor( 2, forward, lts )
