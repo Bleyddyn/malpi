@@ -373,6 +373,7 @@ def getOptions():
     parser.add_argument('--notify', help='Email address to notify when the training is finished')
     #parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
     parser.add_argument('--random', action="store_true", default=False, help='Test an untrained model, then exit')
+    parser.add_argument('--aug', type=int, default=None, help='Augment images by this factor. 2 = twice as many images, half of which are altered')
 
     malpiOptions.addMalpiOptions( parser )
     args = parser.parse_args()
@@ -405,14 +406,15 @@ if __name__ == "__main__":
 
     image_size = (120,120)
     input_dim = (120,120,3)
-    gen = DriveDataGenerator(args.dirs, image_size=image_size, batch_size=64, shuffle=True, max_load=20000, auxName=args.aux, arg_factor=2 )
-    val = DriveDataGenerator(args.val, image_size=image_size, batch_size=64, shuffle=True, max_load=10000, auxName=args.aux )
+    gen = DriveDataGenerator(args.dirs, image_size=image_size, batch_size=60, shuffle=True, max_load=10000, auxName=args.aux, aug_factor=args.aug, binned=True )
+    val = DriveDataGenerator(args.val, image_size=image_size, batch_size=60, shuffle=True, max_load=10000, auxName=args.aux, binned=True )
 
     num_actions = gen.num_actions
     num_samples = gen.count
     cat = gen.categorical
 
     print( "Samples: {}   Input: {}  Output: {}".format( num_samples, input_dim, num_actions ) )
+    print( "Val Samples: {}".format( val.count ) )
     if not cat:
         print( "   Continuous actions" )
 
@@ -426,8 +428,8 @@ if __name__ == "__main__":
         print( "DeepMind style convolution layers (3)" )
 
     # Get default params
-    hparams = {'epochs': 100, 'optimizer': 'Adam', 'learning_rate': 0.0001, 'dropouts': 'up', 'batch_size': 10.0, 'l2_reg': 5.2e-07}
-    #hparams = {'epochs': 40, 'optimizer': 'Adam', 'learning_rate': 0.0005897214669321487, 'dropouts': 'up', 'batch_size': 60.0, 'l2_reg': 0.0074109846420101}
+    #hparams = {'epochs': 100, 'optimizer': 'Adam', 'learning_rate': 0.0001, 'dropouts': 'up', 'batch_size': 10.0, 'l2_reg': 5.2e-07}
+    hparams = {'epochs': 40, 'optimizer': 'Adam', 'learning_rate': 0.0005897214669321487, 'dropouts': 'up', 'batch_size': 60.0, 'l2_reg': 0.0074109846420101}
     hparams = hparamsToDict( hparamsToArray( hparams ) )
     if not args.random and args.name is not None:
         expMeta = experiment.Meta(args.name, args, num_samples=num_samples, input_dim=input_dim, num_actions=num_actions, hparams=hparams)
