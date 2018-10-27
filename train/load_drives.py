@@ -76,15 +76,72 @@ def embedActions( actions ):
             print( act )
     return emb
 
+'''
+BINNING
+functions to help convert between floating point numbers and categories.
+
+From: https://github.com/tawnkramer/donkey/blob/faa4a32b2aff452c6b46474029ea9e4b3168843d/donkeycar/utils.py
+'''
+
+def clamp(n, min, max):
+    if n < min:
+        return min
+    if n > max:
+        return max
+    return n
+
+def linear_bin(a, N=15, offset=1, R=2.0):
+    '''
+    create a bin of length N
+    map val A to range R
+    offset one hot bin by offset, commonly R/2
+    '''
+    a = a + offset
+    b = round(a / (R/(N-offset)))
+    arr = np.zeros(N)
+    b = clamp(b, 0, N - 1)
+    arr[int(b)] = 1
+    return arr
+
+
+def linear_unbin(arr, N=15, offset=-1, R=2.0):
+    '''
+    preform inverse linear_bin, taking
+    one hot encoded arr, and get max value
+    rescale given R range and offset
+    '''
+    b = np.argmax(arr)
+    a = b *(R/(N + offset)) + offset
+    return a
+
+
+def bin_Y(Y, N=15):
+    d = []
+    for y in Y:
+        arr = np.zeros(N)
+        arr[linear_bin(y, N=N)] = 1
+        d.append(arr)
+    return np.array(d)
+        
+def unbin_Y(Y, N=15):
+    d=[]
+    for y in Y:
+        v = linear_unbin(y, N=N)
+        d.append(v)
+    return np.array(d)
+
+# End BINNING
+
 class DriveDataGenerator(Sequence):
     """ Loads MaLPi drive data
         From: https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly.html"""
-    def __init__(self, filelist, image_size=(120,120), batch_size=32, shuffle=True, max_load=30000, auxName=None, images_only=False, augmenter=None, aug_factor=1 ):
+    def __init__(self, filelist, image_size=(120,120), batch_size=32, shuffle=True, max_load=30000, auxName=None, images_only=False, augmenter=None, aug_factor=1, binned=False ):
         """ Input a list of drive directories.
             Pre-load each to count number of samples.
             load one file and use it to generate batches until we run out.
             load the next file, repeat
             Re-shuffle on each epoch end
+            @param binned Convert continuous actions to categorical by binning them.
         """
         self.files = filelist
         self.size = image_size
@@ -93,11 +150,14 @@ class DriveDataGenerator(Sequence):
         self.max_load = max_load
         self.auxName = auxName
         self.images_only = images_only
+        if aug_factor is None:
+            aug_factor = 1
         self.augment_factor = aug_factor
         self.augmenter = augmenter
         if aug_factor != 1 and augmenter is None:
             self.augmenter = ImageAugmenter( 1.0 / aug_factor )
         self.image_norm = False
+        self.binned = binned
         self.next_dir_index = 0
         self.images = []
         self.actions = []
@@ -221,21 +281,29 @@ class DriveDataGenerator(Sequence):
                 else:
                     print("Unknown actions format: {} {} as {}".format( type(actions), actions[0], type(actions[0]) ))
 
+                if self.binned:
+                    binned_actions = []
+                    actions = actions[:,0]
+                    for a in actions:
+                        arr = linear_bin(a)
+                        binned_actions.append(arr)
+                    actions = np.array(binned_actions)
+                    categorical = True
+
                 if self.categorical is None:
                     self.categorical = categorical
                 elif self.categorical != categorical:
                     print( "Mixed cat/non-cat action space: {}".format( drive_dir ) )
 
                 # Try training only the steering actions
-                actions = actions[:,0]
-                self.num_actions = 1
-
-                # Need an option for this
-                #if not self.categorical:
-                #    actions = self.addActionDiff(actions)
-
-                # Try scaling the action values up to get it to train
                 if not self.categorical:
+                    actions = actions[:,0]
+                    self.num_actions = 1
+
+                    # Need an option for this
+                    #actions = self.addActionDiff(actions)
+
+                    # Try scaling the action values up to get it to train
                     actions *= 100.0
 
                 if self.num_actions is None:
@@ -345,8 +413,9 @@ if __name__ == "__main__":
         runTests(args)
         exit()
 
-    images_only = True
-    gen = DriveDataGenerator(args.dirs, batch_size=32, shuffle=True, max_load=2000, images_only=images_only, aug_factor=2 )
+    images_only = False
+    #gen = DriveDataGenerator(args.dirs, batch_size=32, shuffle=True, max_load=2000, images_only=images_only, aug_factor=2 )
+    gen = DriveDataGenerator(args.dirs, batch_size=32, shuffle=True, max_load=2000, images_only=images_only, binned=True )
 
     print( "# samples: {}".format( gen.count ) )
     print( "# batches: {}".format( len(gen) ) )

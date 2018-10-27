@@ -56,13 +56,24 @@ def loadDrive( drive_dir, indent="" ):
 
     return data
 
+def replaceStop( data ):
+    actions = []
+    for a in data:
+        if a == "stop":
+            a = (0.0, 0.0)
+        actions.append(a)
+    return np.array(actions)
+
 def convertDriveToNumpy( drive_dir, size=(120,120), indent="" ):
     ifname = os.path.join( drive_dir, 'image_actions.pickle' )
     if os.path.exists(ifname):
         with open(ifname,'r') as f:
             actions = pickle.load(f)
             actions = np.array(actions)
-            actions = actions.astype('str')
+            try:
+                actions = actions.astype('float')
+            except:
+                actions = replaceStop(actions)
             ofname = os.path.join( drive_dir, 'image_actions.npy' )
             np.save(ofname, actions)
             print( "{}Converted image_actions to numpy format".format( indent ) )

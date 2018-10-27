@@ -26,6 +26,7 @@ from keras import metrics
 import experiment
 import notify
 from load_aux import loadAuxData
+from load_drives import linear_unbin
 
 # For python2/3 compatibility when calling isinstance(x,basestring)
 # From: https://stackoverflow.com/questions/11301138/how-to-check-if-variable-is-string-with-python-2-and-3-compatibility
@@ -34,9 +35,9 @@ try:
 except NameError:
   basestring = str
 
-def plotActions( actions, pred, name="Continuous Actions", plot_dir="." ):
+def plotActions( actions, pred, name="Continuous Actions", plot_dir=None ):
 
-    plt.figure(1,figsize=(10, 14), dpi=80)
+    plt.figure(1,figsize=(10, 12), dpi=80)
     plt.suptitle( name, fontsize=16 )
     plt.subplot(2, 1, 1)
     plt.plot(actions[:,0].astype(np.float32))
@@ -54,7 +55,8 @@ def plotActions( actions, pred, name="Continuous Actions", plot_dir="." ):
     #plt.ylabel('Action')
     #plt.xlabel('Timesteps')
     #plt.legend(['actions', 'predicted'], loc='upper left')
-    #plt.savefig( os.path.join( plot_dir, name.replace(' ', '_') + '.png' ) )
+    if plot_dir is not None:
+        plt.savefig( os.path.join( plot_dir, name.replace(' ', '_') + '.png' ) )
     plt.show()
 
 def setCPUCores( cores ):
@@ -104,16 +106,38 @@ def runTests(args):
 
 def getOptions():
 
-    parser = argparse.ArgumentParser(description='Run a trained lane detector on images and compare with any existing labels.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('model', help='Path to the model json file')
-    parser.add_argument('dirs', nargs='*', metavar="Directory", help='A directory containing recorded robot data')
+    parser = argparse.ArgumentParser(description='Run a trained robot model  on images and compare with any existing labels.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('dirs', nargs='*', metavar="Directory", help='A directory containing recorded test data')
     parser.add_argument('-f', '--file', help='File with one directory per line')
-    parser.add_argument('--pred', help='For each directory, run the model on an image file with this prefix and write predictions to a new file in the same directory')
     parser.add_argument('--categorical', action="store_true", default=False, help='Model has a categorical action space')
     parser.add_argument('--notify', help='Email address to notify when the training is finished')
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
+    parser.add_argument('--model', help='Path to the model json file')
+    parser.add_argument('--exp', help='Directory with saved experiment meta-data, including a model json file')
 
     args = parser.parse_args()
+
+    if args.exp is not None and args.model is not None:
+        parser.print_help()
+        print( "Provide a model or an experiment directory containing a model, not both." )
+        exit()
+
+    if args.exp is None and args.model is None:
+        parser.print_help()
+        print( "Provide a model or an experiment directory containing a model." )
+        exit()
+
+
+    if args.exp is not None:
+        exp_dir = args.exp
+        if exp_dir[-1] == "/":
+            exp_dir = exp_dir[:-1]
+        name = os.path.basename(exp_dir)
+        fname = os.path.join( args.exp, name + "_model.json" )
+        args.model = fname
+        args.basename = name
+    else:
+        args.basename = None
 
     if args.file is not None:
         with open(args.file, "r") as f:
@@ -165,14 +189,26 @@ if __name__ == "__main__":
         normalize( images )
 
         pred = model.predict( x=images )
-        #pred = pred / 10.0
+        if len(pred[0]) == 15:
+            arr = []
+            for a in pred:
+                arr.append( linear_unbin(a) )
+            pred = np.array(arr).reshape( (len(arr), 1) )
+            print( "Pred shape: {}".format( pred.shape ) )
+            pred = np.append(pred, np.zeros( pred.shape ), axis=1)
+        else:
+            pred = pred / 100.0
         print( "Actions shape: {}".format( actions.shape ) )
         print( "Pred shape: {}".format( pred.shape ) )
         print( "Mean: {}".format( np.mean(pred) ) )
         print( "std: {}".format( np.std(pred) ) )
         print( "min: {}".format( np.min(pred) ) )
         print( "max: {}".format( np.max(pred) ) )
-        plotActions( actions, pred, name="Continuous Actions", plot_dir="." )
+
+        name="Model vs Test Data"
+        if args.basename is not None:
+            name = args.basename + " Model Test"
+        plotActions( actions, pred, name=name, plot_dir=args.exp )
         #out = model.predict( x=images )
         #basename = "{}_pred.npy".format( args.pred )
         #pred_file = os.path.join( onedir, basename )

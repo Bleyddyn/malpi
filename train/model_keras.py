@@ -154,8 +154,8 @@ def make_model_fc( num_actions, input_dim, dkconv=False, l2_reg=0.005, optimizer
         model.add(Dense(256, activation='relu', kernel_regularizer=regularizers.l2(l2_reg)))
     
     if categorical:
-        #act = 'softmax'
-        act = Activation(tf.nn.softmax)
+        act = 'softmax'
+        #act = Activation(tf.nn.softmax)
     else:
         act = 'linear'
     model.add(Dense(num_actions, activation=act, kernel_regularizer=regularizers.l2(l2_reg)))
@@ -270,9 +270,10 @@ if __name__ == "__main__":
     #model = make_model_fc( 6, (120,120,3), dkconv=True, l2_reg=0.005 )
     #model.summary()
 
-    model = make_model_fc( 6, (120,120,3), dkconv=False, l2_reg=0.005 )
+    model = make_model_fc( 6, (120,120,3), dkconv=True, l2_reg=0.005 )
     model.summary()
-    plot_model(model, to_file='./model.png', show_shapes = True)
+    model.to_json()
+    #plot_model(model, to_file='./model.png', show_shapes = True)
 
     #model = make_model_lstm( 6, (120,120,3), l2_reg=0.005, dkconv=True )
     #model.summary()
