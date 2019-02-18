@@ -7,6 +7,7 @@ import numpy as np
 import json
 import re
 from scipy.ndimage import imread
+from donkeycar.parts.datastore import Tub
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -32,8 +33,10 @@ class TubFormat(DriveFormat):
             raise IOError( "TubFormat path is not a directory: {}".format( path ) )
 
         self.path = path
+        self.tub = Tub(path)
         (self.images, self.actions) = self._load(path)
-        self.meta = self._loadMeta(path)
+        self._meta = self._loadMeta(path)
+        self.meta = str(self._meta)
 
     def _loadMeta( self, path ):
         """ e.g. {"inputs": ["cam/image_array", "user/angle", "user/throttle", "user/mode"], "types": ["image_array", "float", "float", "str"]}
@@ -44,31 +47,24 @@ class TubFormat(DriveFormat):
         if os.path.exists(meta_file):
             with open(meta_file,'r') as f:
                 meta = json.load(f)
-        return str(meta)
+        return meta
 
     def _load( self, path, image_norm=True ):
         images = []
         actions = []
 
-        image_files = []
-        action_files = []
-        for fname in os.listdir(path):
-            if fname.startswith("._"):
-                pass
-            elif "cam-image_array_" in fname and fname.endswith(".jpg"):
-                image_files.append(fname)
-            elif fname.startswith("record_") and fname.endswith(".json"):
-                action_files.append(fname)
-
-        image_files.sort(key=natural_keys)
-        action_files.sort(key=natural_keys)
-
-        for i in range(len(image_files)):
-            print( "Loading {} of {}".format( i, len(image_files) ), end='\r' )
+        for i in range(1,self.tub.get_num_records()):
+            print( "Loading {} of {}".format( i, self.tub.get_num_records() ), end='\r' )
             sys.stdout.flush()
-            images.append( imread( os.path.join( self.path, image_files[i] ) ) )
-            with open( os.path.join( self.path, action_files[i] ) ) as f:
-                actions.append( json.load(f)["user/angle"] )
+            rec = self.tub.get_record(i)
+            if 'cam/image_array' in rec:
+                images.append( rec['cam/image_array'] )
+                one_action = []
+                for act in ["user/angle", "user/throttle"]:
+                    if act in rec:
+                        one_action.append( rec[act] )
+                actions.append( one_action )
+                #actions.append( rec["user/throttle"] )
         print("")
         return images, actions
 
@@ -112,6 +108,9 @@ class TubFormat(DriveFormat):
         stats["StdDev"] = np.std(self.actions)
         return stats
 
+    def getAuxMeta(self):
+        return {}
+
     @classmethod
     def canOpenFile( cls, path ):
         if not os.path.exists(path):
@@ -143,14 +142,37 @@ class TubFormat(DriveFormat):
         return [{"name":"Actions", "type":"continuous", "range":(-1.0,1.0)}]
 
     def outputTypes(self):
-        res = TubFormat.defaultOutputTypes()
+        res = []
+        for act in ["user/angle", "user/throttle"]:
+            display_name = act.split("/")[1]
+            res.append( {"name":display_name, "type":"continuous", "range":(-1.0,1.0)} )
         return res
 
 """ Register this format with the base class """
 DriveFormat.registerFormat( "TubFormat", TubFormat )
 
-if __name__ == "__main__":
-    DriveFormat.testFormat( TubFormat, "test.tub", 2.0 )
-    d = TubFormat("test.drive")
+def runTests(args):
+    DriveFormat.testFormat( TubFormat, args.file[0], 2.0 )
+    d = TubFormat(args.file[0])
     print( d.inputTypes() )
     print( d.outputTypes() )
+
+def getOptions():
+
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Test Tub file format.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--file', nargs=1, metavar="File", default="test.tub", help='Recorded Tub data file to open')
+    parser.add_argument('--test_only', action="store_true", default=True, help='run tests, then exit')
+
+    args = parser.parse_args()
+
+    return args
+
+if __name__ == '__main__':
+    
+    args = getOptions()
+
+    if args.test_only:
+        runTests(args)
+        exit()

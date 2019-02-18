@@ -83,12 +83,16 @@ class FilesDockWidget(QDockWidget):
         self.filesTable.selectRow(0)
 
     def selectNext(self):
-        row = self._selectedRow() + 1
-        self.filesTable.selectRow(row)
+        row = self._selectedRow()
+        if row is not None:
+            row = row + 1
+            self.filesTable.selectRow(row)
         
     def selectPrev(self):
-        row = self._selectedRow() - 1
-        self.filesTable.selectRow(row)
+        row = self._selectedRow()
+        if row is not None:
+            row = row - 1
+            self.filesTable.selectRow(row)
 
     def handleSaveFiles(self):
         filesStr = "\n".join(self.files)

@@ -70,6 +70,9 @@ class DriveFormat:
 
         return 0
 
+    def __len__(self):
+        return self.count()
+
     def imageForIndex( self, index ):
         """ Must be overridden by subclasses.
         Return the image for the sample at index.

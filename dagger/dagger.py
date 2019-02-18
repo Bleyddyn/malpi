@@ -152,14 +152,21 @@ class Example(QMainWindow):
 
         # This needs to be generalized to handle multiple input and output types
         self.imageLabels = []
+        self.actionRows = []
         self.actionLabels = []
+
         for i in range(self.gridWidth):
             self.imageLabels.append( QLabel(self) )
-            ot = self.data.outputTypes()
-            labels = ot[0]["categories"] if "categories" in ot[0] else None
-            cb = self.makeActionComboBox( atype=ot[0]["type"], labels=labels)
-            self.actionLabels.append( cb )
 
+        ot = self.data.outputTypes()
+        for output in ot:
+            oneRow = []
+            for i in range(self.gridWidth):
+                labels = output["categories"] if "categories" in output else None
+                cb = self.makeActionComboBox( atype=output["type"], labels=labels)
+                oneRow.append( cb )
+                self.actionLabels.append( cb )
+            self.actionRows.append(oneRow)
 
         grid = QGridLayout()
         self.grid = grid
@@ -183,10 +190,12 @@ class Example(QMainWindow):
         for i in range(len(self.imageLabels)):
             grid.addWidget(self.imageLabels[i], row, i+1)
 
-        row += 1
-        grid.addWidget(QLabel(otypes[0]["name"]), row, 0)
-        for i in range(len(self.actionLabels)):
-            grid.addWidget(self.actionLabels[i], row, i+1)
+        for lr in range(len(self.actionRows)):
+            arow = self.actionRows[lr]
+            row += 1
+            grid.addWidget(QLabel(otypes[lr]["name"]), row, 0)
+            for i in range(len(arow)):
+                grid.addWidget(arow[i], row, i+1)
 
         vlay = QVBoxLayout()
         vlay.addLayout(grid)
@@ -446,11 +455,16 @@ class Example(QMainWindow):
                 image = QImage(image, image.shape[1], image.shape[0], image.shape[1] * 3, QImage.Format_RGB888)
                 self.imageLabels[i].setPixmap( QPixmap(image) )
                 self.indexes[i].setText( str( il ) )
-                if ot[0]["type"] == "categorical":
-                    self.actionLabels[i].setCurrentText( self.data.actionForIndex( il ) )
-                elif ot[0]["type"] == "continuous":
-                    self.actionLabels[i].setText( str(self.data.actionForIndex( il )) )
-                self.actionLabels[i].setEnabled(True)
+
+                actions = self.data.actionForIndex( il )
+                for oi in range(len(ot)):
+                    oneRow = self.actionRows[oi]
+                    oneO = ot[oi]
+                    if oneO["type"] == "categorical":
+                        oneRow[i].setCurrentText( actions[oi] )
+                    elif oneO["type"] == "continuous":
+                        oneRow[i].setText( str(actions[oi]) )
+                    oneRow[i].setEnabled(True)
             else:
                 self.imageLabels[i].clear()
                 self.indexes[i].setText( "" )
