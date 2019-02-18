@@ -245,6 +245,7 @@ if __name__ == "__main__":
 
             #stop drive loop if loop_count exceeds max_loopcount
             if max_loop_count and loop_count > max_loop_count:
+                print( "breaking for max count" )
                 break
 
             sleep_time = 1.0 / rate_hz - (time.time() - start_time)

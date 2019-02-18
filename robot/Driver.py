@@ -31,6 +31,16 @@ def log( message, options ):
     with open(logFileName,'a') as outf:
         outf.write(datestr + ": " + message + "\n")
 
+def linear_unbin(arr, N=15, offset=-1, R=2.0):
+    '''
+    preform inverse linear_bin, taking
+    one hot encoded arr, and get max value
+    rescale given R range and offset
+    '''
+    b = np.argmax(arr)
+    a = b *(R/(N + offset)) + offset
+    return a
+
 class Driver:
     def __init__(self, model_path, camera, controller, model_name=None):
         """ model_path: location of the saved keras model
@@ -55,7 +65,7 @@ class Driver:
         else:
             #self.model = model_keras.make_model_test( len(self.embedding), (120,120,3), dropouts=[0.25,0.25,0.25,0.25,0.25] )
             if self.continuous:
-                self.model = model_keras.make_model_fc( 3, (120,120,3), dkconv=True, dropouts=[0.25,0.25,0.25,0.25,0.25], categorical=False )
+                self.model = model_keras.make_model_fc( 1, (120,120,3), dkconv=True, dropouts=[0.25,0.25,0.25,0.25,0.25], categorical=False )
                 #self.model = model_keras.read_model( model_path, model_name )
             else:
                 self.model = model_keras.read_model( model_path, model_name )
@@ -85,7 +95,7 @@ class Driver:
         image = pre_image
         if image is not None:
             t2 = time()
-            image = self.pre_process(image)
+            image = self.pre_process(image, image_norm=False)
             t3 = time()
             actions = self.model.predict_on_batch(image)
             if self.isRNN:
@@ -97,8 +107,15 @@ class Driver:
             #if action == 0:
             #    action = np.argmax( actions[1:] ) + 1
             #    #print( "skipping stop action" )
-            if self.continuous:
-                action = 'throttles {} {}'.format( actions[0], actions[1] )
+            if len(actions) == 15:
+                steering = linear_unbin(actions)
+                action = 'dk {} {}'.format( steering, 1.0 )
+                self.controller.do_action( action )
+            elif self.continuous:
+                if len(actions) == 2:
+                    action = 'throttles {} {}'.format( actions[0], actions[1] )
+                else:
+                    action = 'dk {} {}'.format( actions[0], 1.0 )
                 self.controller.do_action( action )
             else:
                 action = np.argmax(actions) # No exploration, just choose the best
@@ -138,6 +155,8 @@ class Driver:
             image[:,:,0] /= np.std(image[:,:,0])
             image[:,:,1] /= np.std(image[:,:,1])
             image[:,:,2] /= np.std(image[:,:,2])
+        else:
+            image /= 255.0
 
         if self.isRNN:
             image = image.reshape( 1, 1, 120, 120, 3 )
@@ -190,7 +209,7 @@ if __name__ == "__main__":
 
     #def __init__(self, drive_dir, video_path=None, camera=None, image_delay=None):
     #with Driver( os.path.expanduser("~/models/default.h5"), None, None ) as adrive:
-    with Driver( os.path.expanduser("~/models"), None, None, model_name="default" ) as adrive:
+    with Driver( os.path.expanduser("~/models"), None, None, model_name="Binned1" ) as adrive:
         adrive.startDriving()
         sleep(20)
         adrive.endDriving()
