@@ -82,10 +82,10 @@ class Example(QMainWindow):
     def initMenus(self):
         #exitAct = QAction(QIcon('exit.png'), 'Exit', self)        
         #exitAct = QAction(QIcon('exit24.png'), 'Exit', self)
-        exitAct = QAction('Exit', self)        
+        exitAct = QAction('Exit', self)
         exitAct.setShortcut('Ctrl+Q')
         exitAct.setStatusTip('Exit application')
-        exitAct.triggered.connect(qApp.quit)
+        exitAct.triggered.connect(self.quit)
 
         openFile = QAction('Open', self)
         openFile.setShortcut('Ctrl+O')
@@ -261,6 +261,13 @@ class Example(QMainWindow):
         else:
             self.statusBar().hide()
 
+    def quit(self):
+        if self.data is not None and not self.data.isClean():
+            reply = self.unsavedDataAskUser("This document has unsaved changes.\nAre you sure you want to quit?", "Quit", "Don't Quit")
+            if not reply:
+                return
+        qApp.quit()
+
     def openDialog(self):
         od = QFileDialog(self, 'Open MaLPi drive data directory')
         od.setAcceptMode(QFileDialog.AcceptOpen)
@@ -386,6 +393,7 @@ class Example(QMainWindow):
                 self.slider.setSliderPosition(self.index)
                 self.updateImages()
                 self.updateStats()
+                self.updateWindowTitle()
         elif self.data is not None:
             if self.data is not None:
                 if self.index < (self.data.count() - 1):
@@ -411,14 +419,15 @@ class Example(QMainWindow):
 
     def changeCurrentAction(self, action, label_index=2):
         # Defaults to changing the action in the middle of the screen
+        self.data.setActionForIndex( action, self.index )
         ot = self.data.outputTypes()
         if ot[0]["type"] == "categorical":
             self.actionLabels[label_index].setCurrentText( action )
         elif ot[0]["type"] == "continuous":
-            self.actionLabels[label_index].setText( str(action) )
+            #self.actionLabels[label_index].setText( str(action) )
+            self.updateImages()
         if self.index >= self.data.count():
             print( "{} actions. index {}, label_index {}".format( self.data.count(), self.index, label_index ) )
-        self.data.setActionForIndex( action, self.index )
         self.updateWindowTitle()
         self.updateStats()
 
@@ -437,14 +446,16 @@ class Example(QMainWindow):
     def contextMenuEvent(self, event):
            cmenu = QMenu(self)
            
-           newAct = cmenu.addAction("New")
+           #newAct = cmenu.addAction("New")
            opnAct = cmenu.addAction("Open")
            quitAct = cmenu.addAction("Quit")
            # show and run the menu with exec_
            action = cmenu.exec_(self.mapToGlobal(event.pos()))
            
            if action == quitAct:
-               qApp.quit()
+               self.quit()
+           elif action == opnAct:
+               self.openDialog()
         
     def updateImages(self):
         for i in range( len(self.imageLabels) ):

@@ -62,9 +62,10 @@ class TubFormat(DriveFormat):
         images = []
         actions = []
 
-        try:
-            for i in range(1,self.tub.get_num_records()+1):
-                print( "Loading {} of {}".format( i, self.tub.get_num_records() ), end='\r' )
+        num_records = self.tub.get_num_records()
+        for i in range(0,num_records+1):
+            try:
+                print( "Loading {} of {}".format( i, num_records ), end='\r' )
                 sys.stdout.flush()
                 rec = self.tub.get_record(i)
                 if 'cam/image_array' in rec:
@@ -77,9 +78,11 @@ class TubFormat(DriveFormat):
                             one_action.append( rec[act] )
                     actions.append( one_action )
                     #actions.append( rec["user/throttle"] )
-            print("")
-        except Exception as ex:
-            print("Load failed: {}".format( ex ) )
+            except Exception as ex:
+                if i > 0 and i < num_records:
+                    # Some tubs are zero indexed, others 1. So this is only sometimes a real error
+                    print("Load failed: {}".format( ex ) )
+        print("")
 
         return images, actions
 
@@ -109,22 +112,23 @@ class TubFormat(DriveFormat):
         return self.actions[index]
 
     def setActionForIndex( self, new_action, index ):
-        if self.actions[index] != new_action:
+        if not np.array_equal( self.actions[index], new_action ):
             self.actions[index] = new_action
             self.setDirty()
 
     def actionForKey(self,keybind,oldAction=None):
         if keybind == 'w':
-            return oldAction
-        elif keybind == 'a':
-            return oldAction - 0.1
-        elif keybind == 'd':
-            return oldAction + 0.1
-        elif keybind == 's':
-            return 0.0
+            oldAction[1] += 0.1
         elif keybind == 'x':
-            return oldAction
-        return oldAction
+            oldAction[1] -= 0.1
+        elif keybind == 'a':
+            oldAction[0] -= 0.1
+        elif keybind == 'd':
+            oldAction[0] += 0.1
+        elif keybind == 's':
+            oldAction[0] = 0.0
+            oldAction[1] = 0.0
+        return np.clip(oldAction, -1.0, 1.0)
 
     def deleteIndex( self, index ):
         if index >= 0 and index < self.count():
