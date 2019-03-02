@@ -28,7 +28,7 @@ class MalpiFormat(DriveFormat):
         self.auxMeta = {}
         self.auxData = {}
         self.meta = self._loadMeta(path)
-        self._load(path)
+        #self._load(path)
 
     def _loadMeta( self, path ):
         meta_file = os.path.join( path, "meta.txt" )
@@ -42,6 +42,7 @@ class MalpiFormat(DriveFormat):
         actions_file = os.path.join( drive_dir, "image_actions.npy" )
         if os.path.exists(actions_file):
             actions = np.load(actions_file)
+            actions = np.array(actions,dtype=str)
         else:
             actions_file = os.path.join( drive_dir, "image_actions.pickle" )
             with open(actions_file,'r') as f:
@@ -118,6 +119,10 @@ class MalpiFormat(DriveFormat):
                     self.auxData[key] = data_str
 
         return images, actions
+
+    def load( self, progress=None ):
+        (self.images, self.actions) = self._load(self.path)
+        self.setClean()
 
     def save( self ):
         # Ignoring images for now

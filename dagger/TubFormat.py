@@ -36,7 +36,7 @@ class TubFormat(DriveFormat):
         self.tub = Tub(path)
         self.exclude = set()
         self.shape = None
-        (self.images, self.actions) = self._load(path)
+        #(self.images, self.actions) = self._load(path)
         self._meta = self._loadMeta(path)
         self.meta = str(self._meta)
 
@@ -58,14 +58,16 @@ class TubFormat(DriveFormat):
 
         return meta
 
-    def _load( self, path, image_norm=True ):
+    def _load( self, path, image_norm=True, progress=None ):
         images = []
         actions = []
 
         num_records = self.tub.get_num_records()
         for i in range(0,num_records+1):
             try:
-                print( "Loading {} of {}".format( i, num_records ), end='\r' )
+                #print( "Loading {} of {}".format( i, num_records ), end='\r' )
+                if progress is not None:
+                    progress( i, num_records )
                 sys.stdout.flush()
                 rec = self.tub.get_record(i)
                 if 'cam/image_array' in rec:
@@ -82,9 +84,13 @@ class TubFormat(DriveFormat):
                 if i > 0 and i < num_records:
                     # Some tubs are zero indexed, others 1. So this is only sometimes a real error
                     print("Load failed: {}".format( ex ) )
-        print("")
+        #print("")
 
         return images, actions
+
+    def load( self, progress=None ):
+        (self.images, self.actions) = self._load(self.path, progress=progress)
+        self.setClean()
 
     def save( self ):
         if self.isClean():

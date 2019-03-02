@@ -293,7 +293,7 @@ class Example(QMainWindow):
                 if 1 == len(_fnames) and os.path.isdir(_fnames[0]):
                     self.loadData( _fnames[0] )
                 elif 0 != len(_fnames):
-                    self.statusBar().showMessage( "Formats other than MaLPi are not yet supported" )
+                    self.statusBar().showMessage( "Formats other than MaLPi and Tub are not yet supported" )
             except Exception as ex:
                 msg = "Error loading data: {}".format( str(ex) )
                 self.statusBar().showMessage( msg )
@@ -329,6 +329,13 @@ class Example(QMainWindow):
             
         self.data = DriveFormat.handlerForFile( path )
         if self.data is not None:
+            def prog( sbar ):
+                def prog1( num, tot ):
+                    dig = len(str(tot))
+                    sbar.showMessage( "Loading {count: >{width}} of {tot}".format( count=num, tot=tot, width=dig ) )
+                    QApplication.processEvents() # So the status bar will actually update
+                return prog1
+            self.data.load(progress=prog(self.statusBar()))
             self.path = path
             self.aux = []
             self.index = 0
@@ -504,16 +511,19 @@ class Example(QMainWindow):
         self.updateImages()
 
     def addAuxToGrid(self, aux):
-        auxUI = AuxDataUI.create(aux, self.data, self.gridWidth)
-        self.aux.append(auxUI)
-        auxName, auxLabels = auxUI.getUI()
+        try:
+            auxUI = AuxDataUI.create(aux, self.data, self.gridWidth)
+            self.aux.append(auxUI)
+            auxName, auxLabels = auxUI.getUI()
 
-        row = self.grid.rowCount()
-        self.grid.addWidget(auxName, row, 0)
-        for i, auxLabel in enumerate(auxLabels):
-            self.grid.addWidget(auxLabel, row, i+1)
+            row = self.grid.rowCount()
+            self.grid.addWidget(auxName, row, 0)
+            for i, auxLabel in enumerate(auxLabels):
+                self.grid.addWidget(auxLabel, row, i+1)
 
-        auxUI.auxDataChanged[str].connect(self.handleAuxDataChanged)
+            auxUI.auxDataChanged[str].connect(self.handleAuxDataChanged)
+        except Exception as ex:
+            print( "Error loading auxiliary data: {}".format( ex ) )
 
     def addAuxData(self):
         if self.data is not None:

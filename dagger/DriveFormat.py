@@ -59,6 +59,13 @@ class DriveFormat:
 
         return self.clean
 
+    def load( self, progress=None ):
+        """ Override this to load the file and either call this or call setClean() to
+            mark it as clean.
+            progress should be a function taking two ints: samples read, total number of samples.
+        """
+        self.clean = True
+
     def save( self ):
         """ Override this to save the file and either call this or call setClean() to
         mark it as clean """
