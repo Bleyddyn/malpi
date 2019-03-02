@@ -154,7 +154,7 @@ class DriveFormat:
         if d.isClean():
             print( "Drive is clean before edit PASS" )
         else:
-            print( "Drive is dirty before eidt: FAIL" )
+            print( "Drive is dirty before edit: FAIL" )
 
         invalid_action = 'very long action'
         before = d.actionForIndex(3)

@@ -34,6 +34,8 @@ class TubFormat(DriveFormat):
 
         self.path = path
         self.tub = Tub(path)
+        self.exclude = set()
+        self.shape = None
         (self.images, self.actions) = self._load(path)
         self._meta = self._loadMeta(path)
         self.meta = str(self._meta)
@@ -47,29 +49,48 @@ class TubFormat(DriveFormat):
         if os.path.exists(meta_file):
             with open(meta_file,'r') as f:
                 meta = json.load(f)
+
+        exc_file = os.path.join( path, "exclude.json" )
+        if os.path.exists(exc_file):
+            with open(exc_file,'r') as f:
+                excl = json.load(f) # stored as a list
+                self.exclude = set(excl)
+
         return meta
 
     def _load( self, path, image_norm=True ):
         images = []
         actions = []
 
-        for i in range(1,self.tub.get_num_records()):
-            print( "Loading {} of {}".format( i, self.tub.get_num_records() ), end='\r' )
-            sys.stdout.flush()
-            rec = self.tub.get_record(i)
-            if 'cam/image_array' in rec:
-                images.append( rec['cam/image_array'] )
-                one_action = []
-                for act in ["user/angle", "user/throttle"]:
-                    if act in rec:
-                        one_action.append( rec[act] )
-                actions.append( one_action )
-                #actions.append( rec["user/throttle"] )
-        print("")
+        try:
+            for i in range(1,self.tub.get_num_records()+1):
+                print( "Loading {} of {}".format( i, self.tub.get_num_records() ), end='\r' )
+                sys.stdout.flush()
+                rec = self.tub.get_record(i)
+                if 'cam/image_array' in rec:
+                    images.append( rec['cam/image_array'] )
+                    if self.shape is None:
+                        self.shape = rec['cam/image_array'].shape
+                    one_action = []
+                    for act in ["user/angle", "user/throttle"]:
+                        if act in rec:
+                            one_action.append( rec[act] )
+                    actions.append( one_action )
+                    #actions.append( rec["user/throttle"] )
+            print("")
+        except Exception as ex:
+            print("Load failed: {}".format( ex ) )
+
         return images, actions
 
     def save( self ):
-        # Ignoring images for now
+        if self.isClean():
+            return
+
+        exc_file = os.path.join( self.path, "exclude.json" )
+        with open(exc_file,'w') as f:
+            json.dump( list(self.exclude), f )
+        
         # For tub files it might make sense to keep a list of modified actions so only those need to be written out
         self.setClean()
 
@@ -77,6 +98,11 @@ class TubFormat(DriveFormat):
         return len(self.images)
 
     def imageForIndex( self, index ):
+        if (index + 1) in self.exclude:
+# This ends up looking ugly, can't figure out why
+            tmp = self.images[index].mean(axis=-1,dtype=self.images[index].dtype,keepdims=False)
+            tmp = np.repeat( tmp[:,:,np.newaxis], 3, axis=2 )
+            return tmp
         return self.images[index]
 
     def actionForIndex( self, index ):
@@ -100,12 +126,22 @@ class TubFormat(DriveFormat):
             return oldAction
         return oldAction
 
+    def deleteIndex( self, index ):
+        if index >= 0 and index < self.count():
+            index += 1
+            if index in self.exclude:
+                self.exclude.remove(index)
+            else:
+                self.exclude.add(index)
+            self.setDirty()
+
     def actionStats(self):
         stats = defaultdict(int)
-        stats["Min"] = np.min(self.actions)
-        stats["Max"] = np.max(self.actions)
-        stats["Mean"] = np.mean(self.actions)
-        stats["StdDev"] = np.std(self.actions)
+        if len(self.actions) > 0:
+            stats["Min"] = np.min(self.actions)
+            stats["Max"] = np.max(self.actions)
+            stats["Mean"] = np.mean(self.actions)
+            stats["StdDev"] = np.std(self.actions)
         return stats
 
     def getAuxMeta(self):
