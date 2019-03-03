@@ -121,6 +121,11 @@ class DriveFormat:
 
         return None
 
+    def metaString(self):
+        """ Return a string for displaying meta data.
+        """
+        return ""
+
     def actionStats(self):
         """ Return a dictionary with action names as keys and a count of each action as value.
         TODO: Behavior isn't yet defined for continuous action spaces."""

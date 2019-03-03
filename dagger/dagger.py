@@ -219,7 +219,7 @@ class Example(QMainWindow):
             #self.metaText.setMinimumWidth( 200.0 )
             self.metaDock.setWidget(self.metaText)
             self.viewMenu.addAction( self.metaDock.toggleViewAction() )
-        self.metaText.setText( self.data.meta )
+        self.metaText.setText( self.data.metaString() )
 
         if self.statsDock is None:
             self.statsDock = QDockWidget("Action Stats", self)
@@ -287,7 +287,6 @@ class Example(QMainWindow):
         nMode = od.exec()
         if nMode == QDialog.Accepted:
             _fnames = od.selectedFiles() # QStringList 
-            print( "{}".format(_fnames) )
              
             try:
                 if 1 == len(_fnames) and os.path.isdir(_fnames[0]):
@@ -402,17 +401,16 @@ class Example(QMainWindow):
                 self.updateStats()
                 self.updateWindowTitle()
         elif self.data is not None:
-            if self.data is not None:
-                if self.index < (self.data.count() - 1):
-                    newAction = self.data.actionForKey(e.text(),oldAction=self.data.actionForIndex(self.index))
-                    if newAction is None:
-                        for auxUI in self.aux:
-                            if auxUI.handleKeyPressEvent( e, self.index):
-                                e.accept()
-                                return
-                        e.ignore()
-                    else:
-                        self.changeCurrentAction( newAction )
+            if self.index < (self.data.count() - 1):
+                newAction = self.data.actionForKey(e.text(),oldAction=self.data.actionForIndex(self.index))
+                if newAction is None:
+                    for auxUI in self.aux:
+                        if auxUI.handleKeyPressEvent( e, self.index):
+                            e.accept()
+                            return
+                    e.ignore()
+                else:
+                    self.changeCurrentAction( newAction )
         else:
             e.ignore()
 

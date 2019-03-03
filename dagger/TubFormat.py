@@ -1,6 +1,7 @@
 import os
 import sys
 import pickle
+import copy
 from DriveFormat import DriveFormat
 from collections import defaultdict
 import numpy as np
@@ -22,6 +23,14 @@ def natural_keys(text):
     
 class TubFormat(DriveFormat):
     """ A class to represent a DonkeyCar Tub drive on disc.
+
+        Current assumptions:
+            Tub records are 1 indexed and sequential with no gaps.
+            We only care about editing steering and throttle.
+            Steering and throttle should be clipped to -1/1.
+
+        TODO: Change actions to be a dictionary of dictionaries, with the outer key being a record's real index.
+              Images would need to be included in that (which is how the Tub class does it).
     """
 
     def __init__( self, path ):
@@ -35,6 +44,7 @@ class TubFormat(DriveFormat):
         self.path = path
         self.tub = Tub(path)
         self.exclude = set()
+        self.edit_list = set()
         self.shape = None
         #(self.images, self.actions) = self._load(path)
         self._meta = self._loadMeta(path)
@@ -96,11 +106,43 @@ class TubFormat(DriveFormat):
         if self.isClean():
             return
 
+        # TODO: only write this out if something has changed?
         exc_file = os.path.join( self.path, "exclude.json" )
         with open(exc_file,'w') as f:
             json.dump( list(self.exclude), f )
         
-        # For tub files it might make sense to keep a list of modified actions so only those need to be written out
+        for ix in self.edit_list:
+            #rec = self.tub.get_json_record(ix+1)
+            path = self.tub.get_json_record_path(ix+1)
+
+            # Had to duplicate this from Tub.get_json_record because that method also messes with paths in the record data
+            try:
+                with open(path, 'r') as fp:
+                    rec = json.load(fp)
+            except UnicodeDecodeError:
+                raise Exception('bad record: %d. You may want to run `python manage.py check --fix`' % ix)
+            except FileNotFoundError:
+                raise
+            except:
+                print("Unexpected error:", sys.exc_info()[0])
+                raise
+
+            new_actions = self.actions[ix]
+
+            if (rec["user/angle"] != new_actions[0]) or (rec["user/throttle"] != new_actions[1]):
+                # Save the original values if not already done
+                if "orig/angle" not in rec:
+                    rec["orig/angle"] = rec["user/angle"]
+                if "orig/throttle" not in rec:
+                    rec["orig/throttle"] = rec["user/throttle"]
+
+                rec["user/angle"] = new_actions[0]
+                rec["user/throttle"] = new_actions[1]
+
+                with open(path, 'w') as fp:
+                    json.dump(rec, fp)
+
+        self.edit_list.clear()
         self.setClean()
 
     def count( self ):
@@ -120,9 +162,11 @@ class TubFormat(DriveFormat):
     def setActionForIndex( self, new_action, index ):
         if not np.array_equal( self.actions[index], new_action ):
             self.actions[index] = new_action
+            self.edit_list.add(index)
             self.setDirty()
 
     def actionForKey(self,keybind,oldAction=None):
+        oldAction = copy.copy(oldAction)
         if keybind == 'w':
             oldAction[1] += 0.1
         elif keybind == 'x':
@@ -144,6 +188,13 @@ class TubFormat(DriveFormat):
             else:
                 self.exclude.add(index)
             self.setDirty()
+
+    def metaString(self):
+        #{"inputs": ["cam/image_array", "user/angle", "user/throttle", "user/mode"], "start": 1550950724.8622544, "types": ["image_array", "float", "float", "str"]}
+        ret = ""
+        for k, v in self._meta.items():
+            ret += "{}: {}\n".format( k, v )
+        return ret
 
     def actionStats(self):
         stats = defaultdict(int)

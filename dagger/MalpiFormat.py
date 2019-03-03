@@ -204,6 +204,9 @@ class MalpiFormat(DriveFormat):
             return np.clip(oldAction, -1.0, 1.0)
         return None
 
+    def metaString(self):
+        return self.meta
+
     def actionStats(self):
         if self.categorical:
             stats = defaultdict(int)
