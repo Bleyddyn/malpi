@@ -43,30 +43,9 @@ class TubFormat(DriveFormat):
 
         self.path = path
         self.tub = Tub(path)
-        self.exclude = set()
         self.edit_list = set()
         self.shape = None
         #(self.images, self.actions) = self._load(path)
-        self._meta = self._loadMeta(path)
-        self.meta = str(self._meta)
-
-    def _loadMeta( self, path ):
-        """ e.g. {"inputs": ["cam/image_array", "user/angle", "user/throttle", "user/mode"], "types": ["image_array", "float", "float", "str"]}
-        """
-
-        meta_file = os.path.join( path, "meta.json" )
-        meta = {}
-        if os.path.exists(meta_file):
-            with open(meta_file,'r') as f:
-                meta = json.load(f)
-
-        exc_file = os.path.join( path, "exclude.json" )
-        if os.path.exists(exc_file):
-            with open(exc_file,'r') as f:
-                excl = json.load(f) # stored as a list
-                self.exclude = set(excl)
-
-        return meta
 
     def _load( self, path, image_norm=True, progress=None ):
         images = []
@@ -106,11 +85,8 @@ class TubFormat(DriveFormat):
         if self.isClean():
             return
 
-        # TODO: only write this out if something has changed?
-        exc_file = os.path.join( self.path, "exclude.json" )
-        with open(exc_file,'w') as f:
-            json.dump( list(self.exclude), f )
-        
+        self.tub.write_exclude()
+
         for ix in self.edit_list:
             #rec = self.tub.get_json_record(ix+1)
             path = self.tub.get_json_record_path(ix+1)
@@ -149,8 +125,8 @@ class TubFormat(DriveFormat):
         return len(self.images)
 
     def imageForIndex( self, index ):
-        if (index + 1) in self.exclude:
-# This ends up looking ugly, can't figure out why
+        if self.tub.excluded(index + 1):
+# This grayed out image ends up looking ugly, can't figure out why
             tmp = self.images[index].mean(axis=-1,dtype=self.images[index].dtype,keepdims=False)
             tmp = np.repeat( tmp[:,:,np.newaxis], 3, axis=2 )
             return tmp
@@ -183,16 +159,16 @@ class TubFormat(DriveFormat):
     def deleteIndex( self, index ):
         if index >= 0 and index < self.count():
             index += 1
-            if index in self.exclude:
-                self.exclude.remove(index)
+            if self.tub.excluded(index):
+                self.tub.include_index(index)
             else:
-                self.exclude.add(index)
+                self.tub.exclude_index(index)
             self.setDirty()
 
     def metaString(self):
         #{"inputs": ["cam/image_array", "user/angle", "user/throttle", "user/mode"], "start": 1550950724.8622544, "types": ["image_array", "float", "float", "str"]}
         ret = ""
-        for k, v in self._meta.items():
+        for k, v in self.tub.meta.items():
             ret += "{}: {}\n".format( k, v )
         return ret
 
