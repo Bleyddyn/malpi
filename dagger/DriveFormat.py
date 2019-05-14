@@ -157,12 +157,13 @@ class DriveFormat:
     def testFormat( FormatClass, test_path, invalid_action ):
 
         d = FormatClass(test_path)
+        d.load()
 
         print( "Testing {}".format( FormatClass ) )
         print( "Meta data:\n{}".format( d.meta ) )
         print( "Image 10 shape: {}".format( d.imageForIndex(9).shape ) )
         print( "Action 10: {}".format( d.actionForIndex(9) ) )
-        print( "Actions length: {} ".format( len(d.actions) ) )
+        print( "Actions length: {} ".format( d.count() ) )
         if d.isClean():
             print( "Drive is clean before edit PASS" )
         else:

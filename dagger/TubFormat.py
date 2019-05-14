@@ -43,9 +43,11 @@ class TubFormat(DriveFormat):
 
         self.path = path
         self.tub = Tub(path)
+        self.meta = self.tub.meta
         self.edit_list = set()
         self.shape = None
         self.auxMeta = {}
+        self.aux_clean = True
         #(self.images, self.actions) = self._load(path)
 
     def _load( self, path, image_norm=True, progress=None ):
@@ -60,11 +62,31 @@ class TubFormat(DriveFormat):
         self.records = records
         self.indexes = indexes
 
+        if 'auxiliary' in self.tub.meta:
+            self.auxMeta = self.tub.meta['auxiliary']
+
     def load( self, progress=None ):
         self._load(self.path, progress=progress)
         self.setClean()
 
     def save( self ):
+        if not self.aux_clean:
+            # update meta with new aux meta and write it out
+            for name, aux in self.auxMeta.items():
+                if name not in self.tub.meta['inputs']:
+                    self.tub.meta['inputs'].append(name)
+                    if 'continuous' == aux['type']:
+                        aux_type = 'float'
+                    elif 'categorical' == aux['type']:
+                        aux_type = 'int'
+                    else:
+                        raise ValueError( "Unknown auxiliary data type: {}".format( aux['type'] ) )
+                    self.tub.meta['types'].append(aux_type)
+            self.tub.meta['auxiliary'] = self.auxMeta
+            with open(self.tub.meta_path, 'w') as f:
+                json.dump(self.tub.meta, f)
+            self.aux_clean = True
+
         if self.isClean():
             return
 
