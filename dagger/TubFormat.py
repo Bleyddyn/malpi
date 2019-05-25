@@ -195,11 +195,15 @@ class TubFormat(DriveFormat):
 
     def actionStats(self):
         stats = defaultdict(int)
-        if len(self.actions) > 0:
-            stats["Min"] = np.min(self.actions)
-            stats["Max"] = np.max(self.actions)
-            stats["Mean"] = np.mean(self.actions)
-            stats["StdDev"] = np.std(self.actions)
+        if self.count() > 0:
+            actions = []
+            for i in range(self.count()):
+                act = self.actionForIndex( i )
+                actions.append(act)
+            stats["Min"] = np.min(actions)
+            stats["Max"] = np.max(actions)
+            stats["Mean"] = np.mean(actions)
+            stats["StdDev"] = np.std(actions)
         return stats
 
     def supportsAuxData(self):
@@ -267,7 +271,7 @@ class TubFormat(DriveFormat):
 DriveFormat.registerFormat( "TubFormat", TubFormat )
 
 def runTests(args):
-    DriveFormat.testFormat( TubFormat, args.file[0], 2.0 )
+    DriveFormat.testFormat( TubFormat, args.file[0], [2.0, -5.5] )
     d = TubFormat(args.file[0])
     print( d.inputTypes() )
     print( d.outputTypes() )

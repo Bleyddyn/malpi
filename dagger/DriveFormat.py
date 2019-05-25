@@ -164,12 +164,14 @@ class DriveFormat:
         print( "Image 10 shape: {}".format( d.imageForIndex(9).shape ) )
         print( "Action 10: {}".format( d.actionForIndex(9) ) )
         print( "Actions length: {} ".format( d.count() ) )
+        print( "Action stats: {}".format( d.actionStats() ) )
+
         if d.isClean():
             print( "Drive is clean before edit PASS" )
         else:
             print( "Drive is dirty before edit: FAIL" )
 
-        invalid_action = 'very long action'
+        #invalid_action = 'very long action'
         before = d.actionForIndex(3)
         d.setActionForIndex(invalid_action,3)
         after = d.actionForIndex(3)
@@ -182,6 +184,7 @@ class DriveFormat:
         else:
             print( "Drive is dirty after edit: PASS" )
 
+        
         try:
             d = FormatClass("DriveFormat.py")
         except IOError as ex:
