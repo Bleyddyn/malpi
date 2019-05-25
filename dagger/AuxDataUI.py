@@ -43,6 +43,7 @@ class AuxDataCatUI(AuxDataUI):
         self.data.addAuxData(auxMeta)
         self.keys = [str(idx+1) for idx, val in enumerate(auxMeta["categories"])] # keybindings
         self.index = 0
+        self.include_none = True
         self.initUI(count)
 
     def initUI(self, count):
@@ -63,6 +64,9 @@ class AuxDataCatUI(AuxDataUI):
         for i in range( len(self.dataLabels) ):
             il = index - 2 + i
             if il >= 0 and il < self.data.count():
+                data = self.data.auxDataAtIndex( self.meta["name"], il )
+                if data is None:
+                    data = ""
                 self.dataLabels[i].setCurrentText( self.data.auxDataAtIndex( self.meta["name"], il ) )
                 self.dataLabels[i].setEnabled(True)
             else:
@@ -87,6 +91,8 @@ class AuxDataCatUI(AuxDataUI):
 
     def _makeComboBox(self):
         ae = QComboBox()
+        if self.include_none:
+            ae.addItem("")
         for aclab in self.meta["categories"]:
             ae.addItem(aclab)
         ae.setInsertPolicy(QComboBox.NoInsert)
@@ -95,6 +101,8 @@ class AuxDataCatUI(AuxDataUI):
 
     def _actionEdited(self, newValue):
         idx = self.dataLabels.index(self.sender())
+        if "" == newValue:
+            newValue = None
         self.data.setAuxDataAtIndex(self.meta["name"], newValue, self.index + -2 +idx )
         self.auxDataChanged.emit(self.meta["name"])
 

@@ -106,10 +106,24 @@ class TubFormat(DriveFormat):
                 print("Unexpected error:", sys.exc_info()[0])
                 raise
 
-            # Copy over only the keys we might have modified, this will need to include aux data at some point.
-            for key in ['user/angle', 'user/throttle', 'orig/angle', 'orig/throttle']:
+            # Copy over only the keys we might have modified
+            chg_keys = ['user/angle', 'user/throttle', 'orig/angle', 'orig/throttle']
+            for key in chg_keys:
                 if key in rec:
                     old_rec[key] = rec[key]
+
+            # Now do any auxiliary data
+            for key in self.auxMeta.keys():
+                if key in rec:
+                    if rec[key] is None:
+                        old_rec.pop(key,None)
+                    else:
+                        #if self.auxMeta[key]['type'] == "categorical":
+                        #    val = self.auxMeta[key]['categories'].index(rec[key])
+                        #else:
+                        #    val = rec[key] 
+                        old_rec[key] = rec[key]
+                
 
             try:
                 with open(path, 'w') as fp: 
@@ -216,17 +230,29 @@ class TubFormat(DriveFormat):
         # TODO Check to make sure the meta data is all the same
         if meta["name"] not in self.auxMeta:
             self.auxMeta[meta["name"]] = meta
+            self.aux_clean = False
 
     def auxDataAtIndex(self, auxName, index):
-        if not auxName in self.auxData:
+        if not auxName in self.auxMeta:
             return None
-        return self.auxData[auxName][index]
+        idx = self.indexes[index]
+        rec = self.records[idx]
+        if auxName in rec:
+            if rec[auxName] is not None and self.auxMeta[auxName]['type'] == "categorical":
+                return self.auxMeta[auxName]['categories'][rec[auxName]]
+            return rec[auxName]
+        return None
 
     def setAuxDataAtIndex(self, auxName, auxData, index):
-        if not auxName in self.auxData:
+        if not auxName in self.auxMeta:
             return False
-        if self.auxData[auxName][index] != auxData:
-            self.auxData[auxName][index] = auxData
+        idx = self.indexes[index]
+        rec = self.records[idx]
+        if auxName not in rec or rec[auxName] != auxData:
+            if auxData is not None and self.auxMeta[auxName]['type'] == "categorical":
+                auxData = self.auxMeta[auxName]['categories'].index(auxData)
+            rec[auxName] = auxData
+            self.edit_list.add(idx)
             self.setDirty()
         return True
 
