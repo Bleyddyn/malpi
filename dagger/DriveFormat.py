@@ -116,6 +116,7 @@ class DriveFormat:
         """ Implement keybindings for this file type. The keybind argument will be a string
         with a single character the user typed. oldAction is for reference in case keybindings
         shift actions rather than choosing one.
+        Return None if no change is made.
         e.g. if keybind == 'w' then return 'forward'
         e.g. if keybind == '+' then return oldAction + 1"""
 

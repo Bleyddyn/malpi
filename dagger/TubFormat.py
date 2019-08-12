@@ -189,6 +189,8 @@ class TubFormat(DriveFormat):
         elif keybind == 's':
             oldAction[0] = 0.0
             oldAction[1] = 0.0
+        else:
+            return None
         return np.clip(oldAction, -1.0, 1.0)
 
     def deleteIndex( self, index ):
