@@ -10,9 +10,12 @@ from vae_model import KerasVAE
 from keras.datasets import cifar10
 import donkeycar as dk
 #from donkeycar.train.tub_generator import generator
-from vae_generator import generator
+from vae_generator import vae_generator
 from donkeycar.templates.train import collate_records, preprocessFileList
 from donkeycar.utils import gather_records
+from donkeycar.parts.keras import KerasLinear, KerasIMU,\
+     KerasCategorical, KerasBehavioral, Keras3D_CNN,\
+     KerasRNN_LSTM, KerasLatent
 
 
 def plot_results( history, path ):
@@ -68,8 +71,24 @@ def load_tubs(cfg, tub_names, kl, aux_name=None):
     records = gather_records(cfg, tub_names, verbose=True)
     collate_records(records, gen_records, opts)
 
-    train_gen = generator(None, opts, gen_records, cfg.BATCH_SIZE, isTrainSet=True, aug=False, aux=aux_name)
-    val_gen = generator(None, opts, gen_records, cfg.BATCH_SIZE, isTrainSet=False, aug=False, aux=aux_name)
+    # These options should be part of the KerasPilot class
+    if type(kl.model.output) is list:
+        opts['model_out_shape'] = (2, 1)
+    else:
+        opts['model_out_shape'] = kl.model.output.shape
+
+    if type(kl.model.input) is list:
+        opts['model_in_shape'] = (2, 1)
+    else:    
+        opts['model_in_shape'] = kl.model.input.shape
+
+    opts['has_imu'] = type(kl) is KerasIMU
+    opts['has_bvh'] = type(kl) is KerasBehavioral
+    opts['img_out'] = type(kl) is KerasLatent
+    opts['vae_out'] = type(kl) is KerasVAE
+
+    train_gen = vae_generator(None, opts, gen_records, cfg.BATCH_SIZE, isTrainSet=True, aug=False, aux=aux_name)
+    val_gen = vae_generator(None, opts, gen_records, cfg.BATCH_SIZE, isTrainSet=False, aug=False, aux=aux_name)
 
     num_train = 0
     num_val = 0
@@ -85,6 +104,8 @@ def load_tubs(cfg, tub_names, kl, aux_name=None):
 
     print( "Num/Steps: {} {}".format( num_train, steps ) )
     print( "Val/Steps: {} {}".format( num_val, val_steps ) )
+
+    return train_gen, val_gen, steps, val_steps
 
     x_train = []
     y_train = []
@@ -110,7 +131,7 @@ def load_tubs(cfg, tub_names, kl, aux_name=None):
         y_val = keras.utils.to_categorical(y_val, num_classes=7)
     return x_train, x_val, y_train, y_val
 
-def train( kl, x_train, x_val, z_dim, beta, optim, lr=None, decay=None, momentum=None, dropout=None, epochs=40, batch_size=64, aux=None, y_train=None, y_val=None ):
+def train( kl, train_gen, val_gen, train_steps, val_steps, z_dim, beta, optim, lr=None, decay=None, momentum=None, dropout=None, epochs=40, batch_size=64, aux=None ):
 
     optim_args = {}
     if lr is not None:
@@ -139,8 +160,22 @@ def train( kl, x_train, x_val, z_dim, beta, optim, lr=None, decay=None, momentum
                                                mode='auto')
 
     if aux is not None:
-        hist = kl.model.fit( x_train, {'main_output': x_train, 'aux_output': y_train},
-            batch_size=batch_size, epochs=epochs, validation_data=(x_val, {'main_output': x_val, 'aux_output': y_val}), shuffle=True, callbacks=[early_stop])
+#        hist = kl.model.fit( x_train, {'main_output': x_train, 'aux_output': y_train},
+#            batch_size=batch_size, epochs=epochs, validation_data=(x_val, {'main_output': x_val, 'aux_output': y_val}), shuffle=True, callbacks=[early_stop])
+
+        workers_count = 1
+        use_multiprocessing = False
+
+        hist = kl.model.fit_generator(
+                    train_gen, 
+                    steps_per_epoch=train_steps, 
+                    epochs=epochs, 
+                    verbose=cfg.VEBOSE_TRAIN, 
+                    validation_data=val_gen,
+                    callbacks=[early_stop], 
+                    validation_steps=val_steps,
+                    workers=workers_count,
+                    use_multiprocessing=use_multiprocessing)
     else:
         hist = kl.model.fit( x_train, x_train, batch_size=batch_size, epochs=epochs, validation_data=(x_val, x_val), shuffle=True, callbacks=[early_stop])
     return hist
@@ -198,14 +233,13 @@ if __name__ == "__main__":
             if args.aux is not None:
                 aux_out = 7 # need to get number of aux outputs from data
             kl = KerasVAE(input_shape=input_shape, z_dim=args.z_dim, beta=args.beta, dropout=args.dropout, aux=aux_out)
-            x_train, x_val, y_train, y_val = load_tubs(cfg, dirs, kl, aux_name=args.aux)
-            print( "Train: {}".format( x_train.shape ) )
-            print( "  Val: {}".format( x_val.shape ) )
+            #x_train, x_val, y_train, y_val = load_tubs(cfg, dirs, kl, aux_name=args.aux)
+            train_gen, val_gen, train_steps, val_steps = load_tubs(cfg, dirs, kl, aux_name=args.aux)
 
         if args.pre is not None:
             kl.load_weights( args.pre, by_name=True )
 
-        hist = train( kl, x_train, x_val, args.z_dim, args.beta, args.optimizer, args.lr, args.decay, args.momentum, args.dropout, args.epochs, aux=args.aux, y_train=y_train, y_val=y_val )
+        hist = train( kl, train_gen, val_gen, train_steps, val_steps, args.z_dim, args.beta, args.optimizer, args.lr, args.decay, args.momentum, args.dropout, args.epochs, aux=args.aux )
 
         n = datetime.datetime.now()
         

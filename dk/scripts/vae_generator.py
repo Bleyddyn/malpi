@@ -1,36 +1,15 @@
 from sklearn.utils import shuffle
+import donkeycar as dk
 from donkeycar.parts.augment import augment_image
 from donkeycar.utils import *
-from donkeycar.parts.keras import KerasLinear, KerasIMU,\
-     KerasCategorical, KerasBehavioral, Keras3D_CNN,\
-     KerasRNN_LSTM, KerasLatent
-from vae_model import KerasVAE
+import keras
 
-def generator(save_best, opts, data, batch_size, isTrainSet=True, min_records_to_train=1000, aug=False, aux=None):
+def vae_generator(save_best, opts, data, batch_size, isTrainSet=True, min_records_to_train=1000, aug=False, aux=None):
     
     cfg = opts['cfg']
     num_records = len(data)
 
     while True:
-
-        if isTrainSet and opts['continuous']:
-            '''
-            When continuous training, we look for new records after each epoch.
-            This will add new records to the train and validation set.
-            '''
-            records = gather_records(cfg, tub_names, opts)
-            if len(records) > num_records:
-                collate_records(records, data, opts)
-                new_num_rec = len(data)
-                if new_num_rec > num_records:
-                    print('picked up', new_num_rec - num_records, 'new records!')
-                    num_records = new_num_rec
-                    if save_best is not None:
-                        save_best.reset_best()
-            if num_records < min_records_to_train:
-                print("not enough records to train. need %d, have %d. waiting..." % (min_records_to_train, num_records))
-                time.sleep(10)
-                continue
 
         batch_data = []
 
@@ -38,23 +17,13 @@ def generator(save_best, opts, data, batch_size, isTrainSet=True, min_records_to
 
         keys = shuffle(keys)
 
-        kl = opts['keras_pilot']
+        has_imu = opts.get('has_imu', False)
+        has_bvh = opts.get('has_bvh', False)
+        img_out = opts.get('img_out', False)
+        vae_out = opts.get('vae_out', False)
+        model_out_shape = opts['model_out_shape']
+        model_in_shape = opts['model_in_shape']
 
-        if type(kl.model.output) is list:
-            model_out_shape = (2, 1)
-        else:
-            model_out_shape = kl.model.output.shape
-
-        if type(kl.model.input) is list:
-            model_in_shape = (2, 1)
-        else:    
-            model_in_shape = kl.model.input.shape
-
-        has_imu = type(kl) is KerasIMU
-        has_bvh = type(kl) is KerasBehavioral
-        img_out = type(kl) is KerasLatent
-        vae_out = type(kl) is KerasVAE
-        
         if img_out:
             import cv2
 
@@ -136,7 +105,7 @@ def generator(save_best, opts, data, batch_size, isTrainSet=True, min_records_to
                 elif has_bvh:
                     X = [img_arr, np.array(inputs_bvh)]
                 elif vae_out:
-                    X = [img_arr / 255.0]
+                    X = img_arr / 255.0
                 else:
                     X = [img_arr]
 
@@ -149,10 +118,55 @@ def generator(save_best, opts, data, batch_size, isTrainSet=True, min_records_to
                 else:
                     y = [np.array(angles), np.array(throttles)]
 
+            #batch_size=batch_size, epochs=epochs, validation_data=(x_val, {'main_output': x_val, 'aux_output': y_val}), shuffle=True, callbacks=[early_stop])
                 if aux is not None:
-                    yield X, y, aux_out
+                    aux_out = keras.utils.to_categorical(aux_out, num_classes=7)
+                    yield X, {'main_output': y, 'aux_output': aux_out}
                 else:
                     yield X, y
 
 
                 batch_data = []
+
+if __name__ == "__main__":
+    import argparse
+    from vae_model import KerasVAE
+    from donkeycar.templates.train import collate_records, preprocessFileList
+
+    parser = argparse.ArgumentParser(description='Test VAE data loader.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--aux', default="lanes", help='Name of the auxilliary data to use.')
+    parser.add_argument('file', nargs='+', help='Text file with a list of tubs to train on.')
+
+    args = parser.parse_args()
+
+    try:
+        cfg = dk.load_config()
+    except FileNotFoundError:
+        cfg = dk.load_config("config.py") # retry in the current directory
+    tub_names = preprocessFileList( args.file )
+    input_shape = (cfg.IMAGE_W, cfg.IMAGE_H, cfg.IMAGE_DEPTH)
+# Code for multiple inputs: http://digital-thinking.de/deep-learning-combining-numerical-and-text-features-in-deep-neural-networks/
+    aux_out = 0
+    if args.aux is not None:
+        aux_out = 7 # need to get number of aux outputs from data
+    kl = KerasVAE(input_shape=input_shape, z_dim=128, beta=1.0, aux=aux_out)
+
+    opts = { 'cfg' : cfg}
+    opts['categorical'] = False
+    opts['continuous'] = False
+
+    gen_records = {}
+    records = gather_records(cfg, tub_names, verbose=True)
+    collate_records(records, gen_records, opts)
+
+    # These options should be part of the KerasPilot class
+    opts['model_out_shape'] = (2, 1)
+    opts['model_in_shape'] = input_shape
+    opts['vae_out'] = True
+
+    train_gen = vae_generator(None, opts, gen_records, cfg.BATCH_SIZE, isTrainSet=True, aug=False, aux=args.aux)
+    for X, y in train_gen:
+        print( "X  {} {}".format( type(X[0]), X[0].shape ) )
+        print( "main  {}".format( y['main_output'][0].shape ) )
+        print( "aux   {}".format( y['aux_output'].shape ) )
+        break
