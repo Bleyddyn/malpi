@@ -159,25 +159,26 @@ def train( kl, train_gen, val_gen, train_steps, val_steps, z_dim, beta, optim, l
                                                verbose=True,
                                                mode='auto')
 
-    if aux is not None:
+#    if aux is not None:
 #        hist = kl.model.fit( x_train, {'main_output': x_train, 'aux_output': y_train},
 #            batch_size=batch_size, epochs=epochs, validation_data=(x_val, {'main_output': x_val, 'aux_output': y_val}), shuffle=True, callbacks=[early_stop])
 
-        workers_count = 1
-        use_multiprocessing = False
+    workers_count = 1
+    use_multiprocessing = False
 
-        hist = kl.model.fit_generator(
-                    train_gen, 
-                    steps_per_epoch=train_steps, 
-                    epochs=epochs, 
-                    verbose=cfg.VEBOSE_TRAIN, 
-                    validation_data=val_gen,
-                    callbacks=[early_stop], 
-                    validation_steps=val_steps,
-                    workers=workers_count,
-                    use_multiprocessing=use_multiprocessing)
-    else:
-        hist = kl.model.fit( x_train, x_train, batch_size=batch_size, epochs=epochs, validation_data=(x_val, x_val), shuffle=True, callbacks=[early_stop])
+    hist = kl.model.fit_generator(
+                train_gen, 
+                steps_per_epoch=train_steps, 
+                epochs=epochs, 
+                verbose=cfg.VEBOSE_TRAIN, 
+                validation_data=val_gen,
+                callbacks=[early_stop], 
+                validation_steps=val_steps,
+                workers=workers_count,
+                use_multiprocessing=use_multiprocessing)
+#    else:
+#        hist = kl.model.fit( x_train, x_train, batch_size=batch_size, epochs=epochs, validation_data=(x_val, x_val), shuffle=True, callbacks=[early_stop])
+
     return hist
 
 def check_model( z_dim, beta ):

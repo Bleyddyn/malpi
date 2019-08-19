@@ -97,15 +97,14 @@ def vae_generator(save_best, opts, data, batch_size, isTrainSet=True, min_record
                 if img_arr is None:
                     continue
 
-                img_arr = np.array(inputs_img).reshape(batch_size,\
-                    cfg.IMAGE_H, cfg.IMAGE_W, cfg.IMAGE_DEPTH)
+                img_arr = np.array(inputs_img).reshape(batch_size, cfg.IMAGE_H, cfg.IMAGE_W, cfg.IMAGE_DEPTH)
 
                 if has_imu:
                     X = [img_arr, np.array(inputs_imu)]
                 elif has_bvh:
                     X = [img_arr, np.array(inputs_bvh)]
                 elif vae_out:
-                    X = img_arr / 255.0
+                    X = img_arr
                 else:
                     X = [img_arr]
 
@@ -167,6 +166,7 @@ if __name__ == "__main__":
     train_gen = vae_generator(None, opts, gen_records, cfg.BATCH_SIZE, isTrainSet=True, aug=False, aux=args.aux)
     for X, y in train_gen:
         print( "X  {} {}".format( type(X[0]), X[0].shape ) )
-        print( "main  {}".format( y['main_output'][0].shape ) )
+        img = y['main_output'][0]
+        print( "main  {} min/max/avg: {}/{}/{}".format( img.shape, np.min(img), np.max(img), np.mean(img) ) )
         print( "aux   {}".format( y['aux_output'].shape ) )
         break

@@ -24,7 +24,7 @@ from docopt import docopt
 import donkeycar as dk
 from donkeycar.utils import get_model_by_type, gather_records, load_scaled_image_arr
 from donkeycar.templates.train import collate_records
-from donkeycar.parts.keras import KerasVAE
+from vae_model import KerasVAE
 
 def sample_vae(vae, dirs, count):
     z_size = vae.z_dim
@@ -57,7 +57,7 @@ def sample_vae(vae, dirs, count):
         img_arr = load_scaled_image_arr(filename, cfg)
         orig.append(img_arr)
 
-    orig = np.array(orig) / 255.0
+    orig = np.array(orig)
     recon = vae.decode( vae.encode(orig) )
 
     for i in range(n):
