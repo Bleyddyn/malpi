@@ -17,7 +17,7 @@ except:
     exit()
 
 try:
-    import mac_notify
+    from .mac_notify import notify as mac_notify
     mac_notifications = True
 except:
     mac_notifications = False
@@ -61,7 +61,7 @@ def notify( title, subTitle='', message='', email_to=None, mac=True, sound=False
             msg2 = subTitle + "\n" + message
         mailTo( email_to, subject=title, message=msg2 )
     if mac and mac_notifications:
-        mac_notify.notify( title, subTitle, message, sound=sound )
+        mac_notify( title, subTitle, message, sound=sound )
 
 def _parse_cmdline():
     parser = argparse.ArgumentParser(description='Send a notification by email and/or Mac OS X notification system .', formatter_class=argparse.ArgumentDefaultsHelpFormatter)

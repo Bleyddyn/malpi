@@ -7,7 +7,7 @@ import argparse
 import datetime
 import pickle
 
-class Meta(object):
+class Experiment(object):
     def __init__(self, exp_name, args, exp_dir='experiments', num_samples=None, input_dim=None, num_actions=None, hparams={}, modules=None):
         """ modules: iterable with python modules that have __name__ and __version__ attributes.
                 if modules is not None, python version info will be added
@@ -114,7 +114,7 @@ def _hparamsTest():
 
 def _runTests(args):
     try:
-        exp1 = Meta( "TestExperimentName", args, exp_dir='test_experiments')
+        exp1 = Experiment( "TestExperimentName", args, exp_dir='test_experiments')
     except IOError as ex:
         print( "Caught correct exception when meta file already exists: PASS" )
     except Exception as exg:
@@ -132,7 +132,7 @@ def _runTests(args):
     else:
         testname = args.file
     print( "testname: {}".format( testname ) )
-    exp2 = Meta( testname, args, exp_dir="test_experiments", num_samples=10000, input_dim=(120,120,3), hparams=_hparamsTest(), modules=[np, tf, keras] )
+    exp2 = Experiment( testname, args, exp_dir="test_experiments", num_samples=10000, input_dim=(120,120,3), hparams=_hparamsTest(), modules=[np, tf, keras] )
 
     from keras.models import Sequential
     from keras.layers import Dense
@@ -145,7 +145,7 @@ def _runTests(args):
 
 def _getOptions():
 
-    parser = argparse.ArgumentParser(description='Experiment Meta class and tests.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(description='Experiment class and tests.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-f', '--file', help='Output file')
     parser.add_argument('--test_only', action="store_true", default=True, help='run tests, then exit')
 
