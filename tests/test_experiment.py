@@ -24,9 +24,10 @@ def _runTests(args):
     else:
         print( "No exception raised when meta file already exists: FAIL" )
     
-    import keras
-    import tensorflow as tf
-    import numpy as np
+# modules that should always be available and have name and version attributes.
+    import setuptools as mod1
+    import pip as mod2
+    import numpy as mod3
 
     if args.file is None:
         n = datetime.datetime.now()
@@ -34,16 +35,16 @@ def _runTests(args):
     else:
         testname = args.file
     print( "testname: {}".format( testname ) )
-    exp2 = Experiment( testname, args, exp_dir="test_experiments", num_samples=10000, input_dim=(120,120,3), hparams=_hparamsTest(), modules=[np, tf, keras] )
+    exp2 = Experiment( testname, args, exp_dir="test_experiments", num_samples=10000, input_dim=(120,120,3), hparams=_hparamsTest(), modules=[mod1, mod2, mod3] )
 
-    from keras.models import Sequential
-    from keras.layers import Dense
-
-    model = Sequential()
-    model.add( Dense(255, input_shape=(100,)) )
-    results = {}
-    results['val_acc'] = [0.3, 0.4, 0.5, 0.6]
-    exp2.writeAfter( model=model, results=results )
+#    from keras.models import Sequential
+#    from keras.layers import Dense
+#
+#    model = Sequential()
+#    model.add( Dense(255, input_shape=(100,)) )
+#    results = {}
+#    results['val_acc'] = [0.3, 0.4, 0.5, 0.6]
+#    exp2.writeAfter( model=model, results=results )
 
 def _getOptions():
 

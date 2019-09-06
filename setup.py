@@ -3,9 +3,11 @@ import setuptools
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
+from malpi import __version__
+
 setuptools.setup(
     name="malpi",
-    version="0.0.1",
+    version=__version__,
     author="Andrew Salamon",
     author_email="bleyddyn.aprhys@gmail.com",
     description="A library for use with the DonkeyCar project",

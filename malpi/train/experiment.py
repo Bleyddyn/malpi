@@ -8,9 +8,12 @@ import datetime
 import pickle
 
 class Experiment(object):
-    def __init__(self, exp_name, args, exp_dir='experiments', num_samples=None, input_dim=None, num_actions=None, hparams={}, modules=None):
+
+    __version__ = "1.0.0"
+
+    def __init__(self, exp_name, args, exp_dir='experiments', num_samples=None, input_dim=None, num_actions=None, hparams={}, modules=[]):
         """ modules: iterable with python modules that have __name__ and __version__ attributes.
-                if modules is not None, python version info will be added
+                Python and Experiment class versions will always be output.
         """
         if not os.path.exists(exp_dir):
             os.makedirs(exp_dir)
@@ -94,15 +97,14 @@ class Experiment(object):
         return vstring
 
     def _writeVersions(self, fileobj):
-        if self.modules is None or len(self.modules) == 0:
-            return
-
         fileobj.write( "Module Versions:\n" )
         self._writeOne( fileobj, "Python", self.pythonVersionString(), indent="   " )
+        self._writeOne( fileobj, "Experiment", Experiment.__version__, indent="   " )
+
         for mod in self.modules:
             self._writeOne( fileobj, mod.__name__, mod.__version__, indent="   " )
 
-        self.modules = None
+        self.modules = []
 
 
 def _hparamsTest():
