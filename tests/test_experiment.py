@@ -1,9 +1,11 @@
 """ Some simple tests for MaLPi's Experiment tracking class.
-    TODO: rewrite so it can be used by pytest.
+    Usage: python3 -m pytest
 """
 
 import argparse
 import datetime
+import pytest
+import shutil
 
 from malpi import Experiment
 
@@ -14,51 +16,48 @@ def _hparamsTest():
     out["batch_size"] = 64
     return out
 
-def _runTests(args):
+def _setup():
+    expdir = "exp_test_dir1"
     try:
-        exp1 = Experiment( "TestExperimentName", args, exp_dir='test_experiments')
-    except IOError as ex:
-        print( "Caught correct exception when meta file already exists: PASS" )
-    except Exception as exg:
-        print( "Caught invalid exception ({}) when meta file already exists: FAIL".format(exg) )
-    else:
-        print( "No exception raised when meta file already exists: FAIL" )
+        shutil.rmtree(expdir)
+    except FileNotFoundError as ex:
+        pass
+    return expdir
+
+def test_exists():
+    expdir = _setup()
+    args = _getOptions("--file=TestFile.txt".split())
+
+    exp1 = Experiment( "TestExperimentName1", args, exp_dir=expdir)
+    with pytest.raises(IOError) as e_info:
+        exp2 = Experiment( "TestExperimentName1", args, exp_dir=expdir)
+
+    # Shouldn't raise an exception because of the different exp name
+    exp2 = Experiment( "TestExperimentName2", args, exp_dir=expdir)
+
+def test_experiment():
+    expdir = _setup()
+    args = _getOptions("--file=TestFile.txt".split())
     
 # modules that should always be available and have name and version attributes.
     import setuptools as mod1
     import pip as mod2
     import numpy as mod3
 
-    if args.file is None:
-        n = datetime.datetime.now()
-        testname = n.strftime('expMetaTest_%Y%m%d_%H%M%S')
-    else:
-        testname = args.file
-    print( "testname: {}".format( testname ) )
-    exp2 = Experiment( testname, args, exp_dir="test_experiments", num_samples=10000, input_dim=(120,120,3), hparams=_hparamsTest(), modules=[mod1, mod2, mod3] )
+    n = datetime.datetime.now()
+    testname = n.strftime('expMetaTest_%Y%m%d_%H%M%S')
+    exp2 = Experiment( testname, args, exp_dir=expdir, num_samples=10000, input_dim=(120,120,3), hparams=_hparamsTest(), modules=[mod1, mod2, mod3] )
 
-#    from keras.models import Sequential
-#    from keras.layers import Dense
-#
-#    model = Sequential()
-#    model.add( Dense(255, input_shape=(100,)) )
-#    results = {}
-#    results['val_acc'] = [0.3, 0.4, 0.5, 0.6]
-#    exp2.writeAfter( model=model, results=results )
+    results = {}
+    results['val_acc'] = [0.3, 0.4, 0.5, 0.6]
+    exp2.writeAfter( model=None, results=results )
 
-def _getOptions():
+def _getOptions(argstring=None):
 
     parser = argparse.ArgumentParser(description='Experiment class and tests.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-f', '--file', help='Output file')
     parser.add_argument('--test_only', action="store_true", default=True, help='run tests, then exit')
 
-    args = parser.parse_args()
+    args = parser.parse_args(argstring)
 
     return args
-
-if __name__ == "__main__":
-    args = _getOptions()
-
-    if args.test_only:
-        _runTests(args)
-        exit()
