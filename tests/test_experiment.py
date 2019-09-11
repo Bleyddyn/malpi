@@ -6,6 +6,7 @@ import argparse
 import datetime
 import pytest
 import shutil
+import re
 
 from malpi import Experiment
 
@@ -16,16 +17,16 @@ def _hparamsTest():
     out["batch_size"] = 64
     return out
 
-def _setup():
-    expdir = "exp_test_dir1"
+def _setup(basedir):
+    expdir = basedir / "exp_test_dir1"
     try:
         shutil.rmtree(expdir)
     except FileNotFoundError as ex:
         pass
     return expdir
 
-def test_exists():
-    expdir = _setup()
+def test_exists(tmp_path):
+    expdir = _setup(tmp_path)
     args = _getOptions("--file=TestFile.txt".split())
 
     exp1 = Experiment( "TestExperimentName1", args, exp_dir=expdir)
@@ -35,8 +36,8 @@ def test_exists():
     # Shouldn't raise an exception because of the different exp name
     exp2 = Experiment( "TestExperimentName2", args, exp_dir=expdir)
 
-def test_experiment():
-    expdir = _setup()
+def test_experiment(tmp_path):
+    expdir = _setup(tmp_path)
     args = _getOptions("--file=TestFile.txt".split())
     
 # modules that should always be available and have name and version attributes.
@@ -51,6 +52,21 @@ def test_experiment():
     results = {}
     results['val_acc'] = [0.3, 0.4, 0.5, 0.6]
     exp2.writeAfter( model=None, results=results )
+
+    # Check some of the experiment output fields
+    with open(exp2.filename, 'r') as f:
+        output = f.read()
+
+    res = re.search( '^Name: (.*)$', output, flags=re.M )
+    assert res.group(1) == testname
+
+    assert re.search( '^Git Commit: (.+)', output, flags=re.M ) is not None
+
+    res = re.search( '^ +Experiment: (.*)$', output, flags=re.M )
+    assert res.group(1) == Experiment.__version__
+
+    #with open("save.txt", 'w') as f:
+    #    f.write(output)
 
 def _getOptions(argstring=None):
 
