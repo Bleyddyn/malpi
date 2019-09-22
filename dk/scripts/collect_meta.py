@@ -14,6 +14,8 @@ Options:
     <cfg>              Config entries to include in meta information [default: ['JOYSTICK_MAX_THROTTLE', 'JOYSTICK_STEERING_SCALE']].
 """
 from docopt import docopt
+import numpy as np
+
 import cv2
 
 import donkeycar as dk
@@ -32,10 +34,11 @@ class ImageResize():
             # Should use cubic for upsampling, but INTER_AREA is best for downsampling
             # Linear is default and seems like a good compromise and it's fast
             # See: http://tanbakuchi.com/posts/comparison-of-openv-interpolation-algorithms/
+            img_arr = img_arr.astype(np.float32) / 255.0
             return cv2.resize(img_arr, self.dim)
         except Exception as ex:
             print( "ImageResize error: {}".format( ex ) )
-            return None
+            raise
 
     def shutdown(self):
         pass
@@ -83,10 +86,8 @@ if __name__ == "__main__":
             for part in vehicle.parts:
                 if isinstance(part["part"], KerasPilot):
                     inputs = part["inputs"]
-                    if 'cam/image_array' in inputs:
-                        inputs[inputs.index('cam/image_array')] = 'cam/resized_image'
-                    else:
-                        inputs[inputs.index('cam/normalized/cropped')] = 'cam/resized_image'
+                    print( "KerasPilot inputs: {}".format( inputs ) )
+                    inputs[inputs.index('cam/normalized/cropped')] = 'cam/resized_image'
                     part["inputs"] = inputs
 
     vehicle.start(rate_hz=cfg.DRIVE_LOOP_HZ, max_loop_count=cfg.MAX_LOOPS)
