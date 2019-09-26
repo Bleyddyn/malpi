@@ -117,7 +117,7 @@ if __name__ == "__main__":
     for adir in sorted(dirs):
         if adir not in done and os.path.isdir(adir):
             if not check_path(adir, counter=counts, stats=do_stats, time_of_day=do_tod):
-                for afile in os.listdir(adir):
+                for afile in sorted(os.listdir(adir)):
                     fpath = os.path.join(adir, afile)
                     if fpath not in done:
                         check_path( fpath, counter=counts, stats=do_stats, time_of_day=do_tod )
