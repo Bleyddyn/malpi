@@ -24,7 +24,12 @@ class Experiment(object):
 
         os.makedirs(self.dir_name)
 
-        self.args = args
+        if type(args) == argparse.Namespace:
+            # argparse
+            self.args = vars(args)
+        else:
+            # docopt
+            self.args = args
         self.filename = os.path.join( self.dir_name, exp_name+".txt" )
         self.name = exp_name
         self.num_samples = num_samples
@@ -53,7 +58,7 @@ class Experiment(object):
                 print( "Commit: None" )
             self._writeOne( f, "Git Commit", self.commit )
             f.write( "Command line arguments:\n" )
-            for key,value in vars(self.args).items():
+            for key,value in self.args.items():
                 self._writeOne( f, key, value, indent="   ")
             f.write( "Hyperparameters:\n" )
             for key,value in self.hparams.items():

@@ -2,6 +2,7 @@
 
 import sys
 import argparse
+import json
 
 # Import smtplib to provide email functions
 import smtplib
@@ -48,17 +49,24 @@ def mailTo( addr_to, subject='Notification', message='', config={} ):
     s.sendmail(addr_from, addr_to, msg.as_string())
     s.quit()
 
-def get_email_config():
-    """ Read the MaLPi style config.py file and return notification related entries.
+def read_email_config( fname="email_config.json" ):
+    """ Read the json config file and return notification related entries.
     """
     try:
-        import config
+        with open(fname,'r') as f:
+            notifications = json.load(f)
     except Exception as ex:
-        print( "Failed to load config file config.py." )
-        print( "Try copying config_empty.py to config.py, fill in the details, and re-run." )
+        print( "Failed to load email config file {}".format( fname ) )
         raise
 
-    return config.notifications
+    all_keys = {'addr_from', 'smtp_pass', 'smtp_server', 'smtp_user'}
+    read_keys = set(notifications)
+    if not all_keys.issubset( read_keys ):
+        raise KeyError("Key(s) missing from email notifications config file: {}".format( ", ".join( list(all_keys.difference(read_keys)) )))
+
+    return notifications
+
+# TODO Add a write_email_config function
 
 def notify( title, subTitle='', message='', email_to=None, mac=True, sound=False, email_config={} ):
     if email_to is not None:
