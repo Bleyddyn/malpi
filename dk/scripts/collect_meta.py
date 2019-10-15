@@ -14,27 +14,32 @@ Options:
     <cfg>              Config entries to include in meta information [default: ['JOYSTICK_MAX_THROTTLE', 'JOYSTICK_STEERING_SCALE']].
 """
 from docopt import docopt
-import numpy as np
 
 import cv2
 
 import donkeycar as dk
-from donkeycar.parts.keras import KerasPilot
-from donkeycar.templates.complete import drive
+from donkeycar.drive import DefaultDriver
+from donkeycar.utils import normalize_and_crop
 
 class ImageResize():
+    """ ImageResize does the same pre-processing as ImgPreProcess in the drive function,
+        plus it will resize the final image to the given dimensions.
+    """
 
-    def __init__(self, dim):
-        self.dim = dim
+    def __init__(self, cfg, ai_dim):
+        """ ai_dim = (width, height) dimensions of the input layer of the AI. """
+        self.cfg = cfg
+        self.dim = ai_dim
 
     def run(self, img_arr):
         if img_arr is None:
             return None
         try:
+            img_arr = normalize_and_crop(img_arr, self.cfg)
+
             # Should use cubic for upsampling, but INTER_AREA is best for downsampling
             # Linear is default and seems like a good compromise and it's fast
             # See: http://tanbakuchi.com/posts/comparison-of-openv-interpolation-algorithms/
-            img_arr = img_arr.astype(np.float32) / 255.0
             return cv2.resize(img_arr, self.dim)
         except Exception as ex:
             print( "ImageResize error: {}".format( ex ) )
@@ -43,6 +48,18 @@ class ImageResize():
     def shutdown(self):
         pass
 
+class MyDriver(DefaultDriver):
+    def __init__(self, cfg, model_path=None, use_joystick=False, model_type=None, camera_type='single', meta=[] ):
+        super().__init__(cfg, model_path=model_path, use_joystick=use_joystick, model_type=model_type, camera_type=camera_type, meta=meta )
+
+    def build_pre_pilot(self):
+        self.build_pre_pilot_conditions()
+        inf_input = 'cam/normalized/cropped'
+        self.vehicle.add(ImageResize(self.cfg, (self.cfg.IMAGE_MODEL_W, self.cfg.IMAGE_MODEL_H)),
+            inputs=['cam/image_array'],
+            outputs=[inf_input],
+            run_condition='run_pilot')
+        return [inf_input]
 
 if __name__ == "__main__":
     args = docopt(__doc__)
@@ -72,22 +89,5 @@ if __name__ == "__main__":
 
     model_type = args['--type']
     
-
-    vehicle = drive(cfg, model_path=args['--model'], model_type=model_type, use_joystick=True, meta=meta, start_vehicle=False)
-
-# Add my ImageResize part here
-    if hasattr(cfg, 'IMAGE_MODEL_W') and hasattr(cfg, 'IMAGE_MODEL_H'):
-        if (cfg.IMAGE_W != cfg.IMAGE_MODEL_W) or (cfg.IMAGE_H != cfg.IMAGE_MODEL_H):
-            # Add an image resize part and change the model's input to be the resized image.
-            # For use when recording/saving one image size, but the model was trained on a different size.
-            vehicle.add( ImageResize( (cfg.IMAGE_MODEL_W, cfg.IMAGE_MODEL_H) ),
-                   inputs=['cam/image_array'],
-                   outputs=['cam/resized_image'] )
-            for part in vehicle.parts:
-                if isinstance(part["part"], KerasPilot):
-                    inputs = part["inputs"]
-                    print( "KerasPilot inputs: {}".format( inputs ) )
-                    inputs[inputs.index('cam/normalized/cropped')] = 'cam/resized_image'
-                    part["inputs"] = inputs
-
-    vehicle.start(rate_hz=cfg.DRIVE_LOOP_HZ, max_loop_count=cfg.MAX_LOOPS)
+    vehicle = MyDriver(cfg, model_path=args['--model'], model_type=model_type, use_joystick=True, meta=meta)
+    vehicle.start()
