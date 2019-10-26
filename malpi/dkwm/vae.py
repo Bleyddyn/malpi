@@ -368,3 +368,46 @@ def make_config( image_h, image_w, image_d, train_split=0.8, batch_size=128, cac
     cfg = CFG(DATA_PATH=data_path, MODEL_CATEGORICAL_MAX_THROTTLE_RANGE=max_thr, TRAIN_TEST_SPLIT=train_split, BATCH_SIZE=batch_size, CACHE_IMAGES=cache_images, IMAGE_H=image_h, IMAGE_W=image_w, IMAGE_DEPTH=image_d, ROI_CROP_TOP=crop_top, ROI_CROP_BOTTOM=crop_bot)
 
     return cfg
+
+def train( kl, train_gen, val_gen, train_steps, val_steps, z_dim, beta, optim="adam", lr=None, decay=None, momentum=None, dropout=None, epochs=40, batch_size=64, aux=None ):
+
+    optim_args = {}
+    if lr is not None:
+        optim_args["lr"] = lr
+    if decay is not None:
+        optim_args["decay"] = decay
+    if (optim == "sgd") and (momentum is not None):
+        optim_args["momentum"] = momentum
+
+    if optim == "adam":
+        optim = keras.optimizers.Adam(**optim_args)
+    elif optim == "sgd":
+        optim = keras.optimizers.SGD(**optim_args)
+    elif optim == "rmsprop":
+        optim = keras.optimizers.RMSprop(**optim_args)
+
+    kl.set_optimizer(optim)
+    kl.compile()
+
+    early_stop = keras.callbacks.EarlyStopping(monitor='val_loss',
+                                               min_delta=0.00001,
+                                               patience=5,
+                                               verbose=True,
+                                               mode='auto')
+
+    workers_count = 1
+    use_multiprocessing = False
+
+    hist = kl.model.fit_generator(
+                train_gen, 
+                steps_per_epoch=train_steps, 
+                epochs=epochs, 
+                verbose=cfg.VEBOSE_TRAIN, 
+                validation_data=val_gen,
+                callbacks=[early_stop], 
+                validation_steps=val_steps,
+                workers=workers_count,
+                use_multiprocessing=use_multiprocessing)
+
+    return hist
+

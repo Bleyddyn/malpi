@@ -107,30 +107,6 @@ def load_tubs(cfg, tub_names, kl, aux_name=None):
 
     return train_gen, val_gen, steps, val_steps
 
-    x_train = []
-    y_train = []
-    x_val = []
-    y_val = []
-    for i in range(steps):
-        data = next(train_gen)
-        x_train.extend( data[0] )
-        if aux_name is not None:
-            y_train.extend( data[2] )
-    for i in range(val_steps):
-        data = next(val_gen)
-        x_val.extend( data[0] )
-        if aux_name is not None:
-            y_val.extend( data[2] )
-
-    x_train = np.array(x_train).reshape( steps*cfg.BATCH_SIZE, cfg.IMAGE_W, cfg.IMAGE_H, cfg.IMAGE_DEPTH )
-    x_val = np.array(x_val).reshape( val_steps*cfg.BATCH_SIZE, cfg.IMAGE_W, cfg.IMAGE_H, cfg.IMAGE_DEPTH )
-    if len(y_val) > 0:
-        y_train = np.array(y_train).reshape( steps*cfg.BATCH_SIZE, 1 ) # hard coded for lane data
-        y_val = np.array(y_val).reshape( val_steps*cfg.BATCH_SIZE, 1 )
-        y_train = keras.utils.to_categorical(y_train, num_classes=7)
-        y_val = keras.utils.to_categorical(y_val, num_classes=7)
-    return x_train, x_val, y_train, y_val
-
 def train( kl, train_gen, val_gen, train_steps, val_steps, z_dim, beta, optim, lr=None, decay=None, momentum=None, dropout=None, epochs=40, batch_size=64, aux=None ):
 
     optim_args = {}
@@ -159,10 +135,6 @@ def train( kl, train_gen, val_gen, train_steps, val_steps, z_dim, beta, optim, l
                                                verbose=True,
                                                mode='auto')
 
-#    if aux is not None:
-#        hist = kl.model.fit( x_train, {'main_output': x_train, 'aux_output': y_train},
-#            batch_size=batch_size, epochs=epochs, validation_data=(x_val, {'main_output': x_val, 'aux_output': y_val}), shuffle=True, callbacks=[early_stop])
-
     workers_count = 1
     use_multiprocessing = False
 
@@ -176,8 +148,6 @@ def train( kl, train_gen, val_gen, train_steps, val_steps, z_dim, beta, optim, l
                 validation_steps=val_steps,
                 workers=workers_count,
                 use_multiprocessing=use_multiprocessing)
-#    else:
-#        hist = kl.model.fit( x_train, x_train, batch_size=batch_size, epochs=epochs, validation_data=(x_val, x_val), shuffle=True, callbacks=[early_stop])
 
     return hist
 
