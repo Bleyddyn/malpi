@@ -369,7 +369,7 @@ def make_config( image_h, image_w, image_d, train_split=0.8, batch_size=128, cac
 
     return cfg
 
-def train( kl, train_gen, val_gen, train_steps, val_steps, z_dim, beta, optim="adam", lr=None, decay=None, momentum=None, dropout=None, epochs=40, batch_size=64, aux=None ):
+def train( kl, train_gen, val_gen, train_steps, val_steps, z_dim, beta, optim="adam", lr=None, decay=None, momentum=None, dropout=None, epochs=40, batch_size=64, aux=None, verbose=True ):
 
     optim_args = {}
     if lr is not None:
@@ -402,7 +402,7 @@ def train( kl, train_gen, val_gen, train_steps, val_steps, z_dim, beta, optim="a
                 train_gen, 
                 steps_per_epoch=train_steps, 
                 epochs=epochs, 
-                verbose=cfg.VEBOSE_TRAIN, 
+                verbose=verbose, 
                 validation_data=val_gen,
                 callbacks=[early_stop], 
                 validation_steps=val_steps,
