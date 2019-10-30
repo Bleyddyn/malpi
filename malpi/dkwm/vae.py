@@ -225,7 +225,23 @@ class VAE(KerasPilot):
         self.model.save_weights('./vae/weights.h5')
 
     def save_weights(self, filepath):
+        """ Save the model weights to the given filepath (should have a .h5 extension).
+        """
         self.model.save_weights(filepath)
+
+    def save(self, filepath):
+        """ Save the model weights to the given filepath (should have a .h5 extension),
+            and save the model structure as json to filepath - ext + ".json"
+        """
+        self.save_weights(filepath)
+
+        jstr = self.model.to_json()
+        jpath = os.path.splitext(filepath)[0] + ".json"
+
+        with open(jpath, 'w') as f:
+            parsed = json.loads(jstr)
+            arch_pretty = json.dumps(parsed, indent=4, sort_keys=True)
+            f.write(arch_pretty)
 
     def generate_rnn_data(self, obs_data, action_data):
 
