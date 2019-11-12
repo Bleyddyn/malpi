@@ -155,13 +155,13 @@ class TubFormat(DriveFormat):
     def actionForIndex( self, index ):
         idx = self.indexes[index]
         rec = self.records[idx]
-        angle, throttle = self.tub.get_angle_throttle(rec)
+        angle, throttle = Tub.get_angle_throttle(rec)
         return [angle, throttle]
 
     def setActionForIndex( self, new_action, index ):
         idx = self.indexes[index]
         rec = self.records[idx]
-        angle, throttle = self.tub.get_angle_throttle(rec)
+        angle, throttle = Tub.get_angle_throttle(rec)
         old_action = [angle, throttle]
         if not np.array_equal( old_action, new_action ):
             if (rec["user/angle"] != new_action[0]) or (rec["user/throttle"] != new_action[1]):

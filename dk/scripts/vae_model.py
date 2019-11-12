@@ -32,11 +32,19 @@ def vae_loss(y_true,y_pred):
    return xent_loss + kl_loss
 """
 
-def sampling(args):
+def sampling_log_var(args):
     z_mean, z_log_var = args
     Z_DIM = K.shape(z_mean)[1]
     epsilon = K.random_normal(shape=(K.shape(z_mean)[0], Z_DIM), mean=0.,stddev=1.)
     return z_mean + K.exp(z_log_var / 2) * epsilon
+
+def sampling(args):
+    z_mean, z_sigma = args
+    epsilon = K.random_normal(shape=K.shape(z_sigma), mean=0.,stddev=1.)
+    return z_mean + z_sigma * epsilon
+
+def convert_to_sigma(z_log_var):
+    return K.exp(z_log_var / 2)
 
 class KerasVAE(KerasPilot):
     """ See this for more options for autoencoders: https://lilianweng.github.io/lil-log/2018/08/12/from-autoencoder-to-beta-vae.html
@@ -62,7 +70,8 @@ class KerasVAE(KerasPilot):
         self.models = self._build()
         self.model = self.models[0]
         self.encoder = self.models[1]
-        self.decoder = self.models[2]
+        self.encoder_mu_log_var = self.models[2]
+        self.decoder = self.models[3]
 
     def _build(self):
         CONV_FILTERS = [32,64,64,128,128]
@@ -80,7 +89,7 @@ class KerasVAE(KerasPilot):
         drop_name = "SpatialDropout_{}".format( self.dropout )+"_{}"
         drop_num = 1
 
-        vae_x = Input(shape=self.input_dim)
+        vae_x = Input(shape=self.input_dim, name='observation_input')
         if self.dropout is not None:
             vae_xd = Dropout(self.dropout)(vae_x)
         else:
@@ -108,17 +117,19 @@ class KerasVAE(KerasPilot):
 
         vae_z_in = Flatten()(vae_c4)
 
-        vae_z_mean = Dense(self.z_dim, kernel_regularizer=regularizers.l1(self.l1_reg), name="z_mean")(vae_z_in)
-        vae_z_log_var = Dense(self.z_dim, kernel_regularizer=regularizers.l1(self.l1_reg), name="z_var")(vae_z_in)
+        vae_z_mean = Dense(self.z_dim, kernel_regularizer=regularizers.l1(self.l1_reg), name="mu")(vae_z_in)
+        vae_z_log_var = Dense(self.z_dim, kernel_regularizer=regularizers.l1(self.l1_reg), name="log_var")(vae_z_in)
+        vae_z_sigma = Lambda(convert_to_sigma, name='sigma')(vae_z_log_var)
 
-        vae_z = Lambda(sampling)([vae_z_mean, vae_z_log_var])
-        vae_z_input = Input(shape=(self.z_dim,))
+        vae_z = Lambda(sampling, name='z')([vae_z_mean, vae_z_sigma])
+
+        vae_z_input = Input(shape=(self.z_dim,), name='z_input')
 
         # we instantiate these layers separately so as to reuse them later
         vae_dense = Dense(dense_calc)
-        vae_dense_model = vae_dense(vae_z)
 
         vae_z_out = Reshape((final_img,final_img,CONV_FILTERS[3]))
+        vae_dense_model = vae_dense(vae_z)
         vae_z_out_model = vae_z_out(vae_dense_model)
 
         vae_d1 = Conv2DTranspose(filters = CONV_T_FILTERS[0], kernel_size = CONV_T_KERNEL_SIZES[0] , strides = CONV_T_STRIDES[0], padding="same", activation=CONV_T_ACTIVATIONS[0])
@@ -170,13 +181,12 @@ class KerasVAE(KerasPilot):
         #### MODELS
 
         if self.aux > 0:
-            vae = Model(inputs=[vae_x], outputs=[vae_d4_model, aux_out])
+            vae_full = Model(inputs=[vae_x], outputs=[vae_d4_model, aux_out])
         else:
-            vae = Model(vae_x, vae_d4_model)
+            vae_full = Model(vae_x, vae_d4_model)
         vae_encoder = Model(vae_x, vae_z)
+        vae_encoder_mu_log_var = Model(vae_x, (vae_z_mean, vae_z_log_var))
         vae_decoder = Model(vae_z_input, vae_d4_decoder)
-
-        
 
         def vae_r_loss_orig(y_true, y_pred):
             y_true_flat = K.flatten(y_true)
@@ -197,7 +207,7 @@ class KerasVAE(KerasPilot):
         self.kl_loss = vae_kl_loss
         self.loss = vae_loss
 
-        return (vae,vae_encoder, vae_decoder)
+        return (vae_full, vae_encoder, vae_encoder_mu_log_var, vae_decoder)
 
     def set_optimizer(self, optim):
         self.optimizer = optim
