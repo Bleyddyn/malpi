@@ -3,6 +3,7 @@ A Variational AutoEncoder meant to be trained on DonkeyCar data.
 First step in a WorldModel.
 '''
 
+import os
 import numpy as np
 import keras
 from keras.layers import Input, Conv2D, Flatten, Dense, Conv2DTranspose, Lambda, Reshape, Dropout
