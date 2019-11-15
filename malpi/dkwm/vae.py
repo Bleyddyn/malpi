@@ -6,6 +6,7 @@ First step in a WorldModel.
 import os
 import numpy as np
 import keras
+import json
 from keras.layers import Input, Conv2D, Flatten, Dense, Conv2DTranspose, Lambda, Reshape, Dropout
 from keras.layers import SpatialDropout2D
 from keras.models import Model
