@@ -82,7 +82,7 @@ def load_one_tub( tub_path, img_dim, progress=None ):
         if "lanes" in json_data:
             lanes.append( json_data["lanes"] )
 
-    ret = { "images": np.array(images, dtype=np.int8), "actions": np.array(actions, dtype=np.float32),
+    ret = { "images": np.array(images, dtype=np.uint8), "actions": np.array(actions, dtype=np.float32),
             "dt_stamps": np.array(dt_stamps, dtype=np.float32) }
     if len(lanes) > 0:
         ret["lanes"] = np.array(lanes)
