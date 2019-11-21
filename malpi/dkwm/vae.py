@@ -55,7 +55,8 @@ class VAE(KerasPilot):
         self.models = self._build()
         self.model = self.models[0]
         self.encoder = self.models[1]
-        self.decoder = self.models[2]
+        self.encoder_mu_log_var = self.models[2]
+        self.decoder = self.models[3]
 
     def _build(self):
         CONV_FILTERS = [32,64,64,128,128]
@@ -167,6 +168,7 @@ class VAE(KerasPilot):
         else:
             vae = Model(vae_x, vae_d4_model)
         vae_encoder = Model(vae_x, vae_z)
+        vae_encoder_mu_log_var = Model(vae_x, (vae_z_mean, vae_z_log_var))
         vae_decoder = Model(vae_z_input, vae_d4_decoder)
 
         
@@ -190,7 +192,7 @@ class VAE(KerasPilot):
         self.kl_loss = vae_kl_loss
         self.loss = vae_loss
 
-        return (vae,vae_encoder, vae_decoder)
+        return (vae, vae_encoder, vae_encoder_mu_log_var, vae_decoder)
 
     def set_optimizer(self, optim):
         self.optimizer = optim
