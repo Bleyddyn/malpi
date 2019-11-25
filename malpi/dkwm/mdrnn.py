@@ -102,14 +102,14 @@ class RNN():
         earlystop = EarlyStopping(monitor='val_loss', min_delta=0.0001, patience=5, verbose=1, mode='auto')
         callbacks_list = [earlystop]
 
-        self.model.fit(rnn_input, rnn_output,
+        hist = self.model.fit(rnn_input, rnn_output,
             shuffle=True,
             epochs=self.epochs,
             batch_size=self.batch_size,
             validation_split=validation_split,
             callbacks=callbacks_list)
 
-        self.model.save_weights('./rnn/weights.h5')
+        return hist
 
     def train_batch(self, rnn_input, rnn_output):
 
