@@ -58,13 +58,14 @@ class KerasVAE(KerasPilot):
           and code: https://github.com/1Konny/Beta-VAE/blob/master/solver.py
     """
 
-    def __init__(self, num_outputs=2, input_shape=(128, 128, 3), z_dim=32, beta=1.0, dropout=0.4, aux=0, *args, **kwargs):
+    def __init__(self, num_outputs=2, input_shape=(128, 128, 3), z_dim=32, beta=1.0, dropout=0.4, aux=0, pilot=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.input_dim = input_shape
         self.z_dim = z_dim
         self.beta = beta
         self.dropout = dropout
         self.aux = aux
+        self.pilot = pilot
         self.l1_reg = 0.00001
 
         self.models = self._build()
@@ -172,18 +173,27 @@ class KerasVAE(KerasPilot):
         vae_d3a_decoder = vae_d3a(vae_d3_decoder)
         vae_d4_decoder = vae_d4(vae_d3a_decoder)
 
+        outputs = [vae_d4_model]
+
+        #### Pilot outputs (e.g. Steering and Throttle)
+        if self.pilot:
+            pilot_dense1 = Dense(100, name="pilot1")(vae_z)
+            pilot_dense2 = Dense(50, name="pilot2")(pilot_dense1)
+            pilot_out = Dense(1, name="steering_output")(pilot_dense2)
+            outputs.append(pilot_out)
+            pilot_out = Dense(1, name="throttle_output")(pilot_dense2)
+            outputs.append(pilot_out)
+
         #### Auxiliary output
         if self.aux > 0:
             aux_dense1 = Dense(100, name="aux1")(vae_z)
             aux_dense2 = Dense(50, name="aux2")(aux_dense1)
-            aux_out = Dense(self.aux, name="aux_output")(aux_dense2)
+            aux_out = Dense(self.aux, name="aux_output")(aux_dense2) # activation on this should be softmax? And loss would be categorical_crossentropy
+            outputs.append(aux_out)
 
         #### MODELS
 
-        if self.aux > 0:
-            vae_full = Model(inputs=[vae_x], outputs=[vae_d4_model, aux_out])
-        else:
-            vae_full = Model(vae_x, vae_d4_model)
+        vae_full = Model(inputs=[vae_x], outputs=outputs)
         vae_encoder = Model(vae_x, vae_z)
         vae_encoder_mu_log_var = Model(vae_x, (vae_z_mean, vae_z_log_var))
         vae_decoder = Model(vae_z_input, vae_d4_decoder)

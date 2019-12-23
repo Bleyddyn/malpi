@@ -60,7 +60,7 @@ def load_cifar10_data():
     print( "Train: {}".format( x_train.shape ) )
     return (x_train, x_test )
 
-def load_tubs(cfg, tub_names, kl, aux_name=None):
+def load_tubs(cfg, tub_names, kl, aux_name=None, pilot=False):
 
     opts = { 'cfg' : cfg}
     opts['categorical'] = False
@@ -87,8 +87,8 @@ def load_tubs(cfg, tub_names, kl, aux_name=None):
     opts['img_out'] = type(kl) is KerasLatent
     opts['vae_out'] = type(kl) is KerasVAE
 
-    train_gen = vae_generator(None, opts, gen_records, cfg.BATCH_SIZE, isTrainSet=True, aug=False, aux=aux_name)
-    val_gen = vae_generator(None, opts, gen_records, cfg.BATCH_SIZE, isTrainSet=False, aug=False, aux=aux_name)
+    train_gen = vae_generator(cfg, gen_records, cfg.BATCH_SIZE, isTrainSet=True, aug=False, aux=aux_name, pilot=pilot)
+    val_gen = vae_generator(cfg, gen_records, cfg.BATCH_SIZE, isTrainSet=False, aug=False, aux=aux_name, pilot=pilot)
 
     num_train = 0
     num_val = 0
@@ -169,6 +169,7 @@ if __name__ == "__main__":
     parser.add_argument('--z_dim', type=int, default=128, help='Size of the latent space.')
     parser.add_argument('--beta', type=float, default=0.001, help='VAE beta hyperparameter.')
     parser.add_argument('--aux', default=None, help='Name of the auxilliary data to use.')
+    parser.add_argument('--pilot', action="store_true", default=False, help='Train a pilot (steering/throttle)')
     parser.add_argument('--check', action="store_true", default=False, help='Check model only')
     parser.add_argument('-o', '--optimizer', default='adam', choices=["adam", "sgd", "rmsprop"], help='Optimizer')
     parser.add_argument('--lr', type=float, default=None, help='Initial learning rate. None = optimizer default')
@@ -203,9 +204,9 @@ if __name__ == "__main__":
             aux_out = 0
             if args.aux is not None:
                 aux_out = 7 # need to get number of aux outputs from data
-            kl = KerasVAE(input_shape=input_shape, z_dim=args.z_dim, beta=args.beta, dropout=args.dropout, aux=aux_out)
+            kl = KerasVAE(input_shape=input_shape, z_dim=args.z_dim, beta=args.beta, dropout=args.dropout, aux=aux_out, pilot=args.pilot)
             #x_train, x_val, y_train, y_val = load_tubs(cfg, dirs, kl, aux_name=args.aux)
-            train_gen, val_gen, train_steps, val_steps = load_tubs(cfg, dirs, kl, aux_name=args.aux)
+            train_gen, val_gen, train_steps, val_steps = load_tubs(cfg, dirs, kl, aux_name=args.aux, pilot=args.pilot)
 
         if args.pre is not None:
             kl.load_weights( args.pre, by_name=True )
