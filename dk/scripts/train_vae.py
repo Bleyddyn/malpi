@@ -1,9 +1,12 @@
 import argparse
 import json
 import datetime
+import os
 
 import matplotlib.pyplot as plt
 import numpy as np
+import tensorflow as tf
+#from tensorflow.python import keras
 import keras
 #from donkeycar.parts.keras import KerasVAE
 from vae_model import KerasVAE
@@ -17,8 +20,10 @@ from donkeycar.parts.keras import KerasLinear, KerasIMU,\
      KerasCategorical, KerasBehavioral, Keras3D_CNN,\
      KerasRNN_LSTM, KerasLatent
 
+from malpi.notify import notify, read_email_config
+from malpi import Experiment
 
-def plot_results( history, path ):
+def plot_results( history, path=None ):
     plt.figure(1)
 
     # loss  - vae_r_loss  - vae_kl_loss  - val_loss  - val_vae_r_loss  - val_vae_kl_loss 
@@ -47,7 +52,8 @@ def plot_results( history, path ):
     plt.xlabel('epoch')
     plt.legend(['R Loss', 'KL Loss'], loc='upper right')
 
-    plt.savefig(path + '.png')
+    if path is not None:
+        plt.savefig(path + '.png')
     plt.show()
 
 def load_cifar10_data():
@@ -179,6 +185,10 @@ if __name__ == "__main__":
     parser.add_argument('--epochs', type=int, default=40, help='Maximum number of epoch to train.')
     parser.add_argument('--pre', default=None, help='Path to pre-trained weights to load.')
 
+    parser.add_argument('--email', default=None, help='Email address to send finished notification.')
+    parser.add_argument('--name', default=None, help='Name for this experiment run.')
+    parser.add_argument('--exp', default="experiments", help='Directory where experiments are saved.')
+
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--cifar10', action="store_true", default=False, help='Train on Cifar10 data.')
     group.add_argument('--file', nargs='*', help='Text file with a list of tubs to train on.')
@@ -187,47 +197,45 @@ if __name__ == "__main__":
 
     if args.check:
         check_model( args.z_dim, args.beta )
+        exit()
+
+    if args.cifar10:
+        x_train, x_val = load_cifar10_data()
+        input_shape = x_train.shape[1:]
+        kl = KerasVAE(input_shape=input_shape, z_dim=args.z_dim, beta=args.beta, dropout=args.dropout)
     else:
-
-        if args.cifar10:
-            x_train, x_val = load_cifar10_data()
-            input_shape = x_train.shape[1:]
-            kl = KerasVAE(input_shape=input_shape, z_dim=args.z_dim, beta=args.beta, dropout=args.dropout)
-        else:
-            try:
-                cfg = dk.load_config()
-            except FileNotFoundError:
-                cfg = dk.load_config("config.py") # retry in the current directory
-            dirs = preprocessFileList( args.file )
-            input_shape = (cfg.IMAGE_W, cfg.IMAGE_H, cfg.IMAGE_DEPTH)
+        try:
+            cfg = dk.load_config()
+        except FileNotFoundError:
+            cfg = dk.load_config("config.py") # retry in the current directory
+        dirs = preprocessFileList( args.file )
+        input_shape = (cfg.IMAGE_W, cfg.IMAGE_H, cfg.IMAGE_DEPTH)
 # Code for multiple inputs: http://digital-thinking.de/deep-learning-combining-numerical-and-text-features-in-deep-neural-networks/
-            aux_out = 0
-            if args.aux is not None:
-                aux_out = 7 # need to get number of aux outputs from data
-            kl = KerasVAE(input_shape=input_shape, z_dim=args.z_dim, beta=args.beta, dropout=args.dropout, aux=aux_out, pilot=args.pilot)
-            #x_train, x_val, y_train, y_val = load_tubs(cfg, dirs, kl, aux_name=args.aux)
-            train_gen, val_gen, train_steps, val_steps = load_tubs(cfg, dirs, kl, aux_name=args.aux, pilot=args.pilot)
+        aux_out = 0
+        if args.aux is not None:
+            aux_out = 7 # need to get number of aux outputs from data
+        kl = KerasVAE(input_shape=input_shape, z_dim=args.z_dim, beta=args.beta, dropout=args.dropout, aux=aux_out, pilot=args.pilot)
+        train_gen, val_gen, train_steps, val_steps = load_tubs(cfg, dirs, kl, aux_name=args.aux, pilot=args.pilot)
 
-        if args.pre is not None:
-            kl.load_weights( args.pre, by_name=True )
+    if args.pre is not None:
+        kl.load_weights( args.pre, by_name=True )
 
-        hist = train( kl, train_gen, val_gen, train_steps, val_steps, args.z_dim, args.beta, args.optimizer, args.lr, args.decay, args.momentum, args.dropout, args.epochs, aux=args.aux )
+    exp = None
+    if args.name is not None:
+        exp = Experiment( args.name, args, exp_dir=args.exp, num_samples=train_steps+val_steps, input_dim=(cfg.TARGET_H,cfg.TARGET_W,cfg.TARGET_D), hparams=cfg.__dict__, modules=[np, tf, dk] )
 
-        n = datetime.datetime.now()
-        
-        fname = "vae/vae_{}_{}".format( "cifar10" if args.cifar10 else "dk", n.strftime("%Y%m%d_%H%M%S") )
-        kl.model.save_weights(fname + "_weights.h5")
-        print( "Saved weights to {}_weights.h5".format( fname ) )
-        jstr = kl.model.to_json()
-        with open(fname+"_model.json", 'w') as f:
-            parsed = json.loads(jstr)
-            arch_pretty = json.dumps(parsed, indent=4, sort_keys=True)
-            f.write(arch_pretty)
-            print( "Saved model to {}_model.json".format( fname ) )
+    hist = train( kl, train_gen, val_gen, train_steps, val_steps, args.z_dim, args.beta, args.optimizer, args.lr, args.decay, args.momentum, args.dropout, args.epochs, aux=args.aux )
 
-        out = vars(args)
-        out['val_loss'] = hist.history['val_loss'][-1]
-        with open(fname + "_meta.json", 'w') as f:
-            json.dump( out, f)
+    loss = hist.history['val_loss'][-1]
+    if exp is not None:
+        exp.writeAfter( model=kl.model, histories=hist.history, saveModel=True, results={"loss": loss} )
 
+    try:
+        notifications = read_email_config()
+        notify( "Training Finished", subTitle='', message='Validation Loss {:.6f}'.format( loss ), email_to=args.email, mac=True, sound=True, email_config=notifications )
+    except Exception as ex:
+        print( "Failed to send notifications: {}".format( ex ) )
+
+    if cfg.SHOW_PLOT:
+        fname = os.path.splitext(exp.filename)[0]
         plot_results( hist, fname )

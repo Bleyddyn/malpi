@@ -67,6 +67,7 @@ class KerasVAE(KerasPilot):
         self.aux = aux
         self.pilot = pilot
         self.l1_reg = 0.00001
+        self.optimizer = 'adam'
 
         self.models = self._build()
         self.model = self.models[0]
@@ -227,12 +228,21 @@ class KerasVAE(KerasPilot):
 #model.fit({'main_input': headline_data, 'aux_input': additional_data},
 #          {'main_output': labels, 'aux_output': labels},
 #          epochs=50, batch_size=32)
+        losses={'main_output': self.loss}
+        loss_weights={'main_output': 1.0}
+        metrics={'main_output': [self.r_loss, self.kl_loss]}
+
+        if self.pilot:
+            losses["steering_output"] = 'mean_squared_error'
+            loss_weights['steering_output'] = 1.0
+            losses["throttle_output"] = 'mean_squared_error'
+            loss_weights["throttle_output"] = 1.0
+
         if self.aux > 0:
-            loss={'main_output': self.loss, 'aux_output': 'binary_crossentropy'}
-            loss_weights={'main_output': 1.0, 'aux_output': 0.2}
-            self.model.compile(optimizer=self.optimizer, loss=loss,  loss_weights=loss_weights, metrics=[self.r_loss, self.kl_loss])
-        else:
-            self.model.compile(optimizer=self.optimizer, loss = self.loss,  metrics = [self.r_loss, self.kl_loss])
+            losses['aux_output'] = 'binary_crossentropy'
+            loss_weights['aux_output'] = 0.2
+
+        self.model.compile(optimizer=self.optimizer, loss=losses, loss_weights=loss_weights, metrics=metrics)
 
     def set_weights(self, filepath, by_name=False):
         self.model.load_weights(filepath, by_name=by_name)
@@ -277,3 +287,8 @@ class KerasVAE(KerasPilot):
 
     def encode(self, input_images):
         return self.encoder.predict( input_images )
+
+    def run(self, img_arr):
+        img_arr = img_arr.reshape((1,) + img_arr.shape)
+        (recon, steering, throttle) = self.model.predict(img_arr)
+        return steering[0][0], throttle[0][0]

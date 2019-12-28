@@ -111,7 +111,7 @@ def model_meta( model ):
             for l in layers:
                 if l.get("name","") == "aux_output":
                     aux = l["config"]["units"]
-                elif l.get("name","") == "z_mean":
+                elif l.get("name","") == "mu":
                     z_dim = l["config"]["units"]
                 elif l.get("name","").startswith("SpatialDropout_"):
                     # e.g. SpatialDropout_0.4_1
