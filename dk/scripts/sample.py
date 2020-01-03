@@ -111,7 +111,7 @@ def model_meta( model ):
             for l in layers:
                 if l.get("name","") == "aux_output":
                     aux = l["config"]["units"]
-                elif l.get("name","") == "z_mean":
+                elif l.get("name","") == "mu":
                     z_dim = l["config"]["units"]
                 elif l.get("name","").startswith("SpatialDropout_"):
                     # e.g. SpatialDropout_0.4_1
@@ -126,7 +126,7 @@ def main(model, model_type, dirs, count, cfg, z_dim, aux=0, dropout=None):
     #kl = get_model_by_type(model_type, cfg=cfg)
     input_shape = (cfg.IMAGE_W, cfg.IMAGE_H, cfg.IMAGE_DEPTH)
     kl = KerasVAE(input_shape=input_shape, z_dim=z_dim, aux=aux, dropout=dropout)
-    kl.set_weights(model)
+    kl.set_weights(model, by_name=True)
     sample_vae(kl, dirs, count)
 
 if __name__ == "__main__":
