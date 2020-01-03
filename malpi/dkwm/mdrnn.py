@@ -183,7 +183,7 @@ class RNN():
 
         z_pred = np.reshape(z_pred, [-1, self.gaussian_mixtures * 3])
 
-        log_pi, mu, log_sigma = get_mixture_coef_np(z_pred)
+        log_pi, mu, log_sigma = self.get_mixture_coef_np(z_pred)
         
         chosen_log_pi = np.zeros(z_dim)
         chosen_mu = np.zeros(z_dim)
@@ -196,12 +196,12 @@ class RNN():
         pi /= pi.sum(axis=1).reshape(z_dim, 1)
         
         for j in range(self.z_dim):
-            idx = get_pi_idx(np.random.rand(), pi[j])
+            idx = self.get_pi_idx(np.random.rand(), pi[j])
             chosen_log_pi[j] = idx
             chosen_mu[j] = mu[j,idx]
             chosen_log_sigma[j] = log_sigma[j,idx]
             
-        next_z = sample_z(chosen_mu, chosen_log_sigma)
+        next_z = self.sample_z(chosen_mu, chosen_log_sigma)
 
         if rew_pred > 0:
             next_reward = 1
