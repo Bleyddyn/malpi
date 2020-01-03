@@ -61,7 +61,7 @@ class RNN():
             z_pred = y_pred[:,:,:(3*d)]
             z_pred = K.reshape(z_pred, [-1, self.gaussian_mixtures * 3])
 
-            log_pi, mu, log_sigma = self.get_mixture_coef(z_pred)
+            log_pi, mu, log_sigma = self.get_mixture_coef_tf(z_pred)
 
             flat_z_true = K.reshape(z_true,[-1, 1])
 
@@ -131,7 +131,7 @@ class RNN():
 
         return z_true, rew_true
 
-    def get_mixture_coef(self, z_pred):
+    def get_mixture_coef_tf(self, z_pred):
 
         log_pi, mu, log_sigma = tf.split(z_pred, 3, 1)
         log_pi = log_pi - K.log(K.sum(K.exp(log_pi), axis = 1, keepdims = True)) # axis 1 is the mixture axis
@@ -142,3 +142,70 @@ class RNN():
 
         logSqrtTwoPI = np.log(np.sqrt(2.0 * np.pi))
         return -0.5 * ((z_true - mu) / K.exp(log_sigma)) ** 2 - log_sigma - logSqrtTwoPI
+
+    @staticmethod
+    def get_mixture_coef_np(z_pred):
+        log_pi, mu, log_sigma = np.split(z_pred, 3, 1)
+        log_pi = log_pi - np.log(np.sum(np.exp(log_pi), axis = 1, keepdims = True))
+
+        return log_pi, mu, log_sigma
+
+    @staticmethod
+    def get_pi_idx(x, pdf):
+        # samples from a categorial distribution
+        N = pdf.size
+        accumulate = 0
+        for i in range(0, N):
+            accumulate += pdf[i]
+            if (accumulate >= x):
+                return i
+        random_value = np.random.randint(N)
+        #print('error with sampling ensemble, returning random', random_value)
+        return random_value
+
+    @staticmethod
+    def sample_z(mu, log_sigma):
+        z =  mu + (np.exp(log_sigma)) * np.random.randn(*log_sigma.shape) * 0.5
+        return z
+
+    def sample_next_output(self, obs, h, c):
+        
+        d = self.gaussian_mixtures * self.z_dim
+        
+        out = self.forward.predict([np.array([[obs]]),np.array([h]),np.array([c])])
+        
+        y_pred = out[0][0][0]
+        new_h = out[1][0]
+        new_c = out[2][0]
+        
+        z_pred = y_pred[:3*d]
+        rew_pred = y_pred[-1]
+
+        z_pred = np.reshape(z_pred, [-1, self.gaussian_mixtures * 3])
+
+        log_pi, mu, log_sigma = get_mixture_coef_np(z_pred)
+        
+        chosen_log_pi = np.zeros(z_dim)
+        chosen_mu = np.zeros(z_dim)
+        chosen_log_sigma = np.zeros(z_dim)
+        
+        # adjust temperatures
+        pi = np.copy(log_pi)
+#     pi -= pi.max()
+        pi = np.exp(pi)
+        pi /= pi.sum(axis=1).reshape(z_dim, 1)
+        
+        for j in range(self.z_dim):
+            idx = get_pi_idx(np.random.rand(), pi[j])
+            chosen_log_pi[j] = idx
+            chosen_mu[j] = mu[j,idx]
+            chosen_log_sigma[j] = log_sigma[j,idx]
+            
+        next_z = sample_z(chosen_mu, chosen_log_sigma)
+
+        if rew_pred > 0:
+            next_reward = 1
+        else:
+            next_reward = 0
+
+        return next_z, chosen_mu, chosen_log_sigma, chosen_log_pi, rew_pred, next_reward, new_h, new_c
