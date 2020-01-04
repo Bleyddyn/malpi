@@ -185,15 +185,15 @@ class RNN():
 
         log_pi, mu, log_sigma = self.get_mixture_coef_np(z_pred)
         
-        chosen_log_pi = np.zeros(z_dim)
-        chosen_mu = np.zeros(z_dim)
-        chosen_log_sigma = np.zeros(z_dim)
+        chosen_log_pi = np.zeros(self.z_dim)
+        chosen_mu = np.zeros(self.z_dim)
+        chosen_log_sigma = np.zeros(self.z_dim)
         
         # adjust temperatures
         pi = np.copy(log_pi)
 #     pi -= pi.max()
         pi = np.exp(pi)
-        pi /= pi.sum(axis=1).reshape(z_dim, 1)
+        pi /= pi.sum(axis=1).reshape(self.z_dim, 1)
         
         for j in range(self.z_dim):
             idx = self.get_pi_idx(np.random.rand(), pi[j])
