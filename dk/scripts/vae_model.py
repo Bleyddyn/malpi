@@ -58,7 +58,7 @@ class KerasVAE(KerasPilot):
           and code: https://github.com/1Konny/Beta-VAE/blob/master/solver.py
     """
 
-    def __init__(self, num_outputs=2, input_shape=(128, 128, 3), z_dim=32, beta=1.0, dropout=0.4, aux=0, pilot=False, *args, **kwargs):
+    def __init__(self, num_outputs=2, input_shape=(128, 128, 3), z_dim=32, beta=1.0, dropout=0.4, aux=0, pilot=False, training=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.input_dim = input_shape
         self.z_dim = z_dim
@@ -66,6 +66,7 @@ class KerasVAE(KerasPilot):
         self.dropout = dropout
         self.aux = aux
         self.pilot = pilot
+        self.training = training
         self.l1_reg = 0.00001
         self.optimizer = 'adam'
 
@@ -178,7 +179,13 @@ class KerasVAE(KerasPilot):
 
         #### Pilot outputs (e.g. Steering and Throttle)
         if self.pilot:
-            pilot_dense1 = Dense(100, name="pilot1")(vae_z)
+            if self.training:
+                # During training we use samples from the mean/var distribution
+                #pilot_dense1 = Dense(100, name="pilot1_z")(vae_z)
+                pilot_dense1 = Dense(100, name="pilot1_flat")(vae_z_in)
+            else:
+                # At runtime we use just the mean
+                pilot_dense1 = Dense(100, name="pilot1_mean")(vae_z_mean)
             pilot_dense2 = Dense(50, name="pilot2")(pilot_dense1)
             pilot_out = Dense(1, name="steering_output")(pilot_dense2)
             outputs.append(pilot_out)
@@ -223,7 +230,7 @@ class KerasVAE(KerasPilot):
     def set_optimizer(self, optim):
         self.optimizer = optim
 
-    def compile(self):
+    def compile(self, main_weight=1.0, steering_weight=1.0, throttle_weight=1.0, aux_weight=1.0):
         # See: https://keras.io/getting-started/functional-api-guide/#multi-input-and-multi-output-models
 #model.fit({'main_input': headline_data, 'aux_input': additional_data},
 #          {'main_output': labels, 'aux_output': labels},
@@ -234,13 +241,13 @@ class KerasVAE(KerasPilot):
 
         if self.pilot:
             losses["steering_output"] = 'mean_squared_error'
-            loss_weights['steering_output'] = 1.0
+            loss_weights['steering_output'] = steering_weight
             losses["throttle_output"] = 'mean_squared_error'
-            loss_weights["throttle_output"] = 1.0
+            loss_weights["throttle_output"] = throttle_weight
 
         if self.aux > 0:
             losses['aux_output'] = 'binary_crossentropy'
-            loss_weights['aux_output'] = 0.2
+            loss_weights['aux_output'] = aux_weight
 
         self.model.compile(optimizer=self.optimizer, loss=losses, loss_weights=loss_weights, metrics=metrics)
 
