@@ -1,6 +1,5 @@
 '''
-A Variational AutoEncoder meant to be trained on DonkeyCar data.
-First step in a WorldModel.
+A DonkeyCar pilot based on a Variational AutoEncoder.
 '''
 
 import os
@@ -15,6 +14,7 @@ from keras import regularizers
 from keras import backend as K
 import tensorflow as tf
 
+#import donkeycar as dk
 from donkeycar.parts.keras import KerasPilot
 
 from sklearn.utils import shuffle
@@ -24,14 +24,37 @@ from donkeycar.utils import load_scaled_image_arr
 from donkeycar.templates.train import collate_records
 from donkeycar.utils import gather_records
 
+"""
+Possible sample code for annealing a variable during training, for the C variable in Improved Beta-VAE.
 
-def sampling(args):
+rate = K.variable(0.0,name='KL_Annealing')
+annealing_rate = 0.0001
+def vae_loss(y_true,y_pred):
+   global annealing_rate
+   global rate
+   xent_loss = keras.losses.categorical_crossentropy(y_true, y_pred)
+   kl_loss = -rate * K.mean(1 + output_log - K.square(output_mean) - K.exp(output_log), axis=-1)
+   rate = K.tf.assign(rate,annealing_rate)
+   annealing_rate *=1.05
+   rate = K.tf.assign(rate,K.clip(rate,0.0,1.0))
+   return xent_loss + kl_loss
+"""
+
+def sampling_log_var(args):
     z_mean, z_log_var = args
     Z_DIM = K.shape(z_mean)[1]
     epsilon = K.random_normal(shape=(K.shape(z_mean)[0], Z_DIM), mean=0.,stddev=1.)
     return z_mean + K.exp(z_log_var / 2) * epsilon
 
-class VAE(KerasPilot):
+def sampling(args):
+    z_mean, z_sigma = args
+    epsilon = K.random_normal(shape=K.shape(z_sigma), mean=0.,stddev=1.)
+    return z_mean + z_sigma * epsilon
+
+def convert_to_sigma(z_log_var):
+    return K.exp(z_log_var / 2)
+
+class KerasVAE(KerasPilot):
     """ See this for more options for autoencoders: https://lilianweng.github.io/lil-log/2018/08/12/from-autoencoder-to-beta-vae.html
         1) Add dropout layers to the encoder and maybe the decoder?
         2) Add an L1/L2 penalty to the mean/log_var layers?
@@ -43,14 +66,16 @@ class VAE(KerasPilot):
           and code: https://github.com/1Konny/Beta-VAE/blob/master/solver.py
     """
 
-    def __init__(self, num_outputs=2, input_shape=(128, 128, 3), z_dim=32, beta=1.0, dropout=0.4, aux=0, *args, **kwargs):
+    def __init__(self, num_outputs=2, input_shape=(128, 128, 3), z_dim=32, beta=1.0, dropout=0.4, aux=0, pilot=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.input_dim = input_shape
         self.z_dim = z_dim
         self.beta = beta
         self.dropout = dropout
         self.aux = aux
+        self.pilot = pilot
         self.l1_reg = 0.00001
+        self.optimizer = 'adam'
 
         self.models = self._build()
         self.model = self.models[0]
@@ -74,7 +99,7 @@ class VAE(KerasPilot):
         drop_name = "SpatialDropout_{}".format( self.dropout )+"_{}"
         drop_num = 1
 
-        vae_x = Input(shape=self.input_dim)
+        vae_x = Input(shape=self.input_dim, name='observation_input')
         if self.dropout is not None:
             vae_xd = Dropout(self.dropout)(vae_x)
         else:
@@ -102,17 +127,19 @@ class VAE(KerasPilot):
 
         vae_z_in = Flatten()(vae_c4)
 
-        vae_z_mean = Dense(self.z_dim, kernel_regularizer=regularizers.l1(self.l1_reg), name="z_mean")(vae_z_in)
-        vae_z_log_var = Dense(self.z_dim, kernel_regularizer=regularizers.l1(self.l1_reg), name="z_var")(vae_z_in)
+        vae_z_mean = Dense(self.z_dim, kernel_regularizer=regularizers.l1(self.l1_reg), name="mu")(vae_z_in)
+        vae_z_log_var = Dense(self.z_dim, kernel_regularizer=regularizers.l1(self.l1_reg), name="log_var")(vae_z_in)
+        vae_z_sigma = Lambda(convert_to_sigma, name='sigma')(vae_z_log_var)
 
-        vae_z = Lambda(sampling)([vae_z_mean, vae_z_log_var])
-        vae_z_input = Input(shape=(self.z_dim,))
+        vae_z = Lambda(sampling, name='z')([vae_z_mean, vae_z_sigma])
+
+        vae_z_input = Input(shape=(self.z_dim,), name='z_input')
 
         # we instantiate these layers separately so as to reuse them later
         vae_dense = Dense(dense_calc)
-        vae_dense_model = vae_dense(vae_z)
 
         vae_z_out = Reshape((final_img,final_img,CONV_FILTERS[3]))
+        vae_dense_model = vae_dense(vae_z)
         vae_z_out_model = vae_z_out(vae_dense_model)
 
         vae_d1 = Conv2DTranspose(filters = CONV_T_FILTERS[0], kernel_size = CONV_T_KERNEL_SIZES[0] , strides = CONV_T_STRIDES[0], padding="same", activation=CONV_T_ACTIVATIONS[0])
@@ -155,23 +182,30 @@ class VAE(KerasPilot):
         vae_d3a_decoder = vae_d3a(vae_d3_decoder)
         vae_d4_decoder = vae_d4(vae_d3a_decoder)
 
+        outputs = [vae_d4_model]
+
+        #### Pilot outputs (e.g. Steering and Throttle)
+        if self.pilot:
+            pilot_dense1 = Dense(100, name="pilot1")(vae_z)
+            pilot_dense2 = Dense(50, name="pilot2")(pilot_dense1)
+            pilot_out = Dense(1, name="steering_output")(pilot_dense2)
+            outputs.append(pilot_out)
+            pilot_out = Dense(1, name="throttle_output")(pilot_dense2)
+            outputs.append(pilot_out)
+
         #### Auxiliary output
         if self.aux > 0:
             aux_dense1 = Dense(100, name="aux1")(vae_z)
             aux_dense2 = Dense(50, name="aux2")(aux_dense1)
-            aux_out = Dense(self.aux, name="aux_output")(aux_dense2)
+            aux_out = Dense(self.aux, name="aux_output")(aux_dense2) # activation on this should be softmax? And loss would be categorical_crossentropy
+            outputs.append(aux_out)
 
         #### MODELS
 
-        if self.aux > 0:
-            vae = Model(inputs=[vae_x], outputs=[vae_d4_model, aux_out])
-        else:
-            vae = Model(vae_x, vae_d4_model)
+        vae_full = Model(inputs=[vae_x], outputs=outputs)
         vae_encoder = Model(vae_x, vae_z)
         vae_encoder_mu_log_var = Model(vae_x, (vae_z_mean, vae_z_log_var))
         vae_decoder = Model(vae_z_input, vae_d4_decoder)
-
-        
 
         def vae_r_loss_orig(y_true, y_pred):
             y_true_flat = K.flatten(y_true)
@@ -192,7 +226,7 @@ class VAE(KerasPilot):
         self.kl_loss = vae_kl_loss
         self.loss = vae_loss
 
-        return (vae, vae_encoder, vae_encoder_mu_log_var, vae_decoder)
+        return (vae_full, vae_encoder, vae_encoder_mu_log_var, vae_decoder)
 
     def set_optimizer(self, optim):
         self.optimizer = optim
@@ -202,12 +236,21 @@ class VAE(KerasPilot):
 #model.fit({'main_input': headline_data, 'aux_input': additional_data},
 #          {'main_output': labels, 'aux_output': labels},
 #          epochs=50, batch_size=32)
+        losses={'main_output': self.loss}
+        loss_weights={'main_output': 1.0}
+        metrics={'main_output': [self.r_loss, self.kl_loss]}
+
+        if self.pilot:
+            losses["steering_output"] = 'mean_squared_error'
+            loss_weights['steering_output'] = 1.0
+            losses["throttle_output"] = 'mean_squared_error'
+            loss_weights["throttle_output"] = 1.0
+
         if self.aux > 0:
-            loss={'main_output': self.loss, 'aux_output': 'binary_crossentropy'}
-            loss_weights={'main_output': 1.0, 'aux_output': 0.2}
-            self.model.compile(optimizer=self.optimizer, loss=loss,  loss_weights=loss_weights, metrics=[self.r_loss, self.kl_loss])
-        else:
-            self.model.compile(optimizer=self.optimizer, loss = self.loss,  metrics = [self.r_loss, self.kl_loss])
+            losses['aux_output'] = 'binary_crossentropy'
+            loss_weights['aux_output'] = 0.2
+
+        self.model.compile(optimizer=self.optimizer, loss=losses, loss_weights=loss_weights, metrics=metrics)
 
     def set_weights(self, filepath, by_name=False):
         self.model.load_weights(filepath, by_name=by_name)
@@ -232,20 +275,6 @@ class VAE(KerasPilot):
         """ Save the model weights to the given filepath (should have a .h5 extension).
         """
         self.model.save_weights(filepath)
-
-    def save(self, filepath):
-        """ Save the model weights to the given filepath (should have a .h5 extension),
-            and save the model structure as json to filepath - ext + ".json"
-        """
-        self.save_weights(filepath)
-
-        jstr = self.model.to_json()
-        jpath = os.path.splitext(filepath)[0] + ".json"
-
-        with open(jpath, 'w') as f:
-            parsed = json.loads(jstr)
-            arch_pretty = json.dumps(parsed, indent=4, sort_keys=True)
-            f.write(arch_pretty)
 
     def generate_rnn_data(self, obs_data, action_data):
 
@@ -431,3 +460,7 @@ def train( kl, train_gen, val_gen, train_steps, val_steps, z_dim, beta, optim="a
 
     return hist
 
+    def run(self, img_arr):
+        img_arr = img_arr.reshape((1,) + img_arr.shape)
+        (recon, steering, throttle) = self.model.predict(img_arr)
+        return steering[0][0], throttle[0][0]
