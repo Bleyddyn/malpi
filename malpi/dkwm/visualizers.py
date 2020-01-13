@@ -17,7 +17,7 @@ def plot_results( history, path=None ):
         Plot 2 will show reconstruction and KL Divergence validation losses.
     """
 
-    plt.figure(1)
+    plt.figure(figsize=(20, 6))
 
     plt.subplot(211)
 
