@@ -10,7 +10,8 @@ import tensorflow as tf
 #from tensorflow.python import keras
 import keras
 #from donkeycar.parts.keras import KerasVAE
-from vae_model import KerasVAE
+#from vae_model import KerasVAE
+from malpi.dkwm.vae import KerasVAE
 from keras.datasets import cifar10
 import donkeycar as dk
 #from donkeycar.train.tub_generator import generator

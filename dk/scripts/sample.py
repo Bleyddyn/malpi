@@ -24,7 +24,8 @@ from docopt import docopt
 import donkeycar as dk
 from donkeycar.utils import get_model_by_type, gather_records, load_scaled_image_arr
 from donkeycar.templates.train import collate_records
-from vae_model import KerasVAE
+#from vae_model import KerasVAE
+from malpi.dkwm.vae import KerasVAE
 
 def sample_vae(vae, dirs, count):
     z_size = vae.z_dim
