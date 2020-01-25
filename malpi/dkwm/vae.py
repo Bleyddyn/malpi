@@ -283,6 +283,15 @@ class KerasVAE(KerasPilot):
         """
         self.model.save_weights(filepath)
 
+    def save_model(self, filepath):
+        """ Save the model structure to a file as json.
+        """
+        jstr = self.model.to_json()
+        parsed = json.loads(jstr)
+        arch_pretty = json.dumps(parsed, indent=4, sort_keys=True)
+        with open(filepath, 'w') as f:
+            f.write(arch_pretty)
+
     def generate_rnn_data(self, obs_data, action_data):
 
         rnn_input = []
@@ -309,6 +318,32 @@ class KerasVAE(KerasPilot):
         img_arr = img_arr.reshape((1,) + img_arr.shape)
         (recon, steering, throttle) = self.model.predict(img_arr)
         return steering[0][0], throttle[0][0]
+
+    @staticmethod
+    def model_meta( fname ):
+        """ Read model meta info from a json file.
+            Return values will be None if not present or not used.
+            @return z_dim, dropout, aux """
+        aux = None
+        z_dim = None
+        dropout = None
+        try:
+            with open(fname,'r') as f:
+                json_str = f.read()
+                data = json.loads(json_str)
+                layers = data["config"]["layers"]
+                for l in layers:
+                    if l.get("name","") == "aux_output":
+                        aux = l["config"]["units"]
+                    elif l.get("name","") == "mu":
+                        z_dim = l["config"]["units"]
+                    elif l.get("name","").startswith("SpatialDropout_"):
+                        # e.g. SpatialDropout_0.4_1
+                        dropout = float( l.get("name","").split("_")[1])
+        except:
+            pass
+
+        return z_dim, dropout, aux
 
 def vae_generator(cfg, data, batch_size, isTrainSet=True, min_records_to_train=1000, aug=False, aux=None):
     """ Returns batches of data for training a VAE, given a dictionary of DonkeyCar inputs.
