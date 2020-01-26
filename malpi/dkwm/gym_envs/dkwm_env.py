@@ -22,22 +22,16 @@ class DKWMEnv(gym.Env):
 
     def __init__(self, z_dim=128, vae_weights=None, rnn_weights=None, obs_height=128, obs_width=128):
 
-        self.vae_weights = vae_weights
-        self.rnn_weights = rnn_weights
-        self.z_dim = z_dim
+        self.vae = None
+        self.rnn = None
 
-        # z_dim, dropout, aux = vae.KerasVAE.model_meta( vae_weights[:-3] + ".json" )
-        self.vae = vae.KerasVAE(z_dim=z_dim, dropout=None)
-        self.vae.set_weights( vae_weights )
-
-        self.rnn = mdrnn.RNN(z_dim=z_dim, action_dim=2 )
-        self.rnn.set_weights( rnn_weights )
+        self.load_weights( z_dim=z_dim, vae_weights=vae_weights, rnn_weights=rnn_weights )
 
         self.action_space = spaces.Box(
-            low=-1.0,
-            high=1.0,
-            shape=(2),
-            dtype=np.float
+            low = -1.0,
+            high = 1.0,
+            shape = (2,),
+            dtype = np.float32
         )
 
         # Observations are RGB images with pixels in [0, 255]
@@ -50,9 +44,28 @@ class DKWMEnv(gym.Env):
 
         self.reward_range = (-10.0, 10.0)
 
+    def load_weights(self, z_dim, vae_weights, rnn_weights):
+        self.vae_weights = vae_weights
+        self.rnn_weights = rnn_weights
+        self.z_dim = z_dim
+
+        # z_dim, dropout, aux = vae.KerasVAE.model_meta( vae_weights[:-3] + ".json" )
+        if self.vae_weights is not None:
+            self.vae = vae.KerasVAE(z_dim=z_dim, dropout=None)
+            self.vae.set_weights( vae_weights )
+
+        if self.rnn_weights is not None:
+            self.rnn = mdrnn.RNN(z_dim=z_dim, action_dim=2 )
+            self.rnn.set_weights( rnn_weights )
+
     def reset(self):
-        self.hidden = np.zeros(rnn.hidden_units)
-        self.cell_values = np.zeros(rnn.hidden_units)
+        if self.vae_weights is None or self.rnn_weights is None:
+            print( "Warning! Weights files have not been set for this DKWM environement." )
+            print( "   Call env.load_weights( z_dim, vae_weights, rnn_weights ) before trying to run." )
+            return None
+
+        self.hidden = np.zeros(self.rnn.hidden_units)
+        self.cell_values = np.zeros(self.rnn.hidden_units)
         self.zobs = np.zeros( self.z_dim )
         self.reward = 0.0
 
@@ -63,7 +76,7 @@ class DKWMEnv(gym.Env):
     def step(self, action):
         inputs = np.concatenate([self.zobs, action, [self.reward]])
 
-        ret = rnn.sample_next_output(inputs, self.hidden, self.cell_values)
+        ret = self.rnn.sample_next_output(inputs, self.hidden, self.cell_values)
         self.zobs, _, _, _, rew_pred, self.reward, self.hidden, self.cell_values = ret
         
         next_obs = self.zobs_to_obs( self.zobs )
@@ -83,3 +96,29 @@ class DKWMEnv(gym.Env):
         next_obs = np.floor( next_obs )
         next_obs = np.clip( next_obs, 0, 255 )
         return next_obs.astype( np.uint8 )
+
+def sample_code():
+    #import gym
+    #import malpi.dkwm.gym_envs
+    #import numpy as np
+    #from gym import spaces
+
+    print( "Gym: {} at {}".format( gym.__version__,  gym.__file__ ) )
+
+    # Passing arguments like this requires OpenAI gym >= 0.12.4
+    env = gym.make('dkwm-v0', z_dim=512, vae_weights="vae_model.h5", rnn_weights="mdrnn_model.h5")
+    print( "Env: {}".format( env ) )
+
+    obs = env.reset()
+    print( "Obs: {}".format( obs.shape ) )
+
+    for i in range(10):
+        act = env.action_space.sample()
+        obs, reward, done, info = env.step( env.action_space.sample() )
+        z_obs = info["z_obs"]
+        print( "Step act/obs/rew/done/z: {} {} {} {} {}".format( act, obs.shape, reward, done, z_obs.shape ) )
+
+# Sample output:
+# Step act/obs/rew/done/z: [ 0.3011232  -0.97818303] (128, 128, 3) 0 False (512,)
+
+    env.close()
