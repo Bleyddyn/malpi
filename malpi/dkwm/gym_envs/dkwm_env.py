@@ -8,6 +8,8 @@
     See this for how to create new environments: https://github.com/openai/gym/blob/master/docs/creating-environments.md
 """
 
+from time import sleep
+
 import numpy as np
 import gym
 from gym import error, spaces, utils
@@ -15,7 +17,7 @@ from gym.utils import seeding
 
 from malpi.dkwm import vae
 from malpi.dkwm import mdrnn
-
+from malpi.dkwm.gym_envs.renderer import DKWMRenderer
 
 class DKWMEnv(gym.Env):
     metadata = {'render.modes': ['human']}
@@ -44,6 +46,8 @@ class DKWMEnv(gym.Env):
 
         self.reward_range = (-10.0, 10.0)
 
+        self.renderer = DKWMRenderer( window_width=obs_width*2, window_height=obs_height*2 )
+
     def load_weights(self, z_dim, vae_weights, rnn_weights):
         self.vae_weights = vae_weights
         self.rnn_weights = rnn_weights
@@ -71,6 +75,8 @@ class DKWMEnv(gym.Env):
 
         next_obs = self.zobs_to_obs( self.zobs )
 
+        self.renderer.reset()
+
         return next_obs
 
     def step(self, action):
@@ -82,14 +88,21 @@ class DKWMEnv(gym.Env):
         next_obs = self.zobs_to_obs( self.zobs )
         done = False
 
+        self.renderer.set_obs( next_obs )
+        self.renderer.set_label( "Steering:\t{:+5.3f}\nThrottle:\t{:+5.3f}".format( *action ), "actions"  )
+
         return next_obs, self.reward, done, {"z_obs": self.zobs}
 
     def render(self, mode='human'):
         # Possible code to base it on: https://github.com/maximecb/gym-miniworld/blob/master/gym_miniworld/miniworld.py
-        pass
+        img = self.renderer.render( mode=mode )
+        if "rgb_array" == mode:
+            return img
+        #if "human" == mode:
+        #    sleep(0.13)
 
     def close(self):
-        pass
+        self.renderer.close()
 
     def zobs_to_obs(self, zobs):
         next_obs = np.squeeze( self.vae.decode(zobs.reshape( (1,self.z_dim) )) ) * 255.0
