@@ -19,13 +19,28 @@ from malpi.dkwm import vae
 from malpi.dkwm import mdrnn
 from malpi.dkwm.gym_envs.renderer import DKWMRenderer
 
+def shuffled_circular(data, default=None):
+    while True:
+        if data is None:
+            yield default
+        else:
+            np.random.shuffle(data)
+            for sample in data:
+                yield sample
+
 class DKWMEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, z_dim=128, vae_weights=None, rnn_weights=None, obs_height=128, obs_width=128):
-
+    def __init__(self, z_dim=128, vae_weights=None, rnn_weights=None, obs_height=128, obs_width=128, starts=None):
+        """ @param starts A list of mu/log_var pairs that can be sampled from to generate the first observation of each episode.
+        """
         self.vae = None
         self.rnn = None
+
+        if starts is not None:
+            self.starts = shuffled_circular(starts, default=np.zeros( z_dim ))
+        else:
+            self.starts = None
 
         self.load_weights( z_dim=z_dim, vae_weights=vae_weights, rnn_weights=rnn_weights )
 
@@ -68,9 +83,13 @@ class DKWMEnv(gym.Env):
             print( "   Call env.load_weights( z_dim, vae_weights, rnn_weights ) before trying to run." )
             return None
 
+        if self.starts is None:
+            self.zobs = np.zeros( self.z_dim )
+        else:
+            self.zobs = mdrnn.RNN.sample_z( *next(self.starts) )
+
         self.hidden = np.zeros(self.rnn.hidden_units)
         self.cell_values = np.zeros(self.rnn.hidden_units)
-        self.zobs = np.zeros( self.z_dim )
         self.reward = 0.0
 
         next_obs = self.zobs_to_obs( self.zobs )
