@@ -29,9 +29,9 @@ def load_tub_npz( dirs, base_dir="", max_images=None, verbose=False ):
 
     return images
 
-def generate_mdrnn_input_files( rnn, dirs, base_dir="", batch_size=128, verbose=False ):
+def generate_mdrnn_input_files( vae, dirs, base_dir="", batch_size=128, verbose=False ):
     """ Generate data files for training the MDRNN.
-        Read images from base_dir + dirs, encode all images using rnn,
+        Read images from base_dir + dirs, encode all images using vae,
             save means and log_vars, actions, rewards and done flags.
         Output file name is same as inputs but with "_rnnin" appended.
     """
@@ -53,7 +53,7 @@ def generate_mdrnn_input_files( rnn, dirs, base_dir="", batch_size=128, verbose=
             if last > count:
                 last = count
             batch = images[first:last,:,:,:]
-            mu, log_var = rnn.encoder_mu_log_var.predict(batch)
+            mu, log_var = vae.encoder_mu_log_var.predict(batch)
             mus.append( mu )
             log_vars.append( log_var )
         mus = np.concatenate( mus, axis=0 )

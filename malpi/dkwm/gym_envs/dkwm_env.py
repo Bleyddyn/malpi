@@ -102,8 +102,9 @@ class DKWMEnv(gym.Env):
         inputs = np.concatenate([self.zobs, action, [self.reward]])
 
         ret = self.rnn.sample_next_output(inputs, self.hidden, self.cell_values)
-        self.zobs, _, _, _, rew_pred, self.reward, self.hidden, self.cell_values = ret
-        
+        self.zobs, mu, log_var, _, rew_pred, self.reward, self.hidden, self.cell_values = ret
+        # Use mu and log_var to calculate an actual reward
+
         next_obs = self.zobs_to_obs( self.zobs )
         done = False
 

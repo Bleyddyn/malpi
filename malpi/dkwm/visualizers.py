@@ -13,21 +13,34 @@ def __add_ext( path, ext ):
 def plot_results( history, path=None ):
     """ @param history: Should be the history attribute of the return value of a Keras training run.
         @param path: If not None, then save the plot as a png to path, replacing extension with '.png' if needed.
-        Plot 1 will show training and validation losses.
-        Plot 2 will show reconstruction and KL Divergence validation losses.
+        Plot 1 will show training and validation losses and validation accuracy if available.
+        Plot 2 will show reconstruction and KL Divergence validation losses if available.
     """
 
-    plt.figure(figsize=(20, 6))
+    plt.figure(figsize=(20,10))
+    fig, ax1 = plt.subplots()
 
-    plt.subplot(211)
+    ax = plt.subplot(211)
 
-    # summarize history for loss
-    plt.plot(history['loss'])
-    plt.plot(history['val_loss'])
+    # summarize history for loss and/or accuracy
+    line1 = plt.plot(history['loss'], color='red')
+    line2 = plt.plot(history['val_loss'], color='green')
     plt.title('model loss')
-    plt.ylabel('loss')
-    plt.xlabel('epoch')
-    plt.legend(['train', 'validate'], loc='upper right')
+    ax1.set_ylabel('loss')
+    ax1.set_xlabel('epoch')
+    leg = ['train', 'validate']
+    lines = line1 + line2
+    if 'val_acc' in history:
+        ax2 = ax1.twinx()
+        ax2.set_ylabel('accuracy')
+        line3 = ax2.plot( history['val_acc'], color='blue' )
+        leg.append('accuracy')
+        lines += line3
+        # Force the axis to be at the bottom of the plot
+        pos = ax.get_position()
+        pos.y0 = 0.125
+        ax.set_position( pos )
+    ax.legend(lines, leg, loc='upper right')
 
     # summarize history for r_loss and kl_loss (validation only)
     r_loss = 'val_vae_r_loss'
@@ -36,14 +49,16 @@ def plot_results( history, path=None ):
     kl_loss = 'val_vae_kl_loss'
     if kl_loss not in history:
         kl_loss = 'main_output_vae_kl_loss'
-    plt.subplot(212)
-    plt.plot(history[r_loss])
-    plt.plot(history[kl_loss])
-    plt.title('R and KL Losses')
-    plt.ylabel('loss')
-    plt.xlabel('epoch')
-    plt.legend(['R Loss', 'KL Loss'], loc='upper right')
+    if kl_loss in history and r_loss in history:
+        plt.subplot(212)
+        plt.plot(history[r_loss])
+        plt.plot(history[kl_loss])
+        plt.title('R and KL Losses')
+        plt.ylabel('loss')
+        plt.xlabel('epoch')
+        plt.legend(['R Loss', 'KL Loss'], loc='upper right')
 
+    #fig.tight_layout()
     if path is not None:
         path = __add_ext( path, 'png' )
         plt.savefig(path)
