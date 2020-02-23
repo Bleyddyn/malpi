@@ -256,7 +256,7 @@ class KerasVAE(KerasPilot):
         if self.aux > 0:
             losses['aux_output'] = 'categorical_crossentropy'
             loss_weights['aux_output'] = aux_weight
-            metricx['aux_output'] = 'accuracy'
+            metrics['aux_output'] = 'accuracy'
 
         self.model.compile(optimizer=self.optimizer, loss=losses, loss_weights=loss_weights, metrics=metrics)
 
