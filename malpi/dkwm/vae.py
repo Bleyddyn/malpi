@@ -204,7 +204,7 @@ class KerasVAE(KerasPilot):
         if self.aux > 0:
             aux_dense1 = Dense(100, name="aux1")(vae_z)
             aux_dense2 = Dense(50, name="aux2")(aux_dense1)
-            aux_out = Dense(self.aux, name="aux_output")(aux_dense2) # activation on this should be softmax? And loss would be categorical_crossentropy
+            aux_out = Dense(self.aux, name="aux_output", activation='softmax')(aux_dense2)
             outputs.append(aux_out)
 
         #### MODELS
@@ -254,8 +254,9 @@ class KerasVAE(KerasPilot):
             loss_weights["throttle_output"] = throttle_weight
 
         if self.aux > 0:
-            losses['aux_output'] = 'binary_crossentropy'
+            losses['aux_output'] = 'categorical_crossentropy'
             loss_weights['aux_output'] = aux_weight
+            metricx['aux_output'] = 'accuracy'
 
         self.model.compile(optimizer=self.optimizer, loss=losses, loss_weights=loss_weights, metrics=metrics)
 

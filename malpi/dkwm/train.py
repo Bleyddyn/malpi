@@ -1,13 +1,14 @@
 import os
 import numpy as np
 
-def load_tub_npz( dirs, base_dir="", max_images=None, verbose=False ):
+def load_tub_npz( dirs, base_dir="", max_images=None, verbose=False, aux_name=None ):
     """ Load images from pre-processed tub.npz files.
         dirs should be a list of tub names
         load each: base_dir + tub_name + '.npz' (extension is added if needed)
         Add all images from npz['images']
     """
     images = []
+    aux = []
     total = 0
     for idx, tub in enumerate(dirs):
         if verbose:
@@ -15,19 +16,30 @@ def load_tub_npz( dirs, base_dir="", max_images=None, verbose=False ):
         if not tub.endswith('.npz'):
             tub += '.npz'
         data = np.load( os.path.join( base_dir, tub ) )
+        if aux_name is not None and aux_name not in data:
+            continue
+
         if verbose:
             print( "  {}".format( data["images"].shape ) )
         images.append( data['images'] )
         total += data['images'].shape[0]
+        if aux_name is not None:
+            aux.append( data[aux_name] )
+
         if max_images is not None and total > max_images:
             break
 
     images = np.concatenate( images, axis=0 ).astype(np.float32) / 255.0
+    if len(aux) > 0:
+        aux = np.concatenate( aux, axis=0 )
 
     if verbose:
         print( "Loaded {} images {}".format( images.shape[0], images.shape[1:] ) )
 
-    return images
+    if aux_name is not None:
+        return images, aux
+    else:
+        return images
 
 def generate_mdrnn_input_files( vae, dirs, base_dir="", batch_size=128, verbose=False ):
     """ Generate data files for training the MDRNN.
