@@ -10,7 +10,7 @@ def __add_ext( path, ext ):
         ext = '.' + ext
     return fname + ext
 
-def plot_results( history, path=None ):
+def plot_results( history, path=None, acc_name='val_acc' ):
     """ @param history: Should be the history attribute of the return value of a Keras training run.
         @param path: If not None, then save the plot as a png to path, replacing extension with '.png' if needed.
         Plot 1 will show training and validation losses and validation accuracy if available.
@@ -30,10 +30,10 @@ def plot_results( history, path=None ):
     ax1.set_xlabel('epoch')
     leg = ['train', 'validate']
     lines = line1 + line2
-    if 'val_acc' in history:
+    if acc_name in history:
         ax2 = ax1.twinx()
         ax2.set_ylabel('accuracy')
-        line3 = ax2.plot( history['val_acc'], color='blue' )
+        line3 = ax2.plot( history[acc_name], color='blue' )
         leg.append('accuracy')
         lines += line3
         # Force the axis to be at the bottom of the plot

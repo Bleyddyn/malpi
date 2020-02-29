@@ -102,31 +102,31 @@ class KerasVAE(KerasPilot):
 
         vae_x = Input(shape=self.input_dim, name='observation_input')
         if self.dropout is not None:
-            vae_xd = Dropout(self.dropout)(vae_x)
+            vae_xd = Dropout(self.dropout, name='dropout1')(vae_x)
         else:
             vae_xd = vae_x
-        vae_c1 = Conv2D(filters = CONV_FILTERS[0], kernel_size = CONV_KERNEL_SIZES[0], strides = CONV_STRIDES[0], padding="same", activation=CONV_ACTIVATIONS[0])(vae_xd)
+        vae_c1 = Conv2D(filters = CONV_FILTERS[0], kernel_size = CONV_KERNEL_SIZES[0], strides = CONV_STRIDES[0], padding="same", activation=CONV_ACTIVATIONS[0], name='conv1')(vae_xd)
         if self.dropout is not None:
             vae_c1 = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_c1)
             drop_num += 1
-        vae_c2 = Conv2D(filters = CONV_FILTERS[1], kernel_size = CONV_KERNEL_SIZES[1], strides = CONV_STRIDES[1], padding="same", activation=CONV_ACTIVATIONS[1])(vae_c1)
+        vae_c2 = Conv2D(filters = CONV_FILTERS[1], kernel_size = CONV_KERNEL_SIZES[1], strides = CONV_STRIDES[1], padding="same", activation=CONV_ACTIVATIONS[1], name='conv2')(vae_c1)
         if self.dropout is not None:
             vae_c2 = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_c2)
             drop_num += 1
-        vae_c3= Conv2D(filters = CONV_FILTERS[2], kernel_size = CONV_KERNEL_SIZES[2], strides = CONV_STRIDES[2], padding="same", activation=CONV_ACTIVATIONS[2])(vae_c2)
+        vae_c3= Conv2D(filters = CONV_FILTERS[2], kernel_size = CONV_KERNEL_SIZES[2], strides = CONV_STRIDES[2], padding="same", activation=CONV_ACTIVATIONS[2], name='conv3')(vae_c2)
         if self.dropout is not None:
             vae_c3 = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_c3)
             drop_num += 1
-        vae_c3a= Conv2D(filters = CONV_FILTERS[3], kernel_size = CONV_KERNEL_SIZES[3], strides = CONV_STRIDES[3], padding="same", activation=CONV_ACTIVATIONS[3])(vae_c3)
+        vae_c3a= Conv2D(filters = CONV_FILTERS[3], kernel_size = CONV_KERNEL_SIZES[3], strides = CONV_STRIDES[3], padding="same", activation=CONV_ACTIVATIONS[3], name='conv4')(vae_c3)
         if self.dropout is not None:
             vae_c3a = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_c3a)
             drop_num += 1
-        vae_c4= Conv2D(filters = CONV_FILTERS[4], kernel_size = CONV_KERNEL_SIZES[3], strides = CONV_STRIDES[4], padding="same", activation=CONV_ACTIVATIONS[4])(vae_c3a)
+        vae_c4= Conv2D(filters = CONV_FILTERS[4], kernel_size = CONV_KERNEL_SIZES[3], strides = CONV_STRIDES[4], padding="same", activation=CONV_ACTIVATIONS[4], name='conv5')(vae_c3a)
         if self.dropout is not None:
             vae_c4 = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_c4)
             drop_num += 1
 
-        vae_z_in = Flatten()(vae_c4)
+        vae_z_in = Flatten(name='flatten1')(vae_c4)
 
         vae_z_mean = Dense(self.z_dim, kernel_regularizer=regularizers.l1(self.l1_reg), name="mu")(vae_z_in)
         vae_z_log_var = Dense(self.z_dim, kernel_regularizer=regularizers.l1(self.l1_reg), name="log_var")(vae_z_in)
@@ -137,28 +137,28 @@ class KerasVAE(KerasPilot):
         vae_z_input = Input(shape=(self.z_dim,), name='z_input')
 
         # we instantiate these layers separately so as to reuse them later
-        vae_dense = Dense(dense_calc)
+        vae_dense = Dense(dense_calc, name='decoder1')
 
-        vae_z_out = Reshape((final_img,final_img,CONV_FILTERS[3]))
+        vae_z_out = Reshape((final_img,final_img,CONV_FILTERS[3]), name='decoder_reshape')
         vae_dense_model = vae_dense(vae_z)
         vae_z_out_model = vae_z_out(vae_dense_model)
 
-        vae_d1 = Conv2DTranspose(filters = CONV_T_FILTERS[0], kernel_size = CONV_T_KERNEL_SIZES[0] , strides = CONV_T_STRIDES[0], padding="same", activation=CONV_T_ACTIVATIONS[0])
+        vae_d1 = Conv2DTranspose(filters = CONV_T_FILTERS[0], kernel_size = CONV_T_KERNEL_SIZES[0] , strides = CONV_T_STRIDES[0], padding="same", activation=CONV_T_ACTIVATIONS[0], name='convT1')
         vae_d1_model = vae_d1(vae_z_out_model)
         if self.dropout is not None:
             vae_d1_model = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_d1_model)
             drop_num += 1
-        vae_d2 = Conv2DTranspose(filters = CONV_T_FILTERS[1], kernel_size = CONV_T_KERNEL_SIZES[1] , strides = CONV_T_STRIDES[1], padding="same", activation=CONV_T_ACTIVATIONS[1])
+        vae_d2 = Conv2DTranspose(filters = CONV_T_FILTERS[1], kernel_size = CONV_T_KERNEL_SIZES[1] , strides = CONV_T_STRIDES[1], padding="same", activation=CONV_T_ACTIVATIONS[1], name='convT2')
         vae_d2_model = vae_d2(vae_d1_model)
         if self.dropout is not None:
             vae_d2_model = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_d2_model)
             drop_num += 1
-        vae_d3 = Conv2DTranspose(filters = CONV_T_FILTERS[2], kernel_size = CONV_T_KERNEL_SIZES[2] , strides = CONV_T_STRIDES[2], padding="same", activation=CONV_T_ACTIVATIONS[2])
+        vae_d3 = Conv2DTranspose(filters = CONV_T_FILTERS[2], kernel_size = CONV_T_KERNEL_SIZES[2] , strides = CONV_T_STRIDES[2], padding="same", activation=CONV_T_ACTIVATIONS[2], name='convT3')
         vae_d3_model = vae_d3(vae_d2_model)
         if self.dropout is not None:
             vae_d3_model = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_d3_model)
             drop_num += 1
-        vae_d3a = Conv2DTranspose(filters = CONV_T_FILTERS[3], kernel_size = CONV_T_KERNEL_SIZES[3] , strides = CONV_T_STRIDES[3], padding="same", activation=CONV_T_ACTIVATIONS[3])
+        vae_d3a = Conv2DTranspose(filters = CONV_T_FILTERS[3], kernel_size = CONV_T_KERNEL_SIZES[3] , strides = CONV_T_STRIDES[3], padding="same", activation=CONV_T_ACTIVATIONS[3], name='convT4')
         vae_d3a_model = vae_d3a(vae_d3_model)
         if self.dropout is not None:
             vae_d3a_model = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_d3a_model)
@@ -189,8 +189,8 @@ class KerasVAE(KerasPilot):
         if self.pilot:
             if self.training:
                 # During training we use samples from the mean/var distribution
-                #pilot_dense1 = Dense(100, name="pilot1_z")(vae_z)
-                pilot_dense1 = Dense(100, name="pilot1_flat")(vae_z_in)
+                pilot_dense1 = Dense(100, name="pilot1_z")(vae_z)
+                #pilot_dense1 = Dense(100, name="pilot1_flat")(vae_z_in)
             else:
                 # At runtime we use just the mean
                 pilot_dense1 = Dense(100, name="pilot1_mean")(vae_z_mean)
@@ -507,3 +507,7 @@ def train( kl, train_gen, val_gen, train_steps, val_steps, z_dim, beta, optim="a
                 use_multiprocessing=use_multiprocessing)
 
     return hist
+
+if __name__ == "__main__":
+    vae = KerasVAE(z_dim=512, aux=7, pilot=True, dropout=None)
+    vae.model.summary()
