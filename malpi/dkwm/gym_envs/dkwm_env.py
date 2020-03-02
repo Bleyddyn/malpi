@@ -28,12 +28,27 @@ def shuffled_circular(data, default=None):
             for sample in data:
                 yield sample
 
+class DKWMRewardBase(object):
+    def __init__(self, reward_range=(-10.0, 10.0)):
+        self.reward_range = reward_range
+
+    def reset(self):
+        pass
+
+    def step( self, z_obs=None, mu=None, var=None, obs=None, actions=None ):
+        raise NotImplementedError
+
+    def close(self):
+        pass
+
 class DKWMEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, z_dim=128, vae_weights=None, rnn_weights=None, obs_height=128, obs_width=128, starts=None):
+    def __init__(self, z_dim=128, vae_weights=None, rnn_weights=None, obs_height=128, obs_width=128, starts=None, reward_func=None):
         """ @param starts A list of mu/log_var pairs that can be sampled from to generate the first observation of each episode.
         """
+        super().__init__()
+
         self.vae = None
         self.rnn = None
 
@@ -59,7 +74,8 @@ class DKWMEnv(gym.Env):
             dtype=np.uint8
         )
 
-        self.reward_range = (-10.0, 10.0)
+        self.reward_func = reward_func
+        self.reward_range = self.reward_func.reward_range
 
         self.renderer = DKWMRenderer( window_width=obs_width*2, window_height=obs_height*2 )
 
@@ -103,9 +119,9 @@ class DKWMEnv(gym.Env):
 
         ret = self.rnn.sample_next_output(inputs, self.hidden, self.cell_values)
         self.zobs, mu, log_var, _, rew_pred, self.reward, self.hidden, self.cell_values = ret
-        # Use mu and log_var to calculate an actual reward
 
         next_obs = self.zobs_to_obs( self.zobs )
+        self.reward = self.reward_func.step( z_obs=self.zobs, mu=mu, var=log_var, obs=next_obs, actions=action )
         done = False
 
         self.renderer.set_obs( next_obs )
@@ -122,6 +138,7 @@ class DKWMEnv(gym.Env):
         #    sleep(0.13)
 
     def close(self):
+        self.reward_func.close()
         self.renderer.close()
 
     def zobs_to_obs(self, zobs):
@@ -133,13 +150,15 @@ class DKWMEnv(gym.Env):
 def sample_code():
     #import gym
     #import malpi.dkwm.gym_envs
+    #from malpi.dkwm.gym_envs.lane_reward import LaneReward
     #import numpy as np
     #from gym import spaces
 
     print( "Gym: {} at {}".format( gym.__version__,  gym.__file__ ) )
 
+    rew = LaneReward( z_dim=512, weights="lane_model.h5", reward_range=(-10.0, 10.0) )
     # Passing arguments like this requires OpenAI gym >= 0.12.4
-    env = gym.make('dkwm-v0', z_dim=512, vae_weights="vae_model.h5", rnn_weights="mdrnn_model.h5")
+    env = gym.make('dkwm-v0', z_dim=512, vae_weights="vae_model.h5", rnn_weights="mdrnn_model.h5", reward_func=rew)
     print( "Env: {}".format( env ) )
 
     obs = env.reset()
