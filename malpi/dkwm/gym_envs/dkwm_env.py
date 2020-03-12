@@ -57,7 +57,7 @@ class DKWMEnv(gym.Env):
         else:
             self.starts = None
 
-        self.load_weights( z_dim=z_dim, vae_weights=vae_weights, rnn_weights=rnn_weights )
+        self.load_weights( z_dim=z_dim, vae_weights=vae_weights, rnn_weights=rnn_weights, by_name=True )
 
         self.action_space = spaces.Box(
             low = -1.0,
@@ -79,7 +79,7 @@ class DKWMEnv(gym.Env):
 
         self.renderer = DKWMRenderer( window_width=obs_width*2, window_height=obs_height*2 )
 
-    def load_weights(self, z_dim, vae_weights, rnn_weights):
+    def load_weights(self, z_dim, vae_weights, rnn_weights, by_name=False):
         self.vae_weights = vae_weights
         self.rnn_weights = rnn_weights
         self.z_dim = z_dim
@@ -87,11 +87,11 @@ class DKWMEnv(gym.Env):
         # z_dim, dropout, aux = vae.KerasVAE.model_meta( vae_weights[:-3] + ".json" )
         if self.vae_weights is not None:
             self.vae = vae.KerasVAE(z_dim=z_dim, dropout=None)
-            self.vae.set_weights( vae_weights )
+            self.vae.set_weights( vae_weights, by_name=by_name )
 
         if self.rnn_weights is not None:
             self.rnn = mdrnn.RNN(z_dim=z_dim, action_dim=2 )
-            self.rnn.set_weights( rnn_weights )
+            self.rnn.set_weights( rnn_weights, by_name=by_name )
 
     def reset(self):
         if self.vae_weights is None or self.rnn_weights is None:
