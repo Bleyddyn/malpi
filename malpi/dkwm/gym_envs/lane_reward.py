@@ -17,7 +17,7 @@ class LaneReward(DKWMRewardBase):
     def load_weights(self, weights, by_name=False):
         self.weights = weights
         if self.weights is not None:
-            self.model.set_weights( weights, by_name=by_name )
+            self.model.load_weights( weights, by_name=by_name )
 
     def reset(self):
         pass
