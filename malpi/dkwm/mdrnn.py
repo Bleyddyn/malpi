@@ -118,8 +118,8 @@ class RNN():
                        epochs=1,
                        batch_size=len(rnn_input))
 
-    def set_weights(self, filepath):
-        self.model.load_weights(filepath)
+    def set_weights(self, filepath, by_name=False):
+        self.model.load_weights(filepath, by_name=by_name)
 
     def save_weights(self, filepath):
         self.model.save_weights(filepath)
