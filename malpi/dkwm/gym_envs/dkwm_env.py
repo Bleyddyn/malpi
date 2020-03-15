@@ -17,7 +17,6 @@ from gym.utils import seeding
 
 from malpi.dkwm import vae
 from malpi.dkwm import mdrnn
-from malpi.dkwm.gym_envs.renderer import DKWMRenderer
 
 def shuffled_circular(data, default=None):
     while True:
@@ -27,6 +26,29 @@ def shuffled_circular(data, default=None):
             np.random.shuffle(data)
             for sample in data:
                 yield sample
+
+class DKWMRendererBase(object):
+
+    def __init__( self, window_width=None, window_height=None):
+        pass
+
+    def reset(self):
+        pass
+
+    def set_obs( self, next_obs ):
+        pass
+
+    def clear_label( self, label_id ):
+        pass
+
+    def set_label( self, label_text, label_id, location=None ):
+        pass
+
+    def render( self, mode=None ):
+        pass
+
+    def close(self):
+        pass
 
 class DKWMRewardBase(object):
     def __init__(self, reward_range=(-10.0, 10.0)):
@@ -44,7 +66,7 @@ class DKWMRewardBase(object):
 class DKWMEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, z_dim=128, vae_weights=None, rnn_weights=None, obs_height=128, obs_width=128, starts=None, reward_func=None):
+    def __init__(self, z_dim=128, vae_weights=None, rnn_weights=None, starts=None, reward_func=None, renderer=None):
         """ @param starts A list of mu/log_var pairs that can be sampled from to generate the first observation of each episode.
         """
         super().__init__()
@@ -66,18 +88,21 @@ class DKWMEnv(gym.Env):
             dtype = np.float32
         )
 
-        # Observations are RGB images with pixels in [0, 255]
+        # z/latent space. Arbitrarily chosen min/max, should be based off normal distribution.
         self.observation_space = spaces.Box(
-            low=0,
-            high=255,
-            shape=(obs_height, obs_width, 3),
-            dtype=np.uint8
+            low = -100.0,
+            high = 100.0,
+            shape = (z_dim,),
+            dtype = np.float32
         )
 
         self.reward_func = reward_func
         self.reward_range = self.reward_func.reward_range
 
-        self.renderer = DKWMRenderer( window_width=obs_width*2, window_height=obs_height*2 )
+        if renderer is None:
+            self.renderer = DKWMRendererBase()
+        else:
+            self.renderer = renderer
 
     def load_weights(self, z_dim, vae_weights, rnn_weights, by_name=False):
         self.vae_weights = vae_weights
@@ -108,11 +133,11 @@ class DKWMEnv(gym.Env):
         self.cell_values = np.zeros(self.rnn.hidden_units)
         self.reward = 0.0
 
-        next_obs = self.zobs_to_obs( self.zobs )
+        #next_obs = self.zobs_to_obs( self.zobs )
 
         self.renderer.reset()
 
-        return next_obs
+        return self.zobs
 
     def step(self, action):
         inputs = np.concatenate([self.zobs, action, [self.reward]])
@@ -127,7 +152,7 @@ class DKWMEnv(gym.Env):
         self.renderer.set_obs( next_obs )
         self.renderer.set_label( "Steering:\t{:+5.3f}\nThrottle:\t{:+5.3f}".format( *action ), "actions"  )
 
-        return next_obs, self.reward, done, {"z_obs": self.zobs}
+        return self.zobs, self.reward, done, {"decoded": next_obs}
 
     def render(self, mode='human'):
         # Possible code to base it on: https://github.com/maximecb/gym-miniworld/blob/master/gym_miniworld/miniworld.py
