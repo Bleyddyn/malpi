@@ -10,6 +10,10 @@ from ctypes import POINTER
 # export DYLD_FALLBACK_LIBRARY_PATH=/usr/lib
 
 class DKWMRenderer(object):
+    """ A renderer for the DKWM gym.
+        Holds and displays the previous image. Draws a given label to one of the display corners.
+        Based on: https://github.com/maximecb/gym-miniworld/blob/master/gym_miniworld/miniworld.py
+    """
 
     # See: http://www.blog.pythonlibrary.org/2018/03/20/python-3-an-intro-to-enumerations/
     labelEnum = Enum( "Label", "TopLeft TopRight BottomLeft BottomRight" )

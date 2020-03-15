@@ -118,6 +118,9 @@ class RNN():
                        epochs=1,
                        batch_size=len(rnn_input))
 
+    def get_hidden_units(self):
+        return self.hidden_units
+
     def set_weights(self, filepath, by_name=False):
         self.model.load_weights(filepath, by_name=by_name)
 

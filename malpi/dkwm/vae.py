@@ -308,7 +308,10 @@ class KerasVAE(KerasPilot):
         rnn_output = np.array(rnn_output)
 
         return (rnn_input, rnn_output)
-    
+
+    def get_z_dim(self):
+        return self.z_dim
+
     def decode(self, z_inputs):
         return self.decoder.predict( z_inputs )
 

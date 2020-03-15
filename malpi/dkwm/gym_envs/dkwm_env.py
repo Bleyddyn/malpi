@@ -1,8 +1,7 @@
-""" An OpenAI gym environment that uses a WorldModel trained on DonkeyCar data
-    to create the environment.
+""" An OpenAI gym environment that uses a WorldModel trained on DonkeyCar data as the environment.
 
     To pass in the arguments needed during environment creation:
-        your_env = gym.make('DKWMEnv', z_dim=128, vae_weights="path/to/weights.h5', ...etc...)
+        your_env = gym.make('DKWMEnv', vae=vae_object, ...etc...)
         From: https://stackoverflow.com/questions/54259338/how-to-pass-arguments-to-openai-gym-environments-upon-init
 
     See this for how to create new environments: https://github.com/openai/gym/blob/master/docs/creating-environments.md
@@ -14,9 +13,6 @@ import numpy as np
 import gym
 from gym import error, spaces, utils
 from gym.utils import seeding
-
-from malpi.dkwm import vae
-from malpi.dkwm import mdrnn
 
 def shuffled_circular(data, default=None):
     while True:
@@ -51,6 +47,7 @@ class DKWMRendererBase(object):
         pass
 
 class DKWMRewardBase(object):
+
     def __init__(self, reward_range=(-10.0, 10.0)):
         self.reward_range = reward_range
 
@@ -66,20 +63,22 @@ class DKWMRewardBase(object):
 class DKWMEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, z_dim=128, vae_weights=None, rnn_weights=None, starts=None, reward_func=None, renderer=None):
+    def __init__(self, vae, rnn, reward_func, starts=None, renderer=None):
         """ @param starts A list of mu/log_var pairs that can be sampled from to generate the first observation of each episode.
+            @param vae A Variational Autoencoder with z_dim(), encode() and decode() methods.
+            @param rnn An MDRNN  with hidden_units(), sample_next_output() and sample_z() methods.
         """
         super().__init__()
 
-        self.vae = None
-        self.rnn = None
+        self.z_dim = vae.get_z_dim()
+        self.vae = vae
+        self.rnn = rnn
 
         if starts is not None:
-            self.starts = shuffled_circular(starts, default=np.zeros( z_dim ))
+            self.starts = shuffled_circular(starts, default=np.zeros( self.z_dim ))
         else:
             self.starts = None
 
-        self.load_weights( z_dim=z_dim, vae_weights=vae_weights, rnn_weights=rnn_weights, by_name=True )
 
         self.action_space = spaces.Box(
             low = -1.0,
@@ -92,7 +91,7 @@ class DKWMEnv(gym.Env):
         self.observation_space = spaces.Box(
             low = -100.0,
             high = 100.0,
-            shape = (z_dim,),
+            shape = (self.z_dim,),
             dtype = np.float32
         )
 
@@ -104,36 +103,18 @@ class DKWMEnv(gym.Env):
         else:
             self.renderer = renderer
 
-    def load_weights(self, z_dim, vae_weights, rnn_weights, by_name=False):
-        self.vae_weights = vae_weights
-        self.rnn_weights = rnn_weights
-        self.z_dim = z_dim
-
-        # z_dim, dropout, aux = vae.KerasVAE.model_meta( vae_weights[:-3] + ".json" )
-        if self.vae_weights is not None:
-            self.vae = vae.KerasVAE(z_dim=z_dim, dropout=None)
-            self.vae.set_weights( vae_weights, by_name=by_name )
-
-        if self.rnn_weights is not None:
-            self.rnn = mdrnn.RNN(z_dim=z_dim, action_dim=2 )
-            self.rnn.set_weights( rnn_weights, by_name=by_name )
-
     def reset(self):
-        if self.vae_weights is None or self.rnn_weights is None:
-            print( "Warning! Weights files have not been set for this DKWM environement." )
-            print( "   Call env.load_weights( z_dim, vae_weights, rnn_weights ) before trying to run." )
-            return None
-
         if self.starts is None:
             self.zobs = np.zeros( self.z_dim )
         else:
-            self.zobs = mdrnn.RNN.sample_z( *next(self.starts) )
+            self.zobs = self.rnn.sample_z( *next(self.starts) )
 
-        self.hidden = np.zeros(self.rnn.hidden_units)
-        self.cell_values = np.zeros(self.rnn.hidden_units)
+        self.hidden = np.zeros(self.rnn.get_hidden_units())
+        self.cell_values = np.zeros(self.rnn.get_hidden_units())
         self.reward = 0.0
 
-        #next_obs = self.zobs_to_obs( self.zobs )
+        next_obs = self.zobs_to_obs( self.zobs )
+        self.renderer.set_obs( next_obs )
 
         self.renderer.reset()
 
@@ -155,7 +136,6 @@ class DKWMEnv(gym.Env):
         return self.zobs, self.reward, done, {"decoded": next_obs}
 
     def render(self, mode='human'):
-        # Possible code to base it on: https://github.com/maximecb/gym-miniworld/blob/master/gym_miniworld/miniworld.py
         img = self.renderer.render( mode=mode )
         if "rgb_array" == mode:
             return img
@@ -176,14 +156,27 @@ def sample_code():
     #import gym
     #import malpi.dkwm.gym_envs
     #from malpi.dkwm.gym_envs.lane_reward import LaneReward
+    #from malpi.dkwm.gym_envs.renderer import DKWMRenderer
+    #from malpi.dkwm import vae
+    #from malpi.dkwm import mdrnn
     #import numpy as np
     #from gym import spaces
 
     print( "Gym: {} at {}".format( gym.__version__,  gym.__file__ ) )
 
-    rew = LaneReward( z_dim=512, weights="lane_model.h5", reward_range=(-10.0, 10.0) )
+    z_dim = 512
+    vae = vae.KerasVAE(z_dim=z_dim, dropout=None)
+    vae.set_weights( vae_path, by_name=True )
+    rnn = mdrnn.RNN(z_dim=z_dim, action_dim=2 )
+    rnn.set_weights( mdrnn_path, by_name=True )
+    rew = LaneReward( z_dim=z_dim, weights=vae_path, reward_range=(-10.0, 10.0) )
+    starts = np.load( starts_path )
+    starts = list(zip(starts['mu'], starts['log_var']))
+    obs_size=128
+    renderer = DKWMRenderer( window_width=obs_size*2, window_height=obs_size*2 )
+
     # Passing arguments like this requires OpenAI gym >= 0.12.4
-    env = gym.make('dkwm-v0', z_dim=512, vae_weights="vae_model.h5", rnn_weights="mdrnn_model.h5", reward_func=rew)
+    env = gym.make('dkwm-v0', vae=vae, rnn=rnn, reward_func=rew, starts=starts, renderer=renderer)
     print( "Env: {}".format( env ) )
 
     obs = env.reset()
@@ -191,8 +184,8 @@ def sample_code():
 
     for i in range(10):
         act = env.action_space.sample()
-        obs, reward, done, info = env.step( env.action_space.sample() )
-        z_obs = info["z_obs"]
+        z_obs, reward, done, info = env.step( env.action_space.sample() )
+        obs = info["decoded"]
         print( "Step act/obs/rew/done/z: {} {} {} {} {}".format( act, obs.shape, reward, done, z_obs.shape ) )
 
 # Sample output:
