@@ -63,16 +63,19 @@ class DKWMRewardBase(object):
 class DKWMEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, vae, rnn, reward_func, starts=None, renderer=None):
+    def __init__(self, vae, rnn, reward_func, starts=None, renderer=None, max_steps=None):
         """ @param starts A list of mu/log_var pairs that can be sampled from to generate the first observation of each episode.
             @param vae A Variational Autoencoder with z_dim(), encode() and decode() methods.
             @param rnn An MDRNN  with hidden_units(), sample_next_output() and sample_z() methods.
+            @param max_steps Will return done=True after max_steps
         """
         super().__init__()
 
         self.z_dim = vae.get_z_dim()
         self.vae = vae
         self.rnn = rnn
+        self.max_steps = max_steps
+        self.steps = 0
 
         if starts is not None:
             self.starts = shuffled_circular(starts, default=np.zeros( self.z_dim ))
@@ -112,6 +115,7 @@ class DKWMEnv(gym.Env):
         self.hidden = np.zeros(self.rnn.get_hidden_units())
         self.cell_values = np.zeros(self.rnn.get_hidden_units())
         self.reward = 0.0
+        self.steps = 0
 
         next_obs = self.zobs_to_obs( self.zobs )
         self.renderer.set_obs( next_obs )
@@ -128,7 +132,12 @@ class DKWMEnv(gym.Env):
 
         next_obs = self.zobs_to_obs( self.zobs )
         self.reward = self.reward_func.step( z_obs=self.zobs, mu=mu, var=log_var, obs=next_obs, actions=action )
-        done = False
+
+        self.steps += 1
+        if self.steps >= self.max_steps:
+            done = True
+        else:
+            done = False
 
         self.renderer.set_obs( next_obs )
         self.renderer.set_label( "Steering:\t{:+5.3f}\nThrottle:\t{:+5.3f}".format( *action ), "actions"  )
