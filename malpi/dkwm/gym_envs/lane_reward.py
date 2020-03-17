@@ -25,8 +25,10 @@ class LaneReward(DKWMRewardBase):
     def step( self, z_obs=None, mu=None, var=None, obs=None, actions=None ):
         lane_cat = np.squeeze( self.model.predict( z_obs.reshape( (1,self.z_dim) )) )
         lane = np.argmax(lane_cat)
-        # Multiply the reward scale for the current lane times the speed.
-        reward = self.reward_scales[lane] * actions[1]
+        reward = self.reward_scales[lane]
+        if reward > 0.0:
+            # Multiply the reward scale for the current lane times the speed.
+            reward *= actions[1]
         reward = np.clip( reward, self.reward_range[0], self.reward_range[1] )
         return reward
 
