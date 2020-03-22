@@ -114,7 +114,7 @@ class App():
             self.recordCommand(alist)
 
         elif action.startswith( 'record_start', 0, len('record_start') ):
-            name = None
+            name = "UCSD"
             if len(action) > len('record_start'):
                 name = action[len('record_start '):]
             self.startRecording(name)
@@ -385,7 +385,7 @@ class App():
         """ Take in steering and throttle, as if for a donkeycar, and output commands appropriate for malpi.
         """
         min_ctrl = 0.1
-        radius = 0.3 # Simulate a turning radius
+        radius = 0.5 # Simulate a turning radius
         steering = 0.0
         throttle = 0.0
         acts = action.split(" ")

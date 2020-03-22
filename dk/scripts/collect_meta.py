@@ -18,7 +18,7 @@ from docopt import docopt
 import cv2
 
 import donkeycar as dk
-from donkeycar.drive import DefaultDriver
+from donkeycar.drive import DefaultDriver, RecordTracker
 from donkeycar.utils import normalize_and_crop
 
 class ImageResize():
@@ -60,6 +60,29 @@ class MyDriver(DefaultDriver):
             outputs=[inf_input],
             run_condition='run_pilot')
         return [inf_input]
+
+    def build_displays(self):
+        class LedSimpleLogic:
+            def __init__(self):
+                pass
+
+            def run(self, recording):
+                #returns a blink rate. 0 for off. -1 for on. positive for rate.
+                if recording:
+                    return -1 #solid on
+
+                return 0
+
+        rec_tracker_part = RecordTracker(self.cfg.REC_COUNT_ALERT, self.cfg.REC_COUNT_ALERT_CYC, self.cfg.RECORD_ALERT_COLOR_ARR)
+        self.vehicle.add(rec_tracker_part, inputs=["tub/num_records"], outputs=['records/alert'])
+
+        if self.cfg.HAVE_RGB_LED and not self.cfg.DONKEY_GYM:
+            from donkeycar.parts.led_status import RGB_LED
+            led = RGB_LED(self.cfg.LED_PIN_R, self.cfg.LED_PIN_G, self.cfg.LED_PIN_B, self.cfg.LED_INVERT)
+            led.set_rgb(self.cfg.LED_R, self.cfg.LED_G, self.cfg.LED_B)
+
+            self.vehicle.add(LedSimpleLogic(), inputs=['recording'], outputs=['led/blink_rate'])
+            self.vehicle.add(led, inputs=['led/blink_rate'])
 
 if __name__ == "__main__":
     args = docopt(__doc__)
