@@ -2,8 +2,10 @@
 A DonkeyCar pilot based on a Variational AutoEncoder.
 '''
 
+import os
 import numpy as np
 import keras
+import json
 from keras.layers import Input, Conv2D, Flatten, Dense, Conv2DTranspose, Lambda, Reshape, Dropout
 from keras.layers import SpatialDropout2D
 from keras.models import Model
@@ -15,6 +17,12 @@ import tensorflow as tf
 #import donkeycar as dk
 from donkeycar.parts.keras import KerasPilot
 
+from sklearn.utils import shuffle
+from donkeycar.parts.augment import augment_image
+from donkeycar.utils import load_scaled_image_arr
+# For make_generator
+from donkeycar.templates.train import collate_records
+from donkeycar.utils import gather_records
 
 """
 Possible sample code for annealing a variable during training, for the C variable in Improved Beta-VAE.
@@ -94,31 +102,31 @@ class KerasVAE(KerasPilot):
 
         vae_x = Input(shape=self.input_dim, name='observation_input')
         if self.dropout is not None:
-            vae_xd = Dropout(self.dropout)(vae_x)
+            vae_xd = Dropout(self.dropout, name='dropout1')(vae_x)
         else:
             vae_xd = vae_x
-        vae_c1 = Conv2D(filters = CONV_FILTERS[0], kernel_size = CONV_KERNEL_SIZES[0], strides = CONV_STRIDES[0], padding="same", activation=CONV_ACTIVATIONS[0])(vae_xd)
+        vae_c1 = Conv2D(filters = CONV_FILTERS[0], kernel_size = CONV_KERNEL_SIZES[0], strides = CONV_STRIDES[0], padding="same", activation=CONV_ACTIVATIONS[0], name='conv1')(vae_xd)
         if self.dropout is not None:
             vae_c1 = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_c1)
             drop_num += 1
-        vae_c2 = Conv2D(filters = CONV_FILTERS[1], kernel_size = CONV_KERNEL_SIZES[1], strides = CONV_STRIDES[1], padding="same", activation=CONV_ACTIVATIONS[1])(vae_c1)
+        vae_c2 = Conv2D(filters = CONV_FILTERS[1], kernel_size = CONV_KERNEL_SIZES[1], strides = CONV_STRIDES[1], padding="same", activation=CONV_ACTIVATIONS[1], name='conv2')(vae_c1)
         if self.dropout is not None:
             vae_c2 = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_c2)
             drop_num += 1
-        vae_c3= Conv2D(filters = CONV_FILTERS[2], kernel_size = CONV_KERNEL_SIZES[2], strides = CONV_STRIDES[2], padding="same", activation=CONV_ACTIVATIONS[2])(vae_c2)
+        vae_c3= Conv2D(filters = CONV_FILTERS[2], kernel_size = CONV_KERNEL_SIZES[2], strides = CONV_STRIDES[2], padding="same", activation=CONV_ACTIVATIONS[2], name='conv3')(vae_c2)
         if self.dropout is not None:
             vae_c3 = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_c3)
             drop_num += 1
-        vae_c3a= Conv2D(filters = CONV_FILTERS[3], kernel_size = CONV_KERNEL_SIZES[3], strides = CONV_STRIDES[3], padding="same", activation=CONV_ACTIVATIONS[3])(vae_c3)
+        vae_c3a= Conv2D(filters = CONV_FILTERS[3], kernel_size = CONV_KERNEL_SIZES[3], strides = CONV_STRIDES[3], padding="same", activation=CONV_ACTIVATIONS[3], name='conv4')(vae_c3)
         if self.dropout is not None:
             vae_c3a = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_c3a)
             drop_num += 1
-        vae_c4= Conv2D(filters = CONV_FILTERS[4], kernel_size = CONV_KERNEL_SIZES[3], strides = CONV_STRIDES[4], padding="same", activation=CONV_ACTIVATIONS[4])(vae_c3a)
+        vae_c4= Conv2D(filters = CONV_FILTERS[4], kernel_size = CONV_KERNEL_SIZES[3], strides = CONV_STRIDES[4], padding="same", activation=CONV_ACTIVATIONS[4], name='conv5')(vae_c3a)
         if self.dropout is not None:
             vae_c4 = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_c4)
             drop_num += 1
 
-        vae_z_in = Flatten()(vae_c4)
+        vae_z_in = Flatten(name='flatten1')(vae_c4)
 
         vae_z_mean = Dense(self.z_dim, kernel_regularizer=regularizers.l1(self.l1_reg), name="mu")(vae_z_in)
         vae_z_log_var = Dense(self.z_dim, kernel_regularizer=regularizers.l1(self.l1_reg), name="log_var")(vae_z_in)
@@ -129,28 +137,28 @@ class KerasVAE(KerasPilot):
         vae_z_input = Input(shape=(self.z_dim,), name='z_input')
 
         # we instantiate these layers separately so as to reuse them later
-        vae_dense = Dense(dense_calc)
+        vae_dense = Dense(dense_calc, name='decoder1')
 
-        vae_z_out = Reshape((final_img,final_img,CONV_FILTERS[3]))
+        vae_z_out = Reshape((final_img,final_img,CONV_FILTERS[3]), name='decoder_reshape')
         vae_dense_model = vae_dense(vae_z)
         vae_z_out_model = vae_z_out(vae_dense_model)
 
-        vae_d1 = Conv2DTranspose(filters = CONV_T_FILTERS[0], kernel_size = CONV_T_KERNEL_SIZES[0] , strides = CONV_T_STRIDES[0], padding="same", activation=CONV_T_ACTIVATIONS[0])
+        vae_d1 = Conv2DTranspose(filters = CONV_T_FILTERS[0], kernel_size = CONV_T_KERNEL_SIZES[0] , strides = CONV_T_STRIDES[0], padding="same", activation=CONV_T_ACTIVATIONS[0], name='convT1')
         vae_d1_model = vae_d1(vae_z_out_model)
         if self.dropout is not None:
             vae_d1_model = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_d1_model)
             drop_num += 1
-        vae_d2 = Conv2DTranspose(filters = CONV_T_FILTERS[1], kernel_size = CONV_T_KERNEL_SIZES[1] , strides = CONV_T_STRIDES[1], padding="same", activation=CONV_T_ACTIVATIONS[1])
+        vae_d2 = Conv2DTranspose(filters = CONV_T_FILTERS[1], kernel_size = CONV_T_KERNEL_SIZES[1] , strides = CONV_T_STRIDES[1], padding="same", activation=CONV_T_ACTIVATIONS[1], name='convT2')
         vae_d2_model = vae_d2(vae_d1_model)
         if self.dropout is not None:
             vae_d2_model = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_d2_model)
             drop_num += 1
-        vae_d3 = Conv2DTranspose(filters = CONV_T_FILTERS[2], kernel_size = CONV_T_KERNEL_SIZES[2] , strides = CONV_T_STRIDES[2], padding="same", activation=CONV_T_ACTIVATIONS[2])
+        vae_d3 = Conv2DTranspose(filters = CONV_T_FILTERS[2], kernel_size = CONV_T_KERNEL_SIZES[2] , strides = CONV_T_STRIDES[2], padding="same", activation=CONV_T_ACTIVATIONS[2], name='convT3')
         vae_d3_model = vae_d3(vae_d2_model)
         if self.dropout is not None:
             vae_d3_model = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_d3_model)
             drop_num += 1
-        vae_d3a = Conv2DTranspose(filters = CONV_T_FILTERS[3], kernel_size = CONV_T_KERNEL_SIZES[3] , strides = CONV_T_STRIDES[3], padding="same", activation=CONV_T_ACTIVATIONS[3])
+        vae_d3a = Conv2DTranspose(filters = CONV_T_FILTERS[3], kernel_size = CONV_T_KERNEL_SIZES[3] , strides = CONV_T_STRIDES[3], padding="same", activation=CONV_T_ACTIVATIONS[3], name='convT4')
         vae_d3a_model = vae_d3a(vae_d3_model)
         if self.dropout is not None:
             vae_d3a_model = SpatialDropout2D(self.dropout, name=drop_name.format(drop_num))(vae_d3a_model)
@@ -181,8 +189,8 @@ class KerasVAE(KerasPilot):
         if self.pilot:
             if self.training:
                 # During training we use samples from the mean/var distribution
-                #pilot_dense1 = Dense(100, name="pilot1_z")(vae_z)
-                pilot_dense1 = Dense(100, name="pilot1_flat")(vae_z_in)
+                pilot_dense1 = Dense(100, name="pilot1_z")(vae_z)
+                #pilot_dense1 = Dense(100, name="pilot1_flat")(vae_z_in)
             else:
                 # At runtime we use just the mean
                 pilot_dense1 = Dense(100, name="pilot1_mean")(vae_z_mean)
@@ -196,7 +204,7 @@ class KerasVAE(KerasPilot):
         if self.aux > 0:
             aux_dense1 = Dense(100, name="aux1")(vae_z)
             aux_dense2 = Dense(50, name="aux2")(aux_dense1)
-            aux_out = Dense(self.aux, name="aux_output")(aux_dense2) # activation on this should be softmax? And loss would be categorical_crossentropy
+            aux_out = Dense(self.aux, name="aux_output", activation='softmax')(aux_dense2)
             outputs.append(aux_out)
 
         #### MODELS
@@ -236,7 +244,7 @@ class KerasVAE(KerasPilot):
 #          {'main_output': labels, 'aux_output': labels},
 #          epochs=50, batch_size=32)
         losses={'main_output': self.loss}
-        loss_weights={'main_output': 1.0}
+        loss_weights={'main_output': main_weight}
         metrics={'main_output': [self.r_loss, self.kl_loss]}
 
         if self.pilot:
@@ -246,8 +254,9 @@ class KerasVAE(KerasPilot):
             loss_weights["throttle_output"] = throttle_weight
 
         if self.aux > 0:
-            losses['aux_output'] = 'binary_crossentropy'
+            losses['aux_output'] = 'categorical_crossentropy'
             loss_weights['aux_output'] = aux_weight
+            metrics['aux_output'] = 'accuracy'
 
         self.model.compile(optimizer=self.optimizer, loss=losses, loss_weights=loss_weights, metrics=metrics)
 
@@ -271,7 +280,18 @@ class KerasVAE(KerasPilot):
         self.model.save_weights('./vae/weights.h5')
 
     def save_weights(self, filepath):
+        """ Save the model weights to the given filepath (should have a .h5 extension).
+        """
         self.model.save_weights(filepath)
+
+    def save_model(self, filepath):
+        """ Save the model structure to a file as json.
+        """
+        jstr = self.model.to_json()
+        parsed = json.loads(jstr)
+        arch_pretty = json.dumps(parsed, indent=4, sort_keys=True)
+        with open(filepath, 'w') as f:
+            f.write(arch_pretty)
 
     def generate_rnn_data(self, obs_data, action_data):
 
@@ -288,7 +308,10 @@ class KerasVAE(KerasPilot):
         rnn_output = np.array(rnn_output)
 
         return (rnn_input, rnn_output)
-    
+
+    def get_z_dim(self):
+        return self.z_dim
+
     def decode(self, z_inputs):
         return self.decoder.predict( z_inputs )
 
@@ -299,3 +322,195 @@ class KerasVAE(KerasPilot):
         img_arr = img_arr.reshape((1,) + img_arr.shape)
         (recon, steering, throttle) = self.model.predict(img_arr)
         return steering[0][0], throttle[0][0]
+
+    @staticmethod
+    def model_meta( fname ):
+        """ Read model meta info from a json file.
+            Return values will be None if not present or not used.
+            @return z_dim, dropout, aux """
+        aux = None
+        z_dim = None
+        dropout = None
+        try:
+            with open(fname,'r') as f:
+                json_str = f.read()
+                data = json.loads(json_str)
+                layers = data["config"]["layers"]
+                for l in layers:
+                    if l.get("name","") == "aux_output":
+                        aux = l["config"]["units"]
+                    elif l.get("name","") == "mu":
+                        z_dim = l["config"]["units"]
+                    elif l.get("name","").startswith("SpatialDropout_"):
+                        # e.g. SpatialDropout_0.4_1
+                        dropout = float( l.get("name","").split("_")[1])
+        except:
+            pass
+
+        return z_dim, dropout, aux
+
+def vae_generator(cfg, data, batch_size, isTrainSet=True, min_records_to_train=1000, aug=False, aux=None):
+    """ Returns batches of data for training a VAE, given a dictionary of DonkeyCar inputs.
+    """
+        
+    num_records = len(data)
+
+    while True:
+
+        batch_data = []
+
+        keys = list(data.keys())
+        keys = shuffle(keys)
+
+        for key in keys:
+
+            if not key in data:
+                continue
+
+            _record = data[key]
+
+            if _record['train'] != isTrainSet:
+                continue
+
+            batch_data.append(_record)
+
+            if len(batch_data) == batch_size:
+                inputs_img = []
+                aux_out = []
+
+                for record in batch_data:
+                    img_arr = None
+                    #get image data if we don't already have it
+                    if record['img_data'] is None:
+                        img_arr = load_scaled_image_arr(record['image_path'], cfg)
+
+                        if img_arr is None:
+                            break
+                        
+                        if aug:
+                            img_arr = augment_image(img_arr)
+
+                        if cfg.CACHE_IMAGES:
+                            record['img_data'] = img_arr
+                    else:
+                        img_arr = record['img_data']
+                        
+                    if aux is not None:
+                        if aux in record['json_data']:
+                            aux_out.append(record['json_data'][aux])
+                        else:
+                            print( "Missing aux data in: {}".format( record ) )
+                            continue
+
+                    if img_arr is None:
+                        continue
+
+                    inputs_img.append(img_arr)
+
+                X = np.array(inputs_img).reshape(batch_size, cfg.IMAGE_H, cfg.IMAGE_W, cfg.IMAGE_DEPTH)
+                y = X
+
+                if aux is not None:
+                    aux_out = keras.utils.to_categorical(aux_out, num_classes=7)
+                    yield X, {'main_output': y, 'aux_output': aux_out}
+                else:
+                    yield X, y
+
+
+                batch_data = []
+
+def make_generator( cfg, tub_names, verbose=True ):
+    opts = { 'cfg' : cfg}
+    opts['categorical'] = False
+    opts['continuous'] = False
+
+    gen_records = {}
+    records = gather_records(cfg, tub_names, verbose=True)
+    collate_records(records, gen_records, opts)
+
+    train_gen = vae_generator(cfg, gen_records, cfg.BATCH_SIZE, isTrainSet=True, aug=False )
+    val_gen = vae_generator(cfg, gen_records, cfg.BATCH_SIZE, isTrainSet=False, aug=False )
+
+    return train_gen, val_gen, gen_records
+
+
+def make_config( image_h, image_w, image_d, train_split=0.8, batch_size=128, cache_images=True, crop_top=0, crop_bot=0, data_path=None, max_thr=0.5 ):
+    """ Make a DonkeyCar config-like object if there is no config file available.
+
+        Entries needed for:
+        gather_records -> gather_tubs -> gather_tub_paths
+            cfg.DATA_PATH if tub_names is None
+        collate_records
+            cfg.MODEL_CATEGORICAL_MAX_THROTTLE_RANGE, if opts['categorical']
+            cfg.TRAIN_TEST_SPLIT
+        vae_generator
+            cfg.BATCH_SIZE
+            cfg.CACHE_IMAGES (bool)
+            cfg.IMAGE_H
+            cfg.IMAGE_W
+            cfg.IMAGE_DEPTH
+            -> load_scaled_image_arr
+                cfg.IMAGE_H
+                cfg.IMAGE_W
+                cfg.IMAGE_DEPTH
+                -> normalize_and_crop
+                    cfg.ROI_CROP_TOP
+                    cfg.ROI_CROP_BOTTOM
+
+
+
+    """
+    from collections import namedtuple
+
+    CFG = namedtuple('Config', ['DATA_PATH', 'MODEL_CATEGORICAL_MAX_THROTTLE_RANGE', 'TRAIN_TEST_SPLIT', 'BATCH_SIZE', 'CACHE_IMAGES', 'IMAGE_H', 'IMAGE_W', 'IMAGE_DEPTH', 'ROI_CROP_TOP', 'ROI_CROP_BOTTOM'])
+
+
+    cfg = CFG(DATA_PATH=data_path, MODEL_CATEGORICAL_MAX_THROTTLE_RANGE=max_thr, TRAIN_TEST_SPLIT=train_split, BATCH_SIZE=batch_size, CACHE_IMAGES=cache_images, IMAGE_H=image_h, IMAGE_W=image_w, IMAGE_DEPTH=image_d, ROI_CROP_TOP=crop_top, ROI_CROP_BOTTOM=crop_bot)
+
+    return cfg
+
+def train( kl, train_gen, val_gen, train_steps, val_steps, z_dim, beta, optim="adam", lr=None, decay=None, momentum=None, dropout=None, epochs=40, batch_size=64, aux=None, verbose=True ):
+
+    optim_args = {}
+    if lr is not None:
+        optim_args["lr"] = lr
+    if decay is not None:
+        optim_args["decay"] = decay
+    if (optim == "sgd") and (momentum is not None):
+        optim_args["momentum"] = momentum
+
+    if optim == "adam":
+        optim = keras.optimizers.Adam(**optim_args)
+    elif optim == "sgd":
+        optim = keras.optimizers.SGD(**optim_args)
+    elif optim == "rmsprop":
+        optim = keras.optimizers.RMSprop(**optim_args)
+
+    kl.set_optimizer(optim)
+    kl.compile()
+
+    early_stop = keras.callbacks.EarlyStopping(monitor='val_loss',
+                                               min_delta=0.00001,
+                                               patience=5,
+                                               verbose=True,
+                                               mode='auto')
+
+    workers_count = 1
+    use_multiprocessing = False
+
+    hist = kl.model.fit_generator(
+                train_gen, 
+                steps_per_epoch=train_steps, 
+                epochs=epochs, 
+                verbose=verbose, 
+                validation_data=val_gen,
+                callbacks=[early_stop], 
+                validation_steps=val_steps,
+                workers=workers_count,
+                use_multiprocessing=use_multiprocessing)
+
+    return hist
+
+if __name__ == "__main__":
+    vae = KerasVAE(z_dim=512, aux=7, pilot=True, dropout=None)
+    vae.model.summary()

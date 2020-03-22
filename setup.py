@@ -14,7 +14,7 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/bleyddyn/malpi",
-    packages=["malpi", "malpi.train"],
+    packages=["malpi", "malpi.train", "malpi.dkwm"],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
