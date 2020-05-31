@@ -149,7 +149,7 @@ def plot_rnn_samples(originals, reconstructed, modeled, actions, path=None):
         plt.imshow(modeled[i].reshape(input_dim[0], input_dim[1], input_dim[2]))
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
-        ax.set_title( str(actions[i]) )
+        ax.set_title( "[{:.2}, {:.2}]".format( actions[i][0], actions[i][1] ) )
 
     if path is not None:
         path = __add_ext( path, 'png' )

@@ -45,6 +45,8 @@ def load_one_tub( tub_path, img_dim, progress=None ):
     images = []
     actions = []
     dt_stamps = []
+    rewards = []
+    done = []
     lanes = [] # TODO Generalize this so it will read all auxiliary labels
     count = len(records)
     if progress is not None:
@@ -74,18 +76,36 @@ def load_one_tub( tub_path, img_dim, progress=None ):
         image_filename = json_data["cam/image_array"]
         image_path = os.path.join(basepath, image_filename)
         image = load_image_arr(image_path, img_dim)
+
         angle, throttle = Tub.get_angle_throttle(json_data)
+        # For the dynamics model we want to use the original angle/throttle if present
+        if "orig/angle" in json_data:
+            angle = float(json_data['orig/angle'])
+        if "orig/throttle" in json_data:
+            throttle = float(json_data['orig/throttle'])
 
         images.append( image )
         actions.append( [angle, throttle] )
         dt_stamps.append( ms )
         if "lanes" in json_data:
             lanes.append( json_data["lanes"] )
+        if "sim/reward" in json_data:
+            rewards.append( json_data["sim/reward"] )
+        elif "sim/info" in json_data:
+            if 'reward' in json_data["sim/info"]:
+                rewards.append( json_data["sim/info"]['reward'] )
+        if "sim/info" in json_data:
+            if "done" in json_data["sim/info"]:
+                done.append( json_data["sim/info"]["done"] )
 
     ret = { "images": np.array(images, dtype=np.uint8), "actions": np.array(actions, dtype=np.float32),
             "dt_stamps": np.array(dt_stamps, dtype=np.float32) }
     if len(lanes) > 0:
         ret["lanes"] = np.array(lanes)
+    if len(rewards) > 0:
+        ret["rewards"] = np.array(rewards)
+    if len(done) > 0:
+        ret["done"] = np.array(done)
     return ret
 
 def tubs_to_npz( dirs, img_dim, overwrite=False, verbose=True, progress=None ):
@@ -105,6 +125,7 @@ def tubs_to_npz( dirs, img_dim, overwrite=False, verbose=True, progress=None ):
                     print( "   Dates: {}".format( data["dt_stamps"].shape ) )
                     if "lanes" in data:
                         print( "   Lanes: {}".format( data["lanes"].shape ) )
+                    print( "   Keys: {}".format( list(data.keys()) ) )
                 tub += ".npz"
                 np.savez_compressed(tub, **data)
             print("")

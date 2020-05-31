@@ -99,7 +99,10 @@ class DKWMEnv(gym.Env):
         )
 
         self.reward_func = reward_func
-        self.reward_range = self.reward_func.reward_range
+        if reward_func is None:
+            self.reward_range = (-10.0,10.0)
+        else:
+            self.reward_range = self.reward_func.reward_range
 
         if renderer is None:
             self.renderer = DKWMRendererBase()
@@ -131,7 +134,11 @@ class DKWMEnv(gym.Env):
         self.zobs, mu, log_var, _, rew_pred, self.reward, self.hidden, self.cell_values = ret
 
         next_obs = self.zobs_to_obs( self.zobs )
-        self.reward = self.reward_func.step( z_obs=self.zobs, mu=mu, var=log_var, obs=next_obs, actions=action )
+
+        if self.reward_func is None:
+            self.reward = np.clip( rew_pred, self.reward_range[0], self.reward_range[1] )
+        else:
+            self.reward = self.reward_func.step( z_obs=self.zobs, mu=mu, var=log_var, obs=next_obs, actions=action )
 
         self.steps += 1
         if self.steps >= self.max_steps:

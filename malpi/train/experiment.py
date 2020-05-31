@@ -57,6 +57,8 @@ class Experiment(object):
             if self.commit is None:
                 print( "Commit: None" )
             self._writeOne( f, "Git Commit", self.commit )
+            f.write( "Argv: {}\n".format( sys.argv ) )
+            f.write( "Current dir: {}\n".format( os.getcwd() ) )
             f.write( "Command line arguments:\n" )
             for key,value in self.args.items():
                 self._writeOne( f, key, value, indent="   ")
@@ -86,16 +88,19 @@ class Experiment(object):
             f.write( "Results:\n" )
             for key,value in results.items():
                 f.write( "   {}: {}\n".format( key, value ) )
-        if histories is not None:
-            his_fname = os.path.join(self.dir_name, "histories.pickle")
-            with open(his_fname, 'wb') as f:
-                pickle.dump( histories, f, pickle.HIGHEST_PROTOCOL)
         if model is not None and saveModel:
             fname = os.path.join( self.dir_name, self.name+"_model.json" )
             with open(fname,'w') as f:
                 f.write(model.to_json())
             fname = os.path.join( self.dir_name, self.name+"_weights.h5" )
             model.save_weights(fname)
+        if histories is not None:
+            try:
+                his_fname = os.path.join(self.dir_name, "histories.pickle")
+                with open(his_fname, 'wb') as f:
+                    pickle.dump( histories, f, pickle.HIGHEST_PROTOCOL)
+            except Exception as ex:
+                print( "Failed to write history ({}) to {}\n   {}".format( type(histories), his_fname, ex ) )
 
     def pythonVersionString(self):
         """Current system python version as string major.minor.micro [(alpha|beta|etc)]"""

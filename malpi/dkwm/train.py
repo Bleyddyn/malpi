@@ -1,7 +1,7 @@
 import os
 import numpy as np
 
-def load_tub_npz( dirs, base_dir="", max_images=None, verbose=False, aux_name=None ):
+def load_tub_npz( dirs, base_dir="", max_images=None, verbose=False, aux_name=None, pilot=False ):
     """ Load images from pre-processed tub.npz files.
         dirs should be a list of tub names
         load each: base_dir + tub_name + '.npz' (extension is added if needed)
@@ -9,6 +9,7 @@ def load_tub_npz( dirs, base_dir="", max_images=None, verbose=False, aux_name=No
     """
     images = []
     aux = []
+    actions = []
     total = 0
     for idx, tub in enumerate(dirs):
         if verbose:
@@ -17,6 +18,8 @@ def load_tub_npz( dirs, base_dir="", max_images=None, verbose=False, aux_name=No
             tub += '.npz'
         data = np.load( os.path.join( base_dir, tub ) )
         if aux_name is not None and aux_name not in data:
+            if verbose:
+                print( "  Missing auxiliary data: {}".format( aux_name ) )
             continue
 
         if verbose:
@@ -25,6 +28,8 @@ def load_tub_npz( dirs, base_dir="", max_images=None, verbose=False, aux_name=No
         total += data['images'].shape[0]
         if aux_name is not None:
             aux.append( data[aux_name] )
+        if pilot:
+            actions.append( data['actions'] )
 
         if max_images is not None and total > max_images:
             break
@@ -32,21 +37,29 @@ def load_tub_npz( dirs, base_dir="", max_images=None, verbose=False, aux_name=No
     images = np.concatenate( images, axis=0 ).astype(np.float32) / 255.0
     if len(aux) > 0:
         aux = np.concatenate( aux, axis=0 )
+    if len(actions) > 0:
+        actions = np.concatenate( actions, axis=0 )
 
     if verbose:
         print( "Loaded {} images {}".format( images.shape[0], images.shape[1:] ) )
 
+    output = {'images': images}
     if aux_name is not None:
-        return images, aux
-    else:
-        return images
+        output[aux_name] = aux
+    if pilot:
+        output['actions'] = actions
 
-def generate_mdrnn_input_files( vae, dirs, base_dir="", batch_size=128, verbose=False ):
+    return output
+
+def generate_mdrnn_input_files( vae, dirs, base_dir="", batch_size=128, verbose=False, output_dir=None ):
     """ Generate data files for training the MDRNN.
         Read images from base_dir + dirs, encode all images using vae,
             save means and log_vars, actions, rewards and done flags.
         Output file name is same as inputs but with "_rnnin" appended.
     """
+
+    if output_dir is None:
+        output_dir = base_dir
 
     for idx, tub in enumerate(dirs):
         mus = []
@@ -57,6 +70,10 @@ def generate_mdrnn_input_files( vae, dirs, base_dir="", batch_size=128, verbose=
         if not tub.endswith('.npz'):
             ext = '.npz'
         data = np.load( os.path.join( base_dir, tub + ext ) )
+        if 'rewards' not in data:
+            if verbose:
+                print( "   Skipping, no reward data" )
+            continue
         images = data['images'].astype(np.float32) / 255.0
         count = images.shape[0]
         for i in range(0, count, batch_size):
@@ -70,12 +87,12 @@ def generate_mdrnn_input_files( vae, dirs, base_dir="", batch_size=128, verbose=
             log_vars.append( log_var )
         mus = np.concatenate( mus, axis=0 )
         log_vars = np.concatenate( log_vars, axis=0 )
-        rewards = np.zeros( (mus.shape[0],1) )
-        done = np.zeros( (mus.shape[0], 1) ).astype(np.uint8)
-        done[-1] = 1
+        rewards = data.get('rewards', np.zeros( (mus.shape[0],1) ) )
+        done = data.get( 'done', np.zeros( (mus.shape[0], 1) ).astype(np.uint8) )
+        done[-1] = 1 # Make the end of a tub file be the end of an episode
         if verbose:
             print( "   mu/log_var/actions: {}/{}/{}".format( mus.shape, log_vars.shape, data['actions'].shape ) )
-        fname = os.path.join( base_dir, tub + "_rnnin.npz" )
+        fname = os.path.join( output_dir, os.path.basename(tub) + "_rnnin.npz" )
         np.savez_compressed(fname, mu=mus, log_var=log_vars, action=data['actions'], reward = rewards, done = done)
 
 def generate_starts( dirs, base_dir="", samples_per_tub=10, sample_from=0.5, verbose=False ):
@@ -97,9 +114,9 @@ def generate_starts( dirs, base_dir="", samples_per_tub=10, sample_from=0.5, ver
         log_var = data['log_var']
 
         m_idxs = np.random.randint( 0, int(mu.shape[0] * sample_from), samples_per_tub )
-        var_idxs = np.random.randint( 0, int(log_var.shape[0] * sample_from), samples_per_tub )
+        #var_idxs = np.random.randint( 0, int(log_var.shape[0] * sample_from), samples_per_tub )
         mu_list.append(mu[m_idxs])
-        logvar_list.append(log_var[var_idxs])
+        logvar_list.append(log_var[m_idxs])
 
     mu_list = np.concatenate(mu_list, axis=0 )
     logvar_list = np.concatenate(logvar_list, axis=0 )

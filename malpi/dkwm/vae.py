@@ -66,7 +66,7 @@ class KerasVAE(KerasPilot):
           and code: https://github.com/1Konny/Beta-VAE/blob/master/solver.py
     """
 
-    def __init__(self, num_outputs=2, input_shape=(128, 128, 3), z_dim=32, beta=1.0, dropout=0.4, aux=0, pilot=False, training=True, *args, **kwargs):
+    def __init__(self, num_outputs=2, input_shape=(128, 128, 3), z_dim=32, beta=1.0, dropout=0.4, aux=0, pilot=False, reward=False, training=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.input_dim = input_shape
         self.z_dim = z_dim
@@ -74,6 +74,7 @@ class KerasVAE(KerasPilot):
         self.dropout = dropout
         self.aux = aux
         self.pilot = pilot
+        self.reward = reward
         self.training = training
         self.l1_reg = 0.00001
         self.optimizer = 'adam'
@@ -200,6 +201,12 @@ class KerasVAE(KerasPilot):
             pilot_out = Dense(1, name="throttle_output")(pilot_dense2)
             outputs.append(pilot_out)
 
+        if self.reward:
+            reward_dense1 = Dense(100, name="reward1_z")(vae_z)
+            reward_dense2 = Dense(50, name="reward2")(reward_dense1)
+            reward_out = Dense(1, name="reward_output")(reward_dense2)
+            outputs.append(reward_out)
+
         #### Auxiliary output
         if self.aux > 0:
             aux_dense1 = Dense(100, name="aux1")(vae_z)
@@ -238,7 +245,7 @@ class KerasVAE(KerasPilot):
     def set_optimizer(self, optim):
         self.optimizer = optim
 
-    def compile(self, main_weight=1.0, steering_weight=1.0, throttle_weight=1.0, aux_weight=1.0):
+    def compile(self, main_weight=1.0, steering_weight=1.0, throttle_weight=1.0, aux_weight=1.0, reward_weight=1.0):
         # See: https://keras.io/getting-started/functional-api-guide/#multi-input-and-multi-output-models
 #model.fit({'main_input': headline_data, 'aux_input': additional_data},
 #          {'main_output': labels, 'aux_output': labels},
@@ -257,6 +264,10 @@ class KerasVAE(KerasPilot):
             losses['aux_output'] = 'categorical_crossentropy'
             loss_weights['aux_output'] = aux_weight
             metrics['aux_output'] = 'accuracy'
+
+        if self.reward:
+            losses['reward_output'] = 'mean_squared_error'
+            loss_weights['reward_output'] = reward_weight
 
         self.model.compile(optimizer=self.optimizer, loss=losses, loss_weights=loss_weights, metrics=metrics)
 
