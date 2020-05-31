@@ -112,5 +112,5 @@ if __name__ == "__main__":
 
     model_type = args['--type']
     
-    vehicle = MyDriver(cfg, model_path=args['--model'], model_type=model_type, use_joystick=True, meta=meta)
+    vehicle = MyDriver(cfg, model_path=args['--model'], model_type=model_type, use_joystick=cfg.USE_JOYSTICK_AS_DEFAULT, meta=meta)
     vehicle.start()

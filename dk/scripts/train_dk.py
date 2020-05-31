@@ -28,7 +28,7 @@ import tensorflow as tf
 
 import donkeycar as dk
 from donkeycar.train.train import preprocessFileList, train, make_model, Generators, plot_history
-
+from donkeycar.utils import ImageDim
 from malpi.notify import notify, read_email_config
 from malpi import Experiment
 
@@ -50,7 +50,15 @@ if __name__ == "__main__":
     if model_type is None:
         model_type = cfg.DEFAULT_MODEL_TYPE
 
-    kl, model_name = make_model(cfg, model, transfer, model_type )
+    image_dim = None
+    if hasattr(cfg, 'IMAGE_MODEL_W') and hasattr(cfg, 'IMAGE_MODEL_H'):
+        cfg.IMAGE_W = cfg.IMAGE_MODEL_W
+        cfg.IMAGE_H = cfg.IMAGE_MODEL_H
+        cfg.TARGET_W = cfg.IMAGE_MODEL_W
+        cfg.TARGET_H = cfg.IMAGE_MODEL_H
+        cfg.TARGET_D = cfg.IMAGE_DEPTH
+
+    kl, model_name = make_model(cfg, model, transfer, model_type, image_dim=image_dim )
 
     gens = Generators( cfg, dirs, kl, model_type, continuous, aug=aug )
 
@@ -61,6 +69,7 @@ if __name__ == "__main__":
 
     exp = None
     if args['--name'] is not None:
+        args['dirs'] = dirs
         exp = Experiment( args['--name'], args, exp_dir=args['--exp'], num_samples=gens.total_count(), input_dim=(cfg.TARGET_H,cfg.TARGET_W,cfg.TARGET_D), hparams=cfg.__dict__, modules=[np, tf, dk] )
 
     history = train(kl, cfg, gens, model_name, continuous, verbose=cfg.VEBOSE_TRAIN)
@@ -75,4 +84,6 @@ if __name__ == "__main__":
         print( "Failed to send notifications: {}".format( ex ) )
 
     if cfg.SHOW_PLOT:
-        plot_history(history, model_name, gens.save_best.best, show=True)
+        fname = os.path.splitext(exp.filename)[0]
+        print( "Training loss plot: {fname}_loss_acc_{loss:.6f}.png".format( fname=fname, loss=gens.save_best.best ) )
+        plot_history(history, fname, gens.save_best.best, show=False)
