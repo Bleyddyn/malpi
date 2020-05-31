@@ -65,6 +65,10 @@ class TubFormat(DriveFormat):
         if 'auxiliary' in self.tub.meta:
             self.auxMeta = self.tub.meta['auxiliary']
 
+#  "sim/info": {"done": true, "pos": [32.82384, 5.567082, -9.720116], "reward": -1.0, "hit": "none", "cte": 2.948259, "speed": 9.52644}
+        if 'sim/info' in self.tub.meta['inputs']:
+            self.auxMeta['done'] = { "name": "done", "type": "categorical", "categories": ["True", "False"]}
+
     def load( self, progress=None ):
         self._load(self.path, progress=progress)
         self.setClean()
@@ -243,6 +247,11 @@ class TubFormat(DriveFormat):
             if rec[auxName] is not None and self.auxMeta[auxName]['type'] == "categorical":
                 return self.auxMeta[auxName]['categories'][rec[auxName]]
             return rec[auxName]
+        elif auxName in rec['sim/info']:
+            rec = rec['sim/info']
+            if rec[auxName] is not None and self.auxMeta[auxName]['type'] == "categorical":
+                return str(rec[auxName])
+
         return None
 
     def setAuxDataAtIndex(self, auxName, auxData, index):

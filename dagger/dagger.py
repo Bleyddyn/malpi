@@ -1,4 +1,4 @@
-#!/usr/local/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 """ A tool for modifying data collected by MaLPi.
