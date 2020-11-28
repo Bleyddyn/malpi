@@ -122,6 +122,12 @@ class Example(QMainWindow):
         
         self.dataMenu.addAction(auxDataAct)
 
+        nextDone = QAction('Find Next Done', self)
+        nextDone.setStatusTip('Find the next sample with a Done flag set to True')
+        nextDone.setShortcut('Ctrl+D')
+        nextDone.triggered.connect(self.findNextDone)
+        self.dataMenu.addAction(nextDone)
+
         self.toolbar = self.addToolBar('Exit')
         self.toolbar.addAction(exitAct)
         self.toolbar.addAction(openFile)
@@ -533,6 +539,17 @@ class Example(QMainWindow):
                     self.addAuxToGrid(dlg.getMeta())
                 else:
                     print( "Cancelled, don't create auxiliary data" )
+
+    def findNextDone(self):
+        for i in range(self.index+1,self.data.count()):
+            if self.data.isIndexDeleted(i):
+                continue
+            data = self.data.auxDataAtIndex( "done", i )
+            if data == "True":
+                self.index = i
+                self.slider.setSliderPosition(self.index)
+                self.updateImages()
+                break
 
 def runTests(args):
     pass

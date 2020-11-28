@@ -68,6 +68,7 @@ class TubFormat(DriveFormat):
 #  "sim/info": {"done": true, "pos": [32.82384, 5.567082, -9.720116], "reward": -1.0, "hit": "none", "cte": 2.948259, "speed": 9.52644}
         if 'sim/info' in self.tub.meta['inputs']:
             self.auxMeta['done'] = { "name": "done", "type": "categorical", "categories": ["True", "False"]}
+            self.auxMeta['reward'] = { "name": "reward", "type": "continuous"}
 
     def load( self, progress=None ):
         self._load(self.path, progress=progress)
@@ -206,6 +207,12 @@ class TubFormat(DriveFormat):
                 self.tub.exclude_index(index)
             self.setDirty()
 
+    def isIndexDeleted(self, index):
+        if index >= 0 and index < self.count():
+            index += 1
+            return self.tub.excluded(index)
+        return False
+
     def metaString(self):
         #{"inputs": ["cam/image_array", "user/angle", "user/throttle", "user/mode"], "start": 1550950724.8622544, "types": ["image_array", "float", "float", "str"]}
         ret = ""
@@ -251,6 +258,7 @@ class TubFormat(DriveFormat):
             rec = rec['sim/info']
             if rec[auxName] is not None and self.auxMeta[auxName]['type'] == "categorical":
                 return str(rec[auxName])
+            return rec[auxName]
 
         return None
 

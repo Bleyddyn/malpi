@@ -1,6 +1,6 @@
 import sys
 
-from PyQt5.QtWidgets import QLabel, QComboBox, QApplication
+from PyQt5.QtWidgets import QLabel, QComboBox, QLineEdit, QApplication
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal, QObject
 
@@ -67,7 +67,7 @@ class AuxDataCatUI(AuxDataUI):
                 data = self.data.auxDataAtIndex( self.meta["name"], il )
                 if data is None:
                     data = ""
-                self.dataLabels[i].setCurrentText( self.data.auxDataAtIndex( self.meta["name"], il ) )
+                self.dataLabels[i].setCurrentText( data )
                 self.dataLabels[i].setEnabled(True)
             else:
                 self.dataLabels[i].setCurrentText( "" )
@@ -105,6 +105,66 @@ class AuxDataCatUI(AuxDataUI):
             newValue = None
         self.data.setAuxDataAtIndex(self.meta["name"], newValue, self.index + -2 +idx )
         self.auxDataChanged.emit(self.meta["name"])
+
+class AuxDataContinuousUI(AuxDataUI):
+    """ Makes and manages a set of UI elements to allow input/output of continuous data.
+    """
+
+    @classmethod
+    def handlesType(cls, atype):
+        if "continuous" == atype:
+            return True
+        return False
+
+    def __init__(self, auxMeta, dataContainer, count):
+        super().__init__()
+
+        self.meta = auxMeta
+        self.data = dataContainer
+        self.data.addAuxData(auxMeta)
+        self.keys = None
+        self.index = 0
+        self.initUI(count)
+
+    def initUI(self, count):
+        self.nameLabel = QLabel(self.meta["name"])
+        self.dataLabels = []
+        for i in range(count):
+            cb = self._makeOneUIElement()
+            self.dataLabels.append( cb )
+
+    def getUI(self):
+        return (self.nameLabel, self.dataLabels)
+
+    def getMeta(self):
+        return self.meta
+
+    def update(self, index):
+        self.index = index
+        for i in range( len(self.dataLabels) ):
+            il = index - 2 + i
+            if il >= 0 and il < self.data.count():
+                data = self.data.auxDataAtIndex( self.meta["name"], il )
+                if data is None:
+                    data = ""
+                self.dataLabels[i].setText( str(data) )
+                self.dataLabels[i].setEnabled(True)
+            else:
+                self.dataLabels[i].setText( "" )
+                self.dataLabels[i].setEnabled(False)
+
+    def handleKeyPressEvent(self, e, index):
+        return False
+
+    def changeCurrentAction(self, index, newCat, label_index=2):
+        return
+
+    def _makeOneUIElement(self):
+        ae = QLineEdit()
+        ae.setEnabled(False)
+        ae.setReadOnly(True)
+        ae.setFocusPolicy(Qt.NoFocus)
+        return ae
 
 if __name__ == "__main__":
     auxMeta = { "name": "TestAux", "type": "categorical", "categories": ["cat1", "cat2", "cat3"]}
