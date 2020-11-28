@@ -66,7 +66,7 @@ class KerasVAE(KerasPilot):
           and code: https://github.com/1Konny/Beta-VAE/blob/master/solver.py
     """
 
-    def __init__(self, num_outputs=2, input_shape=(128, 128, 3), z_dim=32, beta=1.0, dropout=0.4, aux=0, pilot=False, reward=False, training=True, *args, **kwargs):
+    def __init__(self, num_outputs=2, input_shape=(128, 128, 3), z_dim=32, beta=1.0, dropout=0.4, aux=0, pilot=False, reward=False, cte=False, training=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.input_dim = input_shape
         self.z_dim = z_dim
@@ -75,6 +75,7 @@ class KerasVAE(KerasPilot):
         self.aux = aux
         self.pilot = pilot
         self.reward = reward
+        self.cte = cte
         self.training = training
         self.l1_reg = 0.00001
         self.optimizer = 'adam'
@@ -207,6 +208,12 @@ class KerasVAE(KerasPilot):
             reward_out = Dense(1, name="reward_output")(reward_dense2)
             outputs.append(reward_out)
 
+        if self.cte:
+            cte_dense1 = Dense(100, name="cte1_z")(vae_z)
+            cte_dense2 = Dense(50, name="cte2")(cte_dense1)
+            cte_out = Dense(1, name="cte_output")(cte_dense2)
+            outputs.append(cte_out)
+
         #### Auxiliary output
         if self.aux > 0:
             aux_dense1 = Dense(100, name="aux1")(vae_z)
@@ -245,7 +252,7 @@ class KerasVAE(KerasPilot):
     def set_optimizer(self, optim):
         self.optimizer = optim
 
-    def compile(self, main_weight=1.0, steering_weight=1.0, throttle_weight=1.0, aux_weight=1.0, reward_weight=1.0):
+    def compile(self, main_weight=1.0, steering_weight=1.0, throttle_weight=1.0, aux_weight=1.0, reward_weight=1.0, cte_weight=1.0):
         # See: https://keras.io/getting-started/functional-api-guide/#multi-input-and-multi-output-models
 #model.fit({'main_input': headline_data, 'aux_input': additional_data},
 #          {'main_output': labels, 'aux_output': labels},
@@ -268,6 +275,10 @@ class KerasVAE(KerasPilot):
         if self.reward:
             losses['reward_output'] = 'mean_squared_error'
             loss_weights['reward_output'] = reward_weight
+
+        if self.cte:
+            losses['cte_output'] = 'mean_squared_error'
+            loss_weights['cte_output'] = cte_weight
 
         self.model.compile(optimizer=self.optimizer, loss=losses, loss_weights=loss_weights, metrics=metrics)
 
@@ -334,6 +345,11 @@ class KerasVAE(KerasPilot):
         (recon, steering, throttle) = self.model.predict(img_arr)
         return steering[0][0], throttle[0][0]
 
+    def run_threaded(self, img_arr=None):
+        img_arr = img_arr.reshape((1,) + img_arr.shape)
+        (recon, steering, throttle) = self.model.predict(img_arr)
+        return steering[0][0], throttle[0][0]
+
     @staticmethod
     def model_meta( fname ):
         """ Read model meta info from a json file.
@@ -355,10 +371,13 @@ class KerasVAE(KerasPilot):
                     elif l.get("name","").startswith("SpatialDropout_"):
                         # e.g. SpatialDropout_0.4_1
                         dropout = float( l.get("name","").split("_")[1])
+                    elif l.get("name","") == "observation_input":
+                        input_shape = l["config"]["batch_input_shape"] # [null, 64, 64, 3]
+                        input_shape = tuple(input_shape[1:])
         except:
             pass
 
-        return z_dim, dropout, aux
+        return z_dim, dropout, aux, input_shape
 
 def vae_generator(cfg, data, batch_size, isTrainSet=True, min_records_to_train=1000, aug=False, aux=None):
     """ Returns batches of data for training a VAE, given a dictionary of DonkeyCar inputs.

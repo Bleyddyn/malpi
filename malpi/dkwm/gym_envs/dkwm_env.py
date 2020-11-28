@@ -63,7 +63,7 @@ class DKWMRewardBase(object):
 class DKWMEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, vae, rnn, reward_func, starts=None, renderer=None, max_steps=None):
+    def __init__(self, vae, rnn, reward_func, starts=None, renderer=None, max_steps=None, done_threshhold=0.9):
         """ @param starts A list of mu/log_var pairs that can be sampled from to generate the first observation of each episode.
             @param vae A Variational Autoencoder with z_dim(), encode() and decode() methods.
             @param rnn An MDRNN  with hidden_units(), sample_next_output() and sample_z() methods.
@@ -75,6 +75,7 @@ class DKWMEnv(gym.Env):
         self.vae = vae
         self.rnn = rnn
         self.max_steps = max_steps
+        self.done_threshhold = done_threshhold
         self.steps = 0
 
         if starts is not None:
@@ -131,7 +132,7 @@ class DKWMEnv(gym.Env):
         inputs = np.concatenate([self.zobs, action, [self.reward]])
 
         ret = self.rnn.sample_next_output(inputs, self.hidden, self.cell_values)
-        self.zobs, mu, log_var, _, rew_pred, self.reward, self.hidden, self.cell_values = ret
+        self.zobs, mu, log_var, _, rew_pred, self.reward, self.hidden, self.cell_values, self.done = ret
 
         next_obs = self.zobs_to_obs( self.zobs )
 
@@ -142,14 +143,16 @@ class DKWMEnv(gym.Env):
 
         self.steps += 1
         if self.steps >= self.max_steps:
-            done = True
+            self.done = True
+        elif self.done >= self.done_threshhold:
+            self.done = True
         else:
-            done = False
+            self.done = False
 
         self.renderer.set_obs( next_obs )
         self.renderer.set_label( "Steering:\t{:+5.3f}\nThrottle:\t{:+5.3f}".format( *action ), "actions"  )
 
-        return self.zobs, self.reward, done, {"decoded": next_obs}
+        return self.zobs, self.reward, self.done, {"decoded": next_obs}
 
     def render(self, mode='human'):
         img = self.renderer.render( mode=mode )

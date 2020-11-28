@@ -48,6 +48,7 @@ def load_one_tub( tub_path, img_dim, progress=None ):
     rewards = []
     done = []
     lanes = [] # TODO Generalize this so it will read all auxiliary labels
+    cte = [] # cross track error from the DonkeyCar sim
     count = len(records)
     if progress is not None:
         progress(0, count)
@@ -97,6 +98,8 @@ def load_one_tub( tub_path, img_dim, progress=None ):
         if "sim/info" in json_data:
             if "done" in json_data["sim/info"]:
                 done.append( json_data["sim/info"]["done"] )
+            if "cte" in json_data["sim/info"]:
+                cte.append( json_data["sim/info"]["cte"] )
 
     ret = { "images": np.array(images, dtype=np.uint8), "actions": np.array(actions, dtype=np.float32),
             "dt_stamps": np.array(dt_stamps, dtype=np.float32) }
@@ -106,6 +109,8 @@ def load_one_tub( tub_path, img_dim, progress=None ):
         ret["rewards"] = np.array(rewards)
     if len(done) > 0:
         ret["done"] = np.array(done)
+    if len(done) > 0:
+        ret["cte"] = np.array(cte)
     return ret
 
 def tubs_to_npz( dirs, img_dim, overwrite=False, verbose=True, progress=None ):

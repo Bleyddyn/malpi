@@ -12,7 +12,7 @@ from keras.optimizers import Adam
 import tensorflow as tf
 
 class RNN():
-    def __init__(self, z_dim, action_dim, reward_dim=1, hidden_units=256, gaussian_mixtures=5, batch_size=32, epochs=20, learning_rate=0.001, optim="Adam", z_factor=1.0, reward_factor=1.0):
+    def __init__(self, z_dim, action_dim, reward_dim=1, hidden_units=256, gaussian_mixtures=5, batch_size=32, epochs=20, learning_rate=0.001, optim="Adam", cte=True, z_factor=1.0, reward_factor=1.0):
         self.z_dim = z_dim
         self.action_dim = action_dim
         self.reward_dim = reward_dim
@@ -22,6 +22,7 @@ class RNN():
         self.optim = optim
         self.epochs = epochs
         self.batch_size = batch_size
+        self.do_cte = cte
         self.z_factor = z_factor
         self.reward_factor = reward_factor
 
@@ -38,11 +39,20 @@ class RNN():
         done_hidden_layer = Dense(30, name="done_hidden")
         done_layer = Dense(1, name="done_output")
 
+        if self.do_cte:
+            cte_hidden_layer = Dense(30, name="cte_hidden")
+            cte_layer = Dense(1, name="cte_output")
+
         lstm_output_model, _ , _ = lstm(rnn_x)
         mdn_model = mdn(lstm_output_model)
         done_model = done_layer(done_hidden_layer(lstm_output_model))
+        if self.do_cte:
+            cte_model = cte_layer(cte_hidden_layer(lstm_output_model))
 
-        model = Model(rnn_x, [mdn_model, done_model])
+        outputs = [mdn_model, done_model]
+        if self.do_cte:
+            outputs.append(cte_model)
+        model = Model(rnn_x, outputs)
 
         #### THE MODEL USED DURING PREDICTION
         state_input_h = Input(shape=(self.hidden_units,))
@@ -104,7 +114,7 @@ class RNN():
 
         return (model,forward)
 
-    def compile(self, main_weight=1.0, done_weight=1.0):
+    def compile(self, main_weight=1.0, done_weight=1.0, cte_weight=1.0):
         # See: https://keras.io/getting-started/functional-api-guide/#multi-input-and-multi-output-models
 #model.fit({'main_input': headline_data, 'aux_input': additional_data},
 #          {'main_output': labels, 'aux_output': labels},
@@ -116,9 +126,24 @@ class RNN():
         losses["done_output"] = 'binary_crossentropy'
         loss_weights['done_output'] = done_weight
 
+        if self.do_cte:
+            losses["cte_output"] = 'mean_squared_error'
+            loss_weights['cte_output'] = cte_weight
+
         opti = Adam(lr=self.learning_rate)
         self.model.compile(optimizer=opti, loss=losses, loss_weights=loss_weights, metrics=metrics)
 
+    def set_random_params(self, stdev=0.5):
+        """ See: https://github.com/zacwellmer/WorldModels/blob/master/WorldModels/rnn/rnn.py#L90
+        """
+        params = self.model.get_weights()
+        rand_params = []
+        for param_i in params:
+            # David Ha's initialization scheme
+            sampled_param = np.random.standard_cauchy(param_i.shape)*stdev / 10000.0
+            rand_params.append(sampled_param)
+
+        self.model.set_weights(rand_params)
 
     def train(self, rnn_input, rnn_output, validation_split = 0.2):
 
@@ -203,6 +228,7 @@ class RNN():
         y_pred = out[0][0][0]
         new_h = out[1][0]
         new_c = out[2][0]
+        done = out[3][0]
         
         z_pred = y_pred[:3*d]
         rew_pred = y_pred[-1]
@@ -234,4 +260,4 @@ class RNN():
         else:
             next_reward = 0
 
-        return next_z, chosen_mu, chosen_log_sigma, chosen_log_pi, rew_pred, next_reward, new_h, new_c
+        return next_z, chosen_mu, chosen_log_sigma, chosen_log_pi, rew_pred, next_reward, new_h, new_c, done
