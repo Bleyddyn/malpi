@@ -7,7 +7,6 @@ from collections import defaultdict
 import numpy as np
 import json
 import re
-from scipy.ndimage import imread
 from donkeycar.parts.datastore import Tub
 
 def atoi(text):
@@ -254,7 +253,7 @@ class TubFormat(DriveFormat):
             if rec[auxName] is not None and self.auxMeta[auxName]['type'] == "categorical":
                 return self.auxMeta[auxName]['categories'][rec[auxName]]
             return rec[auxName]
-        elif auxName in rec['sim/info']:
+        elif 'sim/info' in rec and auxName in rec['sim/info']:
             rec = rec['sim/info']
             if rec[auxName] is not None and self.auxMeta[auxName]['type'] == "categorical":
                 return str(rec[auxName])
