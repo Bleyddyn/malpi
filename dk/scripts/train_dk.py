@@ -27,10 +27,12 @@ import numpy as np
 import tensorflow as tf
 
 import donkeycar as dk
-from donkeycar.train.train import preprocessFileList, train, make_model, Generators, plot_history
+from malpi.dk.train import preprocessFileList, train, make_model, Generators, plot_history
 from donkeycar.utils import ImageDim
 from malpi.notify import notify, read_email_config
 from malpi import Experiment
+
+tf.device("gpu:0")
 
 if __name__ == "__main__":
     args = docopt(__doc__)
@@ -84,6 +86,9 @@ if __name__ == "__main__":
         print( "Failed to send notifications: {}".format( ex ) )
 
     if cfg.SHOW_PLOT:
-        fname = os.path.splitext(exp.filename)[0]
+        if exp is not None:
+            fname = os.path.splitext(exp.filename)[0]
+        else:
+            fname = os.path.splitext(os.path.split(model_name)[1])[0]
         print( "Training loss plot: {fname}_loss_acc_{loss:.6f}.png".format( fname=fname, loss=gens.save_best.best ) )
         plot_history(history, fname, gens.save_best.best, show=False)

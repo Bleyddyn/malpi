@@ -7,6 +7,7 @@ import pickle
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.framework.ops import disable_eager_execution
 #from tensorflow.python import keras
 import keras
 #from donkeycar.parts.keras import KerasVAE
@@ -136,11 +137,11 @@ def train( kl, train_gen, val_gen, train_steps, val_steps, z_dim, beta, optim, l
         optim_args["momentum"] = momentum
 
     if optim == "adam":
-        optim = keras.optimizers.Adam(**optim_args)
+        optim = tf.keras.optimizers.Adam(**optim_args)
     elif optim == "sgd":
-        optim = keras.optimizers.SGD(**optim_args)
+        optim = tf.keras.optimizers.SGD(**optim_args)
     elif optim == "rmsprop":
-        optim = keras.optimizers.RMSprop(**optim_args)
+        optim = tf.keras.optimizers.RMSprop(**optim_args)
 
     kl.set_optimizer(optim)
     kl.compile(**loss_weights)
@@ -217,6 +218,8 @@ if __name__ == "__main__":
             hist = pickle.load( f )
         plot_results( hist )
         exit()
+
+    disable_eager_execution()
 
     if args.cifar10:
         x_train, x_val = load_cifar10_data()
