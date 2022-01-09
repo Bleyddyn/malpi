@@ -10,7 +10,7 @@ import time
 from threading import Thread
 import socket
 
-from donkeycar.parts.controller import JoystickController
+from donkeycar.parts.controller import JoystickController, PS3JoystickController, PS3Joystick
 
 class Vehicle():
     def __init__(self, mem=None):
@@ -197,20 +197,68 @@ def sendContinuousCommand( left_throttle, right_throttle, recording, dk=False ):
     except Exception as inst:
         print( "Failed to send continuous command" )
 
+class MalpiJoystickController(JoystickController):
+    '''
+    A Controller object that maps inputs to actions
+    '''
+    def __init__(self, *args, **kwargs):
+        super(MalpiJoystickController, self).__init__(*args, **kwargs)
+
+
+    def init_js(self):
+        '''
+        attempt to init joystick
+        '''
+        try:
+            self.js = PS3Joystick(self.dev_fn)
+            if not self.js.init():
+                self.js = None
+        except FileNotFoundError:
+            print(self.dev_fn, "not found.")
+            self.js = None
+        return self.js is not None
+
+    def init_trigger_maps(self):
+        '''
+        init set of mapping from buttons to function calls
+        '''
+
+        self.button_down_trigger_map = {
+            'select' : self.toggle_mode,
+            'circle' : self.toggle_manual_recording,
+            'triangle' : self.erase_last_N_records,
+            'cross' : self.emergency_stop,
+            #'dpad_up' : self.increase_max_throttle,
+            #'dpad_down' : self.decrease_max_throttle,
+            'start' : self.toggle_constant_throttle,
+            #"R1" : self.chaos_monkey_on_right,
+            #"L1" : self.chaos_monkey_on_left,
+        }
+
+        self.button_up_trigger_map = {
+            #"R1" : self.chaos_monkey_off,
+            #"L1" : self.chaos_monkey_off,
+        }
+
+        self.axis_trigger_map = {
+            'left_stick_horz' : self.set_steering,
+            'right_stick_vert' : self.set_throttle,
+        }
+
+
 if __name__ == "__main__":
 
     JOYSTICK_MAX_THROTTLE = 1.0
     JOYSTICK_STEERING_SCALE = 1.0
     AUTO_RECORD_ON_THROTTLE = False
-    ctr = JoystickController(max_throttle=JOYSTICK_MAX_THROTTLE,
+    ctr = MalpiJoystickController(throttle_scale=JOYSTICK_MAX_THROTTLE,
                              steering_scale=JOYSTICK_STEERING_SCALE,
-                             auto_record_on_throttle=AUTO_RECORD_ON_THROTTLE,
-                             throttle_axis='ry',
-                             verbose=False)
-
+                             auto_record_on_throttle=AUTO_RECORD_ON_THROTTLE)
+     
     rate_hz=10
     max_loop_count=None
     recording_state = False
+    RAW_OUTPUTS = False
 
     t = Thread(target=ctr.update, args=())
     t.daemon = True
@@ -226,22 +274,29 @@ if __name__ == "__main__":
         while not done:
             start_time = time.time()
             loop_count += 1
+            if loop_count == 1:
+                ctr.print_controls()
+                ctr.js.show_map()
 
-            outputs = ctr.run_threaded()
-            if outputs[2] != "user":
-                break
-
-            if outputs[3] != recording_state:
-                recording_state = outputs[3]
-                rec = 'record_start' if recording_state else 'record_end'
+            if RAW_OUTPUTS:
+                button, button_state, axis, axis_val = ctr.js.poll()
+                print( f"Raw: {button}  {button_state}    {axis}  {axis_val}" )
             else:
-                rec = None
+                outputs = ctr.run_threaded()
+                print( "{}".format(outputs) )
+                if outputs[2] != "user":
+                    break
 
-            #sendCommand( outputs[0], outputs[1], rec )
-            #print( "{}".format(outputs) )
-            #sendContinuousCommand( outputs[4], outputs[1], rec )
-            sendContinuousCommand( outputs[0], outputs[1], rec, dk=True )
-            #print( "L/R: {} {}".format(outputs[0],outputs[1]) )
+                if outputs[3] != recording_state:
+                    recording_state = outputs[3]
+                    rec = 'record_start' if recording_state else 'record_end'
+                else:
+                    rec = None
+
+                #sendCommand( outputs[0], outputs[1], rec )
+                #sendContinuousCommand( outputs[4], outputs[1], rec )
+                #sendContinuousCommand( outputs[0], outputs[1], rec, dk=True )
+                #print( "L/R: {} {}".format(outputs[0],outputs[1]) )
 
             #stop drive loop if loop_count exceeds max_loopcount
             if max_loop_count and loop_count > max_loop_count:
@@ -255,5 +310,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pass
     finally:
-        sendContinuousCommand( 0.0, 0.0, 'record_end' )
+        #sendContinuousCommand( 0.0, 0.0, 'record_end' )
         ctr.shutdown()

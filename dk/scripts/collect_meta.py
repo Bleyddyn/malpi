@@ -18,7 +18,7 @@ from docopt import docopt
 import cv2
 
 import donkeycar as dk
-from donkeycar.drive import DefaultDriver, RecordTracker
+from malpi.dk.drive import DefaultDriver, RecordTracker
 from donkeycar.utils import normalize_and_crop
 
 class ImageResize():
