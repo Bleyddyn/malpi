@@ -19,7 +19,6 @@ import cv2
 
 import donkeycar as dk
 from malpi.dk.drive import DefaultDriver, RecordTracker
-from donkeycar.utils import normalize_and_crop
 
 class ImageResize():
     """ ImageResize does the same pre-processing as ImgPreProcess in the drive function,
@@ -35,7 +34,7 @@ class ImageResize():
         if img_arr is None:
             return None
         try:
-            img_arr = normalize_and_crop(img_arr, self.cfg)
+            img_arr = img_arr.astype(np.float32) / 255.0
 
             # Should use cubic for upsampling, but INTER_AREA is best for downsampling
             # Linear is default and seems like a good compromise and it's fast
@@ -95,20 +94,16 @@ if __name__ == "__main__":
     
     args['<cfg>'].extend( ['JOYSTICK_MAX_THROTTLE', 'JOYSTICK_STEERING_SCALE'] )
 
-    res = {}
+    meta = {}
     for entry in args['<cfg>']:
         if hasattr(cfg, entry):
-            res[entry] = getattr(cfg, entry)
+            meta[entry] = getattr(cfg, entry)
         else:
             print( "Invalid config key: {}".format( entry ) )
 
-    meta = []
-    for k,v in res.items():
-        meta.append( "{}:{}".format( k, v ) )
-
-    meta.append( "location:{}".format( args['--location'] ) )
-    meta.append( "task:{}".format( args['--task'] ) )
-    meta.append( "driver:{}".format( args['--driver'] ) )
+    meta["location"] = args['--location']
+    meta["task"] = args['--task']
+    meta["driver"] = args['--driver']
 
     model_type = args['--type']
     

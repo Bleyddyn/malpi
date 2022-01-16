@@ -4,18 +4,44 @@ DefaultDriver. A base class with default values for building a DonkeyCar vehicle
 """
 import os
 import time
+import datetime
 
 import donkeycar as dk
 
 #import parts
 from donkeycar.parts.transform import Lambda, TriggeredCallback, DelayedTrigger
-from donkeycar.parts.datastore import TubHandler
+from donkeycar.parts.tub_v2 import TubWriter
 from donkeycar.parts.controller import LocalWebController, JoystickController
 from donkeycar.parts.throttle_filter import ThrottleFilter
 from donkeycar.parts.behavior import BehaviorPart
 from donkeycar.parts.file_watcher import FileWatcher
 from donkeycar.parts.launch import AiLaunch
-from donkeycar.utils import normalize_and_crop
+
+class TubNamer():
+    def __init__(self, path, name_format="{year}{month:02}{day:02}_{num}.{tub}", short_year=False):
+        self.path = os.path.expanduser(path)
+        self.name_format = name_format
+        self.short_year = short_year
+        self.next_num = 1
+
+    def create_tub_path(self):
+        dt = datetime.datetime.now()
+        tub_num = self.next_num
+        tub_path = None
+        while tub_num < 1000:
+            if self.short_year:
+                year = dt.strftime('%y')
+            else:
+                year = dt.year
+            name = self.name_format.format( tub="tub", num=tub_num, year=year, month=dt.month, day=dt.day )
+            tub_path = os.path.join(self.path, name)
+            if not os.path.exists(tub_path):
+                break
+            tub_num += 1
+
+        self.next_num = tub_num + 1
+
+        return tub_path
 
 class RecordTracker:
     """ TODO: Move this and other parts to a separate file """
@@ -163,18 +189,27 @@ class DefaultDriver():
             if self.cfg.DONKEY_GYM:
                 from donkeycar.parts.dgym import DonkeyGymEnv
                 cam_conf = {'img_h': self.cfg.IMAGE_H, 'img_w': self.cfg.IMAGE_W, 'img_d': self.cfg.IMAGE_DEPTH}
+                gym_conf = self.cfg.GYM_CONF.copy()
+                gym_conf["cam_conf"] = cam_conf
                 cam = DonkeyGymEnv(self.cfg.DONKEY_SIM_PATH,
                             env_name=self.cfg.DONKEY_GYM_ENV_NAME,
                             host=self.cfg.SIM_HOST,
-                            conf=self.cfg.GYM_CONF,
-                            cam_conf=cam_conf,
-                            start_sim=self.cfg.DONKEY_GYM_START,
-                            return_info=self.cfg.DONKEY_GYM_INFO,
-                            reset=self.cfg.DONKEY_GYM_RESET)
+                            conf=gym_conf,
+                            record_location=self.cfg.SIM_RECORD_LOCATION)
+                            #start_sim=self.cfg.DONKEY_GYM_START,
+                            #return_info=self.cfg.DONKEY_GYM_INFO,
+                            #reset=self.cfg.DONKEY_GYM_RESET)
                 threaded = True
                 inputs = ['angle', 'throttle']
-                if self.cfg.DONKEY_GYM_INFO:
-                    outputs.append( 'sim/info' )
+                if self.cfg.SIM_RECORD_LOCATION:
+                    outputs += ['pos/pos_x', 'pos/pos_y', 'pos/pos_z', 'pos/speed', 'pos/cte']
+                if self.cfg.SIM_RECORD_GYROACCEL:
+                    outputs += ['gyro/gyro_x', 'gyro/gyro_y', 'gyro/gyro_z', 'accel/accel_x', 'accel/accel_y', 'accel/accel_z']
+                if self.cfg.SIM_RECORD_VELOCITY:
+                    outputs += ['vel/vel_x', 'vel/vel_y', 'vel/vel_z']
+                if self.cfg.SIM_RECORD_LIDAR:
+                    outputs += ['lidar/dist_array']
+
             elif self.cfg.CAMERA_TYPE == "PICAM":
                 from donkeycar.parts.camera import PiCamera
                 cam = PiCamera(image_w=IMAGE_W, image_h=IMAGE_H, image_d=IMAGE_DEPTH)
@@ -344,7 +379,7 @@ class DefaultDriver():
                 self.cfg = cfg
 
             def run(self, img_arr):
-                return normalize_and_crop(img_arr, self.cfg)
+                img_arr.astype(np.float32) / 255.0
 
         if "coral" in self.model_type:
             inf_input = 'cam/image_array'
@@ -597,24 +632,24 @@ class DefaultDriver():
             self.vehicle.add(ImgArrToJpg(), inputs=['cam/image_array'], outputs=['jpg/bin'])
             self.vehicle.add(pub, inputs=['jpg/bin'])
 
-        if self.cfg.DONKEY_GYM_INFO:
-            inputs += ['sim/info']
-            types += ['dict']
+        if self.cfg.DONKEY_GYM:
+            if self.cfg.SIM_RECORD_LOCATION:
+                inputs += ['pos/pos_x', 'pos/pos_y', 'pos/pos_z', 'pos/speed', 'pos/cte']
+                types  += ['float', 'float', 'float', 'float', 'float']
+            if self.cfg.SIM_RECORD_GYROACCEL:
+                inputs += ['gyro/gyro_x', 'gyro/gyro_y', 'gyro/gyro_z', 'accel/accel_x', 'accel/accel_y', 'accel/accel_z']
+                types  += ['float', 'float', 'float', 'float', 'float', 'float']
+            if self.cfg.SIM_RECORD_VELOCITY:
+                inputs += ['vel/vel_x', 'vel/vel_y', 'vel/vel_z']
+                types  += ['float', 'float', 'float']
+            if self.cfg.SIM_RECORD_LIDAR:
+                inputs += ['lidar/dist_array']
+                types  += ['nparray']
 
-        th = TubHandler(path=self.cfg.DATA_PATH, name_format="{year}{month:02}{day:02}_{num}.{tub}", short_year=False)
-        tub = th.new_tub_writer(inputs=inputs, types=types, user_meta=self.meta)
-        self.vehicle.add(tub, inputs=inputs, outputs=["tub/num_records"], run_condition='recording')
-        self.controller.set_tub(tub)
-
-        if self.cfg.BUTTON_PRESS_NEW_TUB:
-
-            def new_tub_dir():
-                self.vehicle.parts.pop() # TODO Fix this! Don't assume last part is tub writer.
-                tub = th.new_tub_writer(inputs=inputs, types=types, user_meta=self.meta)
-                self.vehicle.add(tub, inputs=inputs, outputs=["tub/num_records"], run_condition='recording')
-                self.controller.set_tub(tub)
-
-            self.controller.set_button_down_trigger('cross', new_tub_dir)
+        tub_path = TubNamer(path=self.cfg.DATA_PATH).create_tub_path()
+        tub_writer = TubWriter(tub_path, inputs=inputs, types=types, metadata=self.meta)
+        self.vehicle.add(tub_writer, inputs=inputs, outputs=["tub/num_records"], run_condition='recording')
+        self.controller.set_tub(tub_writer) # Only used to call delete_last_n_records
 
     def user_notifications(self):
         self.controller.print_controls()
