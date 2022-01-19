@@ -104,8 +104,9 @@ if __name__ == "__main__":
     meta["location"] = args['--location']
     meta["task"] = args['--task']
     meta["driver"] = args['--driver']
+    metal = list(meta.items()) # convert to a list of tuples so tub v2 can parse them
 
     model_type = args['--type']
     
-    vehicle = MyDriver(cfg, model_path=args['--model'], model_type=model_type, use_joystick=cfg.USE_JOYSTICK_AS_DEFAULT, meta=meta)
+    vehicle = MyDriver(cfg, model_path=args['--model'], model_type=model_type, use_joystick=cfg.USE_JOYSTICK_AS_DEFAULT, meta=metal)
     vehicle.start()
