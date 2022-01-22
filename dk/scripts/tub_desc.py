@@ -1,3 +1,4 @@
+#! /usr/bin/env python3
 """
 Describe Tub files found in one or more directories.
 """
@@ -10,6 +11,7 @@ from datetime import datetime
 import numpy as np
 import donkeycar as dk
 from donkeycar.parts.datastore import Tub
+from donkeycar.parts.tub_v2 import Tub as Tub2
 
 def removeComments( dir_list ):
     for i in reversed(range(len(dir_list))):
@@ -30,18 +32,35 @@ def preprocessFileList( filelist ):
     removeComments( dirs )
     return dirs
 
-def describe_tub( tub_dir, stats=False, time_of_day=False, meta=[], img=False ):
+def describe_tub( tub, stats=False, time_of_day=False, meta=[], img=False ):
     """ TODO: This should be generalized to return only user-requested meta data.
         TODO: Add a check for image sizes
     """
-    tub = Tub(tub_dir)
-    count = tub.get_num_records()
-    loc = tub.meta.get("location", "NA")
-    task = tub.meta.get("task", "NA")
-    driver = tub.meta.get("driver", "NA")
-    tod = tub.meta.get("start", None)
-    throttle = tub.meta.get("JOYSTICK_MAX_THROTTLE", "NA")
-    steering = tub.meta.get("JOYSTICK_STEERING_SCALE", "NA")
+
+    # Handle differences between v1 and v2 Tubs
+    # TODO: Add __len__ and base_path and manifest and version and a read_only flag to Tub v1
+    if hasattr(tub, "get_num_records") and callable(tub.get_num_records):
+        count = tub.get_num_records()
+        version = "v1"
+    else:
+        count = len(tub)
+        version = "v2"
+    if hasattr(tub,"meta"):
+        tub_meta = tub.meta
+    else:
+        tub_meta = tub.manifest.metadata
+    if hasattr(tub,"path"):
+        base_path = tub.path
+    else:
+        base_path = tub.base_path
+    base_path = os.path.basename(base_path)
+
+    loc = tub_meta.get("location", "NA")
+    task = tub_meta.get("task", "NA")
+    driver = tub_meta.get("driver", "NA")
+    tod = tub_meta.get("start", None)
+    throttle = tub_meta.get("JOYSTICK_MAX_THROTTLE", "NA")
+    steering = tub_meta.get("JOYSTICK_STEERING_SCALE", "NA")
     if stats:
         recs = tub.gather_records()
         thr = []
@@ -78,8 +97,8 @@ def describe_tub( tub_dir, stats=False, time_of_day=False, meta=[], img=False ):
     for key in meta:
         if key in tub.inputs:
             meta_st += "\tInput"
-        elif key in tub.meta:
-            meta_st += "\t{}".format( tub.meta[key] )
+        elif key in tub_meta:
+            meta_st += "\t{}".format( tub_meta[key] )
         else:
             meta_st += "\tNo"
 
@@ -89,18 +108,21 @@ def describe_tub( tub_dir, stats=False, time_of_day=False, meta=[], img=False ):
         img_array = data['cam/image_array']
         img_st = "\t{}".format( img_array.shape )
 
-    print( "{}\t{}\t{}\t{}\t{}\t{}\t{}{}{}{}{}".format( os.path.basename(tub_dir), count, loc, task, driver, throttle, steering, st, tod, meta_st, img_st ) )
+    print( "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}{}{}{}{}".format( base_path, version, count, loc, task, driver, throttle, steering, st, tod, meta_st, img_st ) )
     return count
 
-def check_path( apath, counter=None, stats=False, time_of_day=False, meta=[], img=False ):
+def make_tub( apath ):
     if os.path.isdir(apath):
         meta_path = os.path.join( apath, "meta.json" )
         if os.path.exists(meta_path):
-            cnt = describe_tub(apath, stats, time_of_day, meta=meta, img=img)
-            if counter is not None:
-                counter.append( cnt )
-            return True
-    return False
+            return Tub(apath)
+        else:
+            try:
+                t = Tub2(apath, read_only=True)
+                return t
+            except:
+                pass
+    return None
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Describe Tub files found in one or more directories.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -141,18 +163,28 @@ if __name__ == "__main__":
     if args.img:
         img_header = "\tImg Size"
 
-    print( "\nTub\t# Samples\tLocation\tTask\tDriver\tThrottle\tSteering{}{}{}{}".format( stat_str, tod_header, meta_header, img_header ) )
+    tubs = []
+
     for adir in sorted(dirs):
         if adir not in done and os.path.isdir(adir):
-            if not check_path(adir, counter=counts, stats=args.stats, time_of_day=args.tod, meta=args.meta, img=args.img):
+            tub = make_tub( adir )
+            if tub is not None:
+                tubs.append(tub)
+                done.append(adir)
+            else:
                 for afile in sorted(os.listdir(adir)):
                     fpath = os.path.join(adir, afile)
                     if fpath not in done:
-                        check_path( fpath, counter=counts, stats=args.stats, time_of_day=args.tod, meta=args.meta, img=args.img)
-                        done.append(fpath)
-            else:
-                done.append(adir)
+                        tub = make_tub(fpath)
+                        if tub is not None:
+                            tubs.append(tub)
+                            done.append(fpath)
 
+    print( "\nTub\tVersion\t# Samples\tLocation\tTask\tDriver\tThrottle\tSteering{}{}{}{}".format( stat_str, tod_header, meta_header, img_header ) )
+
+    for tub in tubs:
+        cnt = describe_tub(tub, stats=args.stats, time_of_day=args.tod, meta=args.meta, img=args.img)
+        counts.append( cnt )
 
     print()
     print( "Total samples: {}".format( np.sum(counts) ) )
