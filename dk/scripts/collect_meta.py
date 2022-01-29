@@ -16,6 +16,7 @@ Options:
 from docopt import docopt
 
 import cv2
+import numpy as np
 
 import donkeycar as dk
 from malpi.dk.drive import DefaultDriver, RecordTracker

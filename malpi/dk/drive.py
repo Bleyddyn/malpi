@@ -188,9 +188,10 @@ class DefaultDriver():
             threaded = True
             if self.cfg.DONKEY_GYM:
                 from donkeycar.parts.dgym import DonkeyGymEnv
-                cam_conf = {'img_h': self.cfg.IMAGE_H, 'img_w': self.cfg.IMAGE_W, 'img_d': self.cfg.IMAGE_DEPTH}
                 gym_conf = self.cfg.GYM_CONF.copy()
-                gym_conf["cam_conf"] = cam_conf
+                cam_conf = {'img_h': self.cfg.IMAGE_H, 'img_w': self.cfg.IMAGE_W, 'img_d': self.cfg.IMAGE_DEPTH}
+                gym_conf["cam_config"] = cam_conf
+                gym_conf["cam_resolution"] = (self.cfg.IMAGE_H, self.cfg.IMAGE_W, self.cfg.IMAGE_DEPTH)
                 cam = DonkeyGymEnv(self.cfg.DONKEY_SIM_PATH,
                             env_name=self.cfg.DONKEY_GYM_ENV_NAME,
                             host=self.cfg.SIM_HOST,
@@ -661,3 +662,9 @@ class DefaultDriver():
 
     def start(self):
         self.vehicle.start(rate_hz=self.cfg.DRIVE_LOOP_HZ, max_loop_count=self.cfg.MAX_LOOPS)
+
+    def print(self):
+        for part in self.vehicle.parts:
+            print( f"{type(part['part'])}" )
+            print( f"   In: {part['inputs']}" )
+            print( f"  Out: {part['outputs']}" )
