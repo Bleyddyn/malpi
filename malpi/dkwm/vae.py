@@ -235,7 +235,8 @@ class KerasVAE(KerasPilot):
             #return K.mean(K.square(y_true_flat - y_pred_flat), axis = -1)
 
         def vae_r_loss(y_true, y_pred):
-            return tf.losses.mean_pairwise_squared_error(y_true, y_pred)
+            return tf.compat.v1.losses.mean_pairwise_squared_error(y_true, y_pred)
+            #return tf.losses.mean_pairwise_squared_error(y_true, y_pred)
 
         def vae_kl_loss(y_true, y_pred):
             return - 0.5 * K.mean(1 + vae_z_log_var - K.square(vae_z_mean) - K.exp(vae_z_log_var), axis = -1)
@@ -280,7 +281,7 @@ class KerasVAE(KerasPilot):
             losses['cte_output'] = 'mean_squared_error'
             loss_weights['cte_output'] = cte_weight
 
-        self.model.compile(optimizer=self.optimizer, loss=losses, loss_weights=loss_weights, metrics=metrics)
+        self.model.compile(optimizer=self.optimizer, loss=losses, loss_weights=loss_weights, metrics=metrics, experimental_run_tf_function=False)
 
     def set_weights(self, filepath, by_name=False):
         self.model.load_weights(filepath, by_name=by_name)

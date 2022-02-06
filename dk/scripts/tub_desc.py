@@ -135,12 +135,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    try:
-# This will look in the directory containing this script, not necessarily the current dir
-        cfg = dk.load_config()
-    except FileNotFoundError:
-        cfg = dk.load_config("config.py")
-
     dirs = preprocessFileList( args.file )
     dirs.extend( args.dir )
     dirs = [os.path.expanduser(adir) for adir in dirs]

@@ -18,6 +18,8 @@ from docopt import docopt
 import cv2
 import numpy as np
 
+from fastai.vision.all import *
+
 import donkeycar as dk
 from malpi.dk.drive import DefaultDriver, RecordTracker
 
@@ -48,6 +50,33 @@ class ImageResize():
     def shutdown(self):
         pass
 
+class FastAiPilot(object):
+
+    def __init__(self):
+        self.learn = None
+
+    def load(self, model_path):
+        if torch.cuda.is_available():
+            print("using cuda for torch inference")
+            defaults.device = torch.device('cuda')
+        else:
+            print("cuda not available for torch inference")
+
+        path = os.path.dirname(model_path)
+        fname = os.path.basename(model_path)
+        self.learn = load_learner(model_path)
+
+    def run(self, img):
+        print( f"Image: {type(img)}  Shape: {img.shape}" )
+        #t = pil2tensor(img, dtype=np.float32) # converts to tensor
+        img = Image(img) # Convert to fastAi Image - this class has "apply_tfms"
+
+        pred = self.learn.predict(img)
+        steering = float(pred[0].data[0])
+        throttle = float(pred[0].data[1])
+
+        return steering, throttle
+
 class MyDriver(DefaultDriver):
     def __init__(self, cfg, model_path=None, use_joystick=False, model_type=None, camera_type='single', meta=[] ):
         super().__init__(cfg, model_path=model_path, use_joystick=use_joystick, model_type=model_type, camera_type=camera_type, meta=meta )
@@ -60,6 +89,16 @@ class MyDriver(DefaultDriver):
             outputs=[inf_input],
             run_condition='run_pilot')
         return [inf_input]
+
+    def build_pilot(self, inputs):
+        if self.model_path is not None:
+            outputs=['pilot/angle', 'pilot/throttle']
+
+            self.model = FastAiPilot()
+            self.model.load(self.model_path)
+            self.vehicle.add(self.model, inputs=inputs,
+                outputs=outputs,
+                run_condition='run_pilot')
 
     def build_displays(self):
         class LedSimpleLogic:

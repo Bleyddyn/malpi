@@ -650,10 +650,12 @@ class DefaultDriver():
         tub_path = TubNamer(path=self.cfg.DATA_PATH).create_tub_path()
         tub_writer = TubWriter(tub_path, inputs=inputs, types=types, metadata=self.meta)
         self.vehicle.add(tub_writer, inputs=inputs, outputs=["tub/num_records"], run_condition='recording')
-        self.controller.set_tub(tub_writer) # Only used to call delete_last_n_records
+        if hasattr(self.controller, "set_tub"):
+            self.controller.set_tub(tub_writer) # Only used to call delete_last_n_records
 
     def user_notifications(self):
-        self.controller.print_controls()
+        if hasattr(self.controller, "print_controls"):
+            self.controller.print_controls()
 
         if type(self.controller) is LocalWebController:
             print("You can now go to <your pi ip address>:8887 to drive your car.")
