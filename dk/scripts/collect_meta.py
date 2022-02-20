@@ -67,13 +67,15 @@ class FastAiPilot(object):
         self.learn = load_learner(model_path)
 
     def run(self, img):
-        print( f"Image: {type(img)}  Shape: {img.shape}" )
-        #t = pil2tensor(img, dtype=np.float32) # converts to tensor
-        img = Image(img) # Convert to fastAi Image - this class has "apply_tfms"
+        img = (img * 255).astype(np.uint8)
+        #print( f"Image: {type(img)}  Shape: {img.shape}  {np.min(img)} {np.max(img)}" )
+        #img = pil2tensor(img, dtype=np.float32) # converts to tensor
+        #img = Image(img) # Convert to fastAi Image - this class has "apply_tfms"
 
         pred = self.learn.predict(img)
-        steering = float(pred[0].data[0])
-        throttle = float(pred[0].data[1])
+        #print( f"Pred: {pred}" )
+        steering = float(pred[0][0])
+        throttle = float(pred[0][1])
 
         return steering, throttle
 
@@ -149,4 +151,5 @@ if __name__ == "__main__":
     model_type = args['--type']
     
     vehicle = MyDriver(cfg, model_path=args['--model'], model_type=model_type, use_joystick=cfg.USE_JOYSTICK_AS_DEFAULT, meta=metal)
+    vehicle.print()
     vehicle.start()
