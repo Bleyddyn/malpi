@@ -27,8 +27,10 @@ from PyQt5.QtCore import Qt, QEvent
 from PyQt5.QtCore import pyqtSignal, QObject
 
 from DriveFormat import DriveFormat
+# Import all formats so they can register themselves
 import MalpiFormat
 import TubFormat
+import Tubv2Format
 from FilesDockWidget import FilesDockWidget
 from AuxDataDialog import AuxDataDialog
 from AuxDataUI import AuxDataUI
@@ -116,11 +118,11 @@ class Example(QMainWindow):
 
         self.dataMenu = menubar.addMenu('Data')
 
-        auxDataAct = QAction('Add Auxiliary Data', self)
-        auxDataAct.setStatusTip('Add Auxiliary Data to the current data file')
-        auxDataAct.triggered.connect(self.addAuxData)
+        self.auxDataAct = QAction('Add Auxiliary Data', self)
+        self.auxDataAct.setStatusTip('Add Auxiliary Data to the current data file')
+        self.auxDataAct.triggered.connect(self.addAuxData)
         
-        self.dataMenu.addAction(auxDataAct)
+        self.dataMenu.addAction(self.auxDataAct)
 
         nextDone = QAction('Find Next Done', self)
         nextDone.setStatusTip('Find the next sample with a Done flag set to True')
@@ -350,8 +352,12 @@ class Example(QMainWindow):
             self.slider.setMinimum(0)
             self.slider.setMaximum( self.data.count() )
             self.slider.setSliderPosition(0)
-            for key, value in self.data.getAuxMeta().items():
-                self.addAuxToGrid(value)
+            if self.data.supportsAuxData():
+                self.auxDataAct.setEnabled(True)
+                for key, value in self.data.getAuxMeta().items():
+                    self.addAuxToGrid(value)
+            else:
+                self.auxDataAct.setEnabled(False)
             self.updateImages()
         else:
             QMessageBox.warning(self, 'Unknown Filetype', "The file you selected could not be opened by any available file formats.", buttons=QMessageBox.Ok, defaultButton=QMessageBox.Ok)
@@ -516,6 +522,8 @@ class Example(QMainWindow):
 
     def addAuxToGrid(self, aux):
         try:
+            if not self.data.supportsAuxData():
+                return
             auxUI = AuxDataUI.create(aux, self.data, self.gridWidth)
             self.aux.append(auxUI)
             auxName, auxLabels = auxUI.getUI()
