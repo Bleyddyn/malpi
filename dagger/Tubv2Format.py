@@ -9,6 +9,7 @@ from PIL import Image
 import json
 import re
 from donkeycar.parts.tub_v2 import Tub
+from donkeycar.parts.datastore_v2 import NEWLINE
 from donkeycar.pipeline.types import TubRecord
 from donkeycar.utils import load_image
 
@@ -44,36 +45,45 @@ class Tubv2Format(DriveFormat):
         self.tub = Tub(path, read_only=False)
         self.meta = self.tub.manifest.metadata # Bug. tub.metadata doesn't get updated with info from disc
         self.deleted_indexes = self.tub.manifest.deleted_indexes
+        print( f"Deleted: {self.deleted_indexes}" )
         self.edit_list = set()
         self.shape = None
-        #(self.images, self.actions) = self._load(path)
 
     def _load( self, path, image_norm=True, progress=None ):
 
         records = {}
         indexes = []
+        images = [] # Store images separately so we can easily write changed records back to the tub
         total = len(self.tub)
         for idx, rec in enumerate(self.tub):
             img_path = os.path.join( self.path, self.tub.images(), rec['cam/image_array'] )
             try:
-                # Replace image path with image as array
                 img = Image.open( img_path )
                 img_arr = np.asarray(img)
                 if self.shape is None:
                     self.shape = img_arr.shape
-                rec['cam/image_array'] = img_arr
             except Exception as ex:
                 print( f"Failed to load image: {img_path}" )
                 print( f"   Exception: {ex}" )
             records[idx] = rec
             indexes.append(idx)
+            images.append(img_arr)
             progress(idx, total)
         self.records = records
         self.indexes = indexes
+        self.images = images
 
     def load( self, progress=None ):
         self._load(self.path, progress=progress)
         self.setClean()
+
+    def update_line( self, line_num, new_rec ):
+        contents = json.dumps(new_rec, allow_nan=False, sort_keys=True)
+        if contents[-1] == NEWLINE:
+            line = contents
+        else:
+            line = f'{contents}{NEWLINE}'
+        self.tub.manifest.current_catalog.seekable.update_line(line_num+1, line)
 
     def save( self ):
         if self.isClean():
@@ -83,35 +93,9 @@ class Tubv2Format(DriveFormat):
 
         for ix in self.edit_list:
             rec = self.records[ix]
-            path = self.tub.get_json_record_path(ix)
-            try:
-                with open(path, 'r') as fp:
-                    old_rec = json.load(fp)
-            except TypeError:
-                print('troubles with record:', path)
-            except FileNotFoundError:
-                raise
-            except:
-                print("Unexpected error:", sys.exc_info()[0])
-                raise
+            self.update_line( ix, rec )
 
-            # Copy over only the keys we might have modified
-            chg_keys = ['user/angle', 'user/throttle', 'orig/angle', 'orig/throttle']
-            for key in chg_keys:
-                if key in rec:
-                    old_rec[key] = rec[key]
-
-            try:
-                with open(path, 'w') as fp: 
-                    json.dump(old_rec, fp)
-            except TypeError:
-                print('troubles with record:', path)
-            except FileNotFoundError:
-                raise
-            except:
-                print("Unexpected error:", sys.exc_info()[0])
-                raise
-
+        self.tub.manifest._update_catalog_metadata(update=True)
         self.edit_list.clear()
         self.setClean()
 
@@ -120,7 +104,7 @@ class Tubv2Format(DriveFormat):
 
     def imageForIndex( self, index ):
         idx = self.indexes[index]
-        img = self.records[idx]['cam/image_array']
+        img = self.images[idx]
         if self.isIndexDeleted(index):
 # This grayed out image ends up looking ugly, can't figure out why
             tmp = img.mean(axis=-1,dtype=img.dtype,keepdims=False)
