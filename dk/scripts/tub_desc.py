@@ -7,11 +7,30 @@ import time
 import argparse
 import json
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import donkeycar as dk
 from donkeycar.parts.datastore import Tub
 from donkeycar.parts.tub_v2 import Tub as Tub2
+
+class EmptyTub:
+    def __init__(self, base_path):
+        self.meta = dict()
+        self.path = base_path
+        self.base_path = base_path
+
+        manifest_path = Path(os.path.join(self.base_path, 'manifest.json'))
+        if not manifest_path.exists():
+            raise ValueError(f"No manifest.json in {base_path}")
+
+        with open(manifest_path, 'r') as f:
+            self.inputs = json.loads(f.readline()) # inputs
+            self.types = json.loads(f.readline()) # types
+            self.meta = json.loads(f.readline())
+
+    def __len__(self):
+        return 0
 
 def removeComments( dir_list ):
     for i in reversed(range(len(dir_list))):
@@ -117,11 +136,25 @@ def make_tub( apath ):
         if os.path.exists(meta_path):
             return Tub(apath)
         else:
+            t = None
+
             try:
                 t = Tub2(apath, read_only=True)
-                return t
-            except:
+            except ValueError as val_ex:
                 pass
+            except FileNotFoundError as nof_ex:
+                pass
+            except Exception as ex:
+                print( f"Failed to open Tub v2: {apath}" )
+                print( f"   Reason: {type(ex)}  {ex}" )
+
+            if t is None:
+                try:
+                    t = EmptyTub(apath)
+                except ValueError as val_ex:
+                    pass # Not a tub of any kind
+            return t
+
     return None
 
 if __name__ == "__main__":
