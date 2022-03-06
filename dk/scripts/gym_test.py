@@ -10,6 +10,7 @@ Based on gym_test.py by Tawn Kramer
 import argparse
 import uuid
 from pathlib import Path
+import logging
 
 import gym
 
@@ -22,7 +23,8 @@ from donkeycar.parts.tub_v2 import TubWriter
 from malpi.dk.drive import TubNamer
 
 NUM_EPISODES = 3
-MAX_TIME_STEPS = 1000
+MAX_TIME_STEPS = 2000
+MAX_LAPS = 3
 
 
 def test_track(env_name, conf, learn, model_path, record):
@@ -31,12 +33,13 @@ def test_track(env_name, conf, learn, model_path, record):
     # make sure you have no track loaded
     exit_scene(env)
 
-    simulate(env, learn, model_path, record)
+    episodes = simulate(env, learn, model_path, record)
 
     # exit the scene and close the env
     exit_scene(env)
     env.close()
 
+    return episodes
 
 def select_action(env):
     return env.action_space.sample()  # taking random action from the action_space
@@ -90,11 +93,15 @@ def simulate(env, learn, model_path, record):
         meta = get_meta(model_path)
         tub = get_tub( "data", meta )
 
+    episodes = []
+
     for episode in range(NUM_EPISODES):
 
         # Reset the environment
         obv = env.reset()
-        print( f"{type(obv)} {obv.shape}" )
+        laps = []
+        lap_count = 0
+        #print( f"{type(obv)} {obv.shape}" )
         for t in range(MAX_TIME_STEPS):
 
             # Select an action
@@ -109,12 +116,31 @@ def simulate(env, learn, model_path, record):
                     info['vel'][0], info['vel'][1], info['vel'][2]
                     )
 
+            if lap_count != info['lap_count']:
+                laps.append( info['last_lap_time'] )
+                lap_count = info['lap_count']
+                #print( f"Lap {lap_count} time: {info['last_lap_time']}" )
+                #print( f"Lap index: {env.viewer.handler.starting_line_index}" )
+
             if done:
-                print("done w episode.", info)
+                if info['hit'] != 'none':
+                    print(f"Hit: {info['hit']}")
                 break
+
+            if lap_count >= MAX_LAPS:
+                break
+
+        print( f"Lap times: {laps}" )
+
+        if not done:
+            print("Episode finished")
+
+        episodes.append( laps )
 
     if record:
         tub.close()
+
+    return episodes
 
 def exit_scene(env):
     env.viewer.exit_scene()
@@ -130,9 +156,10 @@ def get_conf(sim, host, port):
         "car_name": "torch",
         "font_size": 100,
         "start_delay": 1,
-        "max_cte": 40,
+        "max_cte": 100,
         "cam_config": {'img_h': 256, 'img_w': 256, 'img_d': 3},
-        "cam_resolution": (256, 256, 3)
+        "cam_resolution": (256, 256, 3),
+        "log_level": logging.WARNING
         }
 
 
@@ -174,11 +201,17 @@ if __name__ == "__main__":
 
     learn = load_learner(args.model)
 
+    episodes = None
+
     if args.env_name == "all":
         for env_name in env_list:
             test_track(env_name, conf, learn, args.model, args.record)
 
     else:
-        test_track(args.env_name, conf, learn, args.model, args.record)
+        episodes = test_track(args.env_name, conf, learn, args.model, args.record)
+
+    if episodes is not None:
+        for idx, ep in enumerate(episodes):
+            print( f"Ep {idx+1}: {ep}" )
 
     print("test finished")
