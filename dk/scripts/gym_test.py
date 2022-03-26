@@ -28,12 +28,18 @@ MAX_LAPS = 3
 
 
 def test_track(env_name, conf, learn, model_path, record):
+    tub = None
+
+    if record:
+        meta = get_meta(model_path)
+        tub = get_tub( "data", meta )
+
     env = gym.make(env_name, conf=conf)
 
     # make sure you have no track loaded
     exit_scene(env)
 
-    episodes = simulate(env, learn, model_path, record)
+    episodes = simulate(env, learn, model_path, tub)
 
     # exit the scene and close the env
     exit_scene(env)
@@ -87,11 +93,7 @@ def get_tub( base_path, meta ):
     tub_writer = TubWriter(tub_path, inputs=inputs, types=types, metadata=meta)
     return tub_writer
 
-def simulate(env, learn, model_path, record):
-
-    if record:
-        meta = get_meta(model_path)
-        tub = get_tub( "data", meta )
+def simulate(env, learn, model_path, tub=None):
 
     episodes = []
 
@@ -101,7 +103,6 @@ def simulate(env, learn, model_path, record):
         obv = env.reset()
         laps = []
         lap_count = 0
-        #print( f"{type(obv)} {obv.shape}" )
         for t in range(MAX_TIME_STEPS):
 
             # Select an action
@@ -110,7 +111,7 @@ def simulate(env, learn, model_path, record):
             # execute the action
             obv, reward, done, info = env.step(action)
 
-            if record:
+            if tub is not None:
                 tub.run( obv, 0.0, 0.0, "pilot/angle", action[0], action[1],
                     info['pos'][0], info['pos'][1], info['pos'][2], info['speed'], info['cte'],
                     info['vel'][0], info['vel'][1], info['vel'][2]
@@ -137,7 +138,7 @@ def simulate(env, learn, model_path, record):
 
         episodes.append( laps )
 
-    if record:
+    if tub is not None:
         tub.close()
 
     return episodes

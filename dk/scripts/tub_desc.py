@@ -164,7 +164,7 @@ if __name__ == "__main__":
     parser.add_argument('--img', action='store_true', default=False, help='Display image size.')
     parser.add_argument('-f', '--file', nargs="*", help='A text file containing paths to tub files, one per line. Option may be used more than once.')
     parser.add_argument('dir', nargs='*', help='One or more directories that are Tub files, or contain Tub files.')
-    parser.add_argument('--meta', nargs='*', default=[], help='One or more meta keys to search for in Tub files.')
+    parser.add_argument('--meta', nargs='*', default=["DONKEY_GYM_ENV_NAME"], help='One or more meta keys to search for in Tub files.')
 
     args = parser.parse_args()
 
