@@ -1,9 +1,20 @@
+import os
 from pathlib import Path
 
+import torch
+
 # TODO Only import what we need
-from fastai.data.all import *
-from fastai.vision.all import *
-from fastai.data.transforms import ColReader
+#from fastai.data.all import *
+from fastai.data.block import DataBlock, RegressionBlock
+from fastai.vision.data import ImageBlock
+from fastai.vision.augment import Resize
+#from fastai.vision.all import *
+from fastai.data.transforms import ColReader, RandomSplitter
+from fastai.layers import ConvLayer, Flatten
+from fastai.learner import Learner
+from fastai.callback.hook import ActivationStats
+from fastai.losses import MSELossFlat
+from fastai.metrics import rmse
 
 from donkeycar.parts.tub_v2 import Tub
 import pandas as pd
@@ -154,12 +165,12 @@ def get_learner(dls):
         ConvLayer(32, 64, stride=2),
         ConvLayer(64, 128, stride=2),
         ConvLayer(128, 256, stride=2),
-        nn.AdaptiveAvgPool2d(1),
+        torch.nn.AdaptiveAvgPool2d(1),
         Flatten(),
-        nn.Linear(256, 50),
-        nn.ReLU(),
-        nn.Linear(50, dls.c),
-        nn.Tanh()
+        torch.nn.Linear(256, 50),
+        torch.nn.ReLU(),
+        torch.nn.Linear(50, dls.c),
+        torch.nn.Tanh()
         )
 #print(model)
     callbacks=ActivationStats(with_hist=True)
@@ -174,7 +185,7 @@ def get_autoencoder(dls, verbose=True):
         print(model)
     callbacks=ActivationStats(with_hist=True)
     #learn = Learner(dls, model,  loss_func = nn.BCELoss(), metrics=[rmse], cbs=callbacks)
-    learn = Learner(dls, model,  loss_func = nn.MSELoss(), metrics=[rmse], cbs=callbacks)
+    learn = Learner(dls, model,  loss_func = torch.nn.MSELoss(), metrics=[rmse], cbs=callbacks)
     return learn
 
 def train_autoencoder( input_file, epochs, lr, name, verbose=True ):
