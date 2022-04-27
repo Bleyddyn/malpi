@@ -2,7 +2,7 @@ import os
 import sys
 import pickle
 import copy
-from DriveFormat import DriveFormat
+from malpi.ui.DriveFormat import DriveFormat
 from collections import defaultdict
 import numpy as np
 from PIL import Image

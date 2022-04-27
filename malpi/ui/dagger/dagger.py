@@ -26,14 +26,14 @@ from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtCore import Qt, QEvent
 from PyQt5.QtCore import pyqtSignal, QObject
 
-from DriveFormat import DriveFormat
+from malpi.ui.DriveFormat import DriveFormat
 # Import all formats so they can register themselves
-import MalpiFormat
-import TubFormat
-import Tubv2Format
-from FilesDockWidget import FilesDockWidget
-from AuxDataDialog import AuxDataDialog
-from AuxDataUI import AuxDataUI
+import malpi.ui.MalpiFormat
+import malpi.ui.TubFormat
+import malpi.ui.Tubv2Format
+from malpi.ui.dagger.FilesDockWidget import FilesDockWidget
+from malpi.ui.dagger.AuxDataDialog import AuxDataDialog
+from malpi.ui.dagger.AuxDataUI import AuxDataUI
 
 class Communicate(QObject):
     closeApp = pyqtSignal() 
