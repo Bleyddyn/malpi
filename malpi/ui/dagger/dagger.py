@@ -573,8 +573,8 @@ def getOptions():
 
     return args
 
-if __name__ == '__main__':
-    
+def main():
+
     args = getOptions()
 
     if args.test_only:
@@ -588,3 +588,6 @@ if __name__ == '__main__':
     if args.filelist:
         ex.setFileList(args.filelist)
     sys.exit(app.exec_())
+
+if __name__ == '__main__':
+    main()
