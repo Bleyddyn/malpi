@@ -66,8 +66,10 @@ def describe_tub( tub, stats=False, time_of_day=False, meta=[], img=False ):
         version = "v2"
     if hasattr(tub,"meta"):
         tub_meta = tub.meta
+        tub_inputs = tub.inputs
     else:
         tub_meta = tub.manifest.metadata
+        tub_inputs = tub.manifest.inputs
     if hasattr(tub,"path"):
         base_path = tub.path
     else:
@@ -114,7 +116,7 @@ def describe_tub( tub, stats=False, time_of_day=False, meta=[], img=False ):
 
     meta_st = ""
     for key in meta:
-        if key in tub.inputs:
+        if key in tub_inputs:
             meta_st += "\tInput"
         elif key in tub_meta:
             meta_st += "\t{}".format( tub_meta[key] )

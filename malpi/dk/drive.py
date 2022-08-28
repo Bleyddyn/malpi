@@ -502,10 +502,14 @@ class DefaultDriver():
                 if mode == 'user':
                     return user_angle, user_throttle
 
+                if pilot_angle is None:
+                    pilot_angle = 0.0
                 elif mode == 'local_angle':
                     return pilot_angle, user_throttle
 
                 else:
+                    if pilot_throttle is None:
+                        pilot_throttle = 0.0
                     return pilot_angle, pilot_throttle * self.throttle_mult
 
         self.vehicle.add(DriveMode(self.cfg.AI_THROTTLE_MULT),

@@ -18,16 +18,19 @@ import gym_donkeycar
 
 from fastai.vision.all import *
 
+import cv2
+
 import donkeycar as dk
 from donkeycar.parts.tub_v2 import TubWriter
 from malpi.dk.drive import TubNamer
+from malpi.dk.vae import VanillaVAE, SplitDriver, CombinedDriver
 
 NUM_EPISODES = 3
 MAX_TIME_STEPS = 2000
 MAX_LAPS = 3
 
 
-def test_track(env_name, conf, learn, model_path, record):
+def test_track(env_name, conf, learn, model_path, record, vae_path=None):
     tub = None
 
     if record:
@@ -39,7 +42,7 @@ def test_track(env_name, conf, learn, model_path, record):
     # make sure you have no track loaded
     exit_scene(env)
 
-    episodes = simulate(env, learn, model_path, tub)
+    episodes = simulate(env, learn, model_path, tub, vae_path)
 
     # exit the scene and close the env
     exit_scene(env)
@@ -93,7 +96,7 @@ def get_tub( base_path, meta ):
     tub_writer = TubWriter(tub_path, inputs=inputs, types=types, metadata=meta)
     return tub_writer
 
-def simulate(env, learn, model_path, tub=None):
+def simulate(env, learn, model_path, tub=None, vae_path=None):
 
     episodes = []
 
@@ -101,16 +104,24 @@ def simulate(env, learn, model_path, tub=None):
 
         # Reset the environment
         obv = env.reset()
+
         laps = []
         lap_count = 0
         for t in range(MAX_TIME_STEPS):
 
+            # Preprocess the observation
+            obv = cv2.resize(obv, (128, 128) )
+            obv = np.transpose(obv,(2,0,1))
+            obv = obv.astype(np.float32) / 255.0
+            obv = torch.from_numpy(obv).float().unsqueeze(0)
+
             # Select an action
-            action = learn.predict(obv)[0]                                            
+            action = learn.predict(obv)[0].detach().numpy()
 
             # execute the action
             obv, reward, done, info = env.step(action)
-
+            #if t % 100 == 0:
+            #    print("t: {}  action: {}  reward: {}  done: {}  info: {}".format(t, action, reward, done, info))
             if tub is not None:
                 tub.run( obv, 0.0, 0.0, "pilot/angle", action[0], action[1],
                     info['pos'][0], info['pos'][1], info['pos'][2], info['speed'], info['cte'],
@@ -125,7 +136,7 @@ def simulate(env, learn, model_path, tub=None):
 
             if done:
                 if info['hit'] != 'none':
-                    print(f"Hit: {info['hit']}")
+                    print(f"Hit: {info['hit']} after {t} steps")
                 break
 
             if lap_count >= MAX_LAPS:
@@ -163,6 +174,9 @@ def get_conf(sim, host, port):
         "log_level": logging.WARNING
         }
 
+def get_split_driver(vae_path, driver_path):
+    driver = CombinedDriver(vae_path, driver_path)
+    return driver
 
 if __name__ == "__main__":
 
@@ -191,6 +205,7 @@ if __name__ == "__main__":
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to use for tcp.")
     parser.add_argument("--port", type=int, default=9091, help="Port to use for tcp.")
     parser.add_argument("--model", type=str, default="models/export.pkl", help="PyTorch trained model.")
+    parser.add_argument("--vae", type=str, default=None, help="A pre-trained vae model.")
     parser.add_argument("--record", action='store_true', default=False, help="Record data to a tub file?")
     parser.add_argument(
         "--env_name", type=str, default="all", help="Name of donkey sim environment.", choices=env_list + ["all"]
@@ -200,16 +215,19 @@ if __name__ == "__main__":
 
     conf = get_conf(args.sim, args.host, args.port)
 
-    learn = load_learner(args.model)
+    if args.vae is not None:
+        driver = get_split_driver(args.vae, args.model)
+    else:
+        driver = load_learner(args.model)
 
     episodes = None
 
     if args.env_name == "all":
         for env_name in env_list:
-            test_track(env_name, conf, learn, args.model, args.record)
+            test_track(env_name, conf, driver, args.model, args.record)
 
     else:
-        episodes = test_track(args.env_name, conf, learn, args.model, args.record)
+        episodes = test_track(args.env_name, conf, driver, args.model, args.record)
 
     if episodes is not None:
         for idx, ep in enumerate(episodes):

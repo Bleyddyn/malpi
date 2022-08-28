@@ -2,10 +2,10 @@
 """
 
 import torch
-#from models import BaseVAE
 from torch import nn
 from torch.nn import functional as F
-#from .types_ import *
+# import load_learner from fastai
+from fastai.vision.all import *
 
 from typing import List, Callable, Union, Any, TypeVar, Tuple
 Tensor = TypeVar('torch.tensor')
@@ -220,3 +220,55 @@ class VanillaVAE(BaseVAE):
         """
 
         return self.forward(x)[0]
+
+class SplitDriver(nn.Module):
+    """ A DonkeyCar driver that takes as inputs mu/log_var from a
+        pre-trained VAE, samples a z-space, then drives based on that. """
+
+    def __init__(self, latent_dim, outputs=2):
+        super(SplitDriver, self).__init__()
+
+        self.latent_dim = latent_dim
+        self.driver = nn.Sequential(
+            torch.nn.Linear(self.latent_dim, 50),
+            torch.nn.ReLU(),
+            torch.nn.Linear(50, outputs),
+            torch.nn.Tanh()
+        )
+
+    def reparameterize(self, mu: Tensor, logvar: Tensor) -> Tensor:
+        """
+        Reparameterization trick to sample from N(mu, var) from
+        N(0,1).
+        :param mu: (Tensor) Mean of the latent Gaussian [B x D]
+        :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
+        :return: (Tensor) [B x D]
+        """
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return (eps * std) + mu
+
+    def forward(self, mu: Tensor, log_var: Tensor, **kwargs) -> List[Tensor]:
+        # Input should be mu and log_var, both of length latent_dim
+        z = self.reparameterize(mu, log_var)
+        return self.driver.forward(z)
+
+class CombinedDriver(nn.Module):
+
+    def __init__(self, vae_path, driver_path):
+        self.vae = load_learner(vae_path)
+        self.driver = load_learner(driver_path)
+        self.count = 0
+
+    def forward(self, image: Tensor, **kwargs) -> List[Tensor]:
+        mu, log_var = self.vae.encode(image)
+        outputs = self.driver.forward(mu, log_var)
+        #self.count += 1
+        #if self.count % 20 == 0:
+        #    print(f"{mu.mean()} {mu.std()}")
+        #    print(f"{log_var.mean()} {log_var.std()}")
+        #    print(f"{outputs}")
+        return outputs
+
+    def predict(self, image: Tensor, **kwargs) -> List[Tensor]:
+        return self.forward(image)
