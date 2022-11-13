@@ -76,8 +76,10 @@ class Example(QMainWindow):
             self.filesDock.newFileSelected[str].connect(self.loadData)
             self.filesDock.setVisible(False)
 
-        # Use all available space
-        self.setGeometry(QDesktopWidget().availableGeometry())
+        # Set geometry to 3/4 of the screen
+        screen = QDesktopWidget().screenGeometry()
+        self.resize(screen.width() * 3/4, screen.height() * 3/4)
+        self.move( screen.width() * 1/8, screen.height() * 1/8)
 
         self.show()
         
@@ -359,6 +361,7 @@ class Example(QMainWindow):
             else:
                 self.auxDataAct.setEnabled(False)
             self.updateImages()
+            self.setFocus() # Make sure the window has keyboard focus
         else:
             QMessageBox.warning(self, 'Unknown Filetype', "The file you selected could not be opened by any available file formats.", buttons=QMessageBox.Ok, defaultButton=QMessageBox.Ok)
 
@@ -424,6 +427,7 @@ class Example(QMainWindow):
                 else:
                     self.changeCurrentAction( newAction )
         else:
+            print( f"Unsupported key: {e}" )
             e.ignore()
 
 

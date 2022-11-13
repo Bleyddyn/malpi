@@ -41,7 +41,7 @@ class VAEDockWidget(QDockWidget):
 
         # From https://sparrow.dev/torchvision-transforms/
         self.preprocess = T.Compose([
-            T.Resize(64),
+            T.Resize(128), # TODO Get this from the loaded model
             T.ToTensor(),
             T.Normalize( mean=0.5, std=0.2 )
         ])
