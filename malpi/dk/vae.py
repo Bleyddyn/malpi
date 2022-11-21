@@ -121,7 +121,7 @@ class VanillaVAE(BaseVAE):
                             nn.Conv2d(hidden_dims[-1], out_channels= 3,
                                       kernel_size= 3, stride=1, padding= 1),
                             PrintLayer(),
-                            nn.Tanh())
+                            nn.Sigmoid())
 
     def encode(self, input: Tensor) -> List[Tensor]:
         """
@@ -187,7 +187,8 @@ class VanillaVAE(BaseVAE):
         log_var = args[0][3]
 
         kld_weight = self.kld_weight # kwargs['M_N'] # Account for the minibatch samples from the dataset
-        recons_loss =F.mse_loss(recons, input)
+        #recons_loss =F.mse_loss(recons, input)
+        recons_loss =F.binary_cross_entropy(recons, input)
 
         kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim = 1), dim = 0)
 
@@ -225,15 +226,19 @@ class SplitDriver(nn.Module):
     """ A DonkeyCar driver that takes as inputs mu/log_var from a
         pre-trained VAE, samples a z-space, then drives based on that. """
 
-    def __init__(self, latent_dim, outputs=2):
+    def __init__(self, latent_dim, outputs=2, no_var=False):
         super(SplitDriver, self).__init__()
 
         self.latent_dim = latent_dim
+        self.no_var = no_var
+
         self.driver = nn.Sequential(
-            torch.nn.Linear(self.latent_dim, 50),
+            torch.nn.Linear(self.latent_dim, 250),
             torch.nn.ReLU(),
-            torch.nn.Linear(50, outputs),
-            torch.nn.Tanh()
+            torch.nn.Linear(250, 100),
+            torch.nn.ReLU(),
+            torch.nn.Linear(100, outputs),
+            torch.nn.Tanh() # -1 to +1
         )
 
     def reparameterize(self, mu: Tensor, logvar: Tensor) -> Tensor:
@@ -250,14 +255,18 @@ class SplitDriver(nn.Module):
 
     def forward(self, mu: Tensor, log_var: Tensor, **kwargs) -> List[Tensor]:
         # Input should be mu and log_var, both of length latent_dim
-        z = self.reparameterize(mu, log_var)
+        if self.no_var:
+            z = mu
+        else:
+            z = self.reparameterize(mu, log_var)
         return self.driver.forward(z)
 
 class CombinedDriver(nn.Module):
 
-    def __init__(self, vae_path, driver_path):
+    def __init__(self, vae_path, driver_path, no_var=False):
         self.vae = load_learner(vae_path)
         self.driver = load_learner(driver_path)
+        self.driver.no_var = no_var
         self.count = 0
 
     def forward(self, image: Tensor, **kwargs) -> List[Tensor]:

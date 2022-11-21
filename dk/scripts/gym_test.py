@@ -30,7 +30,7 @@ MAX_TIME_STEPS = 2000
 MAX_LAPS = 3
 
 
-def test_track(env_name, conf, learn, model_path, record, vae_path=None):
+def test_track(env_name, conf, learn, model_path, record, vae_path=None, verbose=True):
     tub = None
 
     if record:
@@ -42,13 +42,13 @@ def test_track(env_name, conf, learn, model_path, record, vae_path=None):
     # make sure you have no track loaded
     exit_scene(env)
 
-    episodes = simulate(env, learn, model_path, tub, vae_path)
+    results = simulate(env, learn, model_path, tub, vae_path, verbose=verbose)
 
     # exit the scene and close the env
     exit_scene(env)
     env.close()
 
-    return episodes
+    return results
 
 def select_action(env):
     return env.action_space.sample()  # taking random action from the action_space
@@ -96,9 +96,11 @@ def get_tub( base_path, meta ):
     tub_writer = TubWriter(tub_path, inputs=inputs, types=types, metadata=meta)
     return tub_writer
 
-def simulate(env, learn, model_path, tub=None, vae_path=None):
+def simulate(env, learn, model_path, tub=None, vae_path=None, verbose=True):
 
-    episodes = []
+    lap_times = []
+    rewards = []
+    steps = [0] * NUM_EPISODES
 
     for episode in range(NUM_EPISODES):
 
@@ -107,19 +109,24 @@ def simulate(env, learn, model_path, tub=None, vae_path=None):
 
         laps = []
         lap_count = 0
+        ep_reward = 0
         for t in range(MAX_TIME_STEPS):
 
-            # Preprocess the observation
-            obv = cv2.resize(obv, (128, 128) )
-            obv = np.transpose(obv,(2,0,1))
-            obv = obv.astype(np.float32) / 255.0
-            obv = torch.from_numpy(obv).float().unsqueeze(0)
+            # Preprocess the observation, but only for vae based models
+            #obv = cv2.resize(obv, (128, 128) )
+            #obv = np.transpose(obv,(2,0,1))
+            #obv = obv.astype(np.float32) / 255.0
+            #if len(obv.shape) > 3:
+            #    obv = torch.from_numpy(obv).float().unsqueeze(0)
+            #action = learn.predict(obv)[0].detach().numpy()
 
             # Select an action
-            action = learn.predict(obv)[0].detach().numpy()
+            action = learn.predict(obv)[0]
 
             # execute the action
             obv, reward, done, info = env.step(action)
+            ep_reward += reward
+
             #if t % 100 == 0:
             #    print("t: {}  action: {}  reward: {}  done: {}  info: {}".format(t, action, reward, done, info))
             if tub is not None:
@@ -134,25 +141,29 @@ def simulate(env, learn, model_path, tub=None, vae_path=None):
                 #print( f"Lap {lap_count} time: {info['last_lap_time']}" )
                 #print( f"Lap index: {env.viewer.handler.starting_line_index}" )
 
+            steps[episode] = t
+
             if done:
-                if info['hit'] != 'none':
+                if verbose and info['hit'] != 'none':
                     print(f"Hit: {info['hit']} after {t} steps")
                 break
 
             if lap_count >= MAX_LAPS:
                 break
 
-        print( f"Lap times: {laps}" )
+        if verbose:
+            print( f"Lap times: {laps}" )
 
-        if not done:
+        if verbose and not done:
             print("Episode finished")
 
-        episodes.append( laps )
+        lap_times.append( laps )
+        rewards.append( ep_reward )
 
     if tub is not None:
         tub.close()
 
-    return episodes
+    return {"lap_times": lap_times, "rewards": rewards, "steps": steps}
 
 def exit_scene(env):
     env.viewer.exit_scene()
@@ -175,8 +186,30 @@ def get_conf(sim, host, port):
         }
 
 def get_split_driver(vae_path, driver_path):
-    driver = CombinedDriver(vae_path, driver_path)
+    driver = CombinedDriver(vae_path, driver_path, no_var=True)
     return driver
+
+def main( env_name, model, vae_model=None, sim="sim_path", host="127.0.0.1", port=9091, record=False):
+
+    conf = get_conf(sim, host, port)
+
+    if vae_model is not None:
+        driver = get_split_driver(vae_model, model)
+    else:
+        driver = load_learner(model)
+
+    results = None
+
+    if env_name == "all":
+        for env_name in env_list:
+            test_track(env_name, conf, driver, model, record)
+
+    else:
+        results = test_track(env_name, conf, driver, model, record, verbose=False)
+
+    results['driver'] = model
+
+    return results
 
 if __name__ == "__main__":
 
@@ -220,17 +253,17 @@ if __name__ == "__main__":
     else:
         driver = load_learner(args.model)
 
-    episodes = None
+    results = None
 
     if args.env_name == "all":
         for env_name in env_list:
             test_track(env_name, conf, driver, args.model, args.record)
 
     else:
-        episodes = test_track(args.env_name, conf, driver, args.model, args.record)
+        results = test_track(args.env_name, conf, driver, args.model, args.record)
 
-    if episodes is not None:
-        for idx, ep in enumerate(episodes):
-            print( f"Ep {idx+1}: {ep}" )
+    if results is not None:
+        for idx in range(len(results["lap_times"])):
+            print( f"Ep {idx+1}: {results['lap_times'][idx]} {results['rewards'][idx]}" )
 
     print("test finished")

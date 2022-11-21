@@ -45,7 +45,8 @@ class Tubv2Format(DriveFormat):
         self.tub = Tub(path, read_only=False)
         self.meta = self.tub.manifest.metadata # Bug. tub.metadata doesn't get updated with info from disc
         self.deleted_indexes = self.tub.manifest.deleted_indexes
-        print( f"Deleted: {self.deleted_indexes}" )
+        if len(self.deleted_indexes) > 0:
+            print( f"Deleted: {self.deleted_indexes}" )
         self.edit_list = set()
         self.shape = None
 
@@ -93,6 +94,7 @@ class Tubv2Format(DriveFormat):
 
         for ix in self.edit_list:
             rec = self.records[ix]
+            print( f"EditRecord: {rec}" )
             self.update_line( ix, rec )
 
         self.tub.manifest._update_catalog_metadata(update=True)
@@ -141,7 +143,10 @@ class Tubv2Format(DriveFormat):
         angle, throttle = self.get_angle_throttle(rec)
         old_action = [angle, throttle]
         if not np.array_equal( old_action, new_action ):
+            print( f"setActionForIndex" )
             if (rec["user/angle"] != new_action[0]) or (rec["user/throttle"] != new_action[1]):
+                print( f"user: {rec['user/angle']}/{rec['user/throttle']}" )
+                print( f"new: {new_action}" )
                 # Save the original values if not already done
                 if "orig/angle" not in rec:
                     rec["orig/angle"] = rec["user/angle"]
