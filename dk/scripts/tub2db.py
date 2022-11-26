@@ -102,8 +102,21 @@ def insert_one_tub(conn, tub):
     new_source="""insert into Sources (name, full_path, image_width, image_height, created, count, inputs, types)
                              values (?,?,?,?,?,?,?,?);"""
     source_meta="insert into SourceMeta (source_id, key, value) values (?,?,?);"
-    stage='''insert into TubRecords (source_id, tub_index, timestamp_ms, "image_path", "mode", "user_angle", "user_throttle")
-                              select ?, _index, _timestamp_ms, "cam/image_array", "user/mode", "user/angle", "user/throttle" from TubStaging;'''
+# Need to handle pilot/angle and edit/angle (if present)
+# Check if the dataframe has a column named "pilot/angle"
+
+    extra_columns = [ f'"{c}"' for c in df.columns if c in ["pilot/angle", "pilot/throttle"]]
+    if len(extra_columns) > 0:
+        extra_columns_string = ", " + ", ".join(extra_columns)
+    else:
+        extra_columns_string = ""
+    # create a copy of extra_columns with '/' replaced by '_'
+    extra_underscore = extra_columns_string.replace('/','_')
+
+    stage=f'''insert into TubRecords (source_id, tub_index, timestamp_ms, image_path, mode, user_angle,
+                                      user_throttle{extra_underscore})
+                              select ?, _index, _timestamp_ms, "cam/image_array", "user/mode", "user/angle",
+                                      "user/throttle"{extra_columns_string} from TubStaging;'''
 
     cur = conn.cursor()
 
