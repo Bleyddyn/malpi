@@ -133,6 +133,29 @@ def get_dataframe(inputs, verbose=False):
 
     return df_all
 
+def get_dataframe_from_db( input_file, conn ):
+    """ Load DonkeyCar training data from a database and return a dataframe.
+           The database is created in malpi/dk/scripts/tub2db.py.
+    """
+    if isinstance(input_file, str):
+        input_file = [input_file]
+    filelist = preprocessFileList( input_file )
+    names = [ f'"{Path(f).name}"' for f in filelist if '"' not in f ]
+
+    sql=f"""SELECT Sources.full_path || '/' || '{Tub.images()}' || '/' || TubRecords.image_path as "cam/image_array",
+-- Add a case statement to get pilot_angle and pilot_throttle if not null
+-- otherwise use user_angle and user_throttle
+case when pilot_angle is not null then pilot_angle else user_angle end as "user/angle",
+case when pilot_throttle is not null then pilot_throttle else user_throttle end as "user/throttle"
+  FROM TubRecords, Sources
+ WHERE TubRecords.source_id = Sources.source_id
+AND Sources.name in ({", ".join(names)})
+AND TubRecords.deleted = 0;"""
+
+    df = pd.read_sql_query(sql, conn)
+
+    return df
+
 def get_data(inputs, df_all=None, batch_tfms=None, item_tfms=None, verbose=False, autoencoder=False):
 
     if df_all is None:
