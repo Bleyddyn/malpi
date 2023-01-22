@@ -16,6 +16,7 @@ TODO:
 import sys
 import os
 import argparse
+import platform
 
 from PyQt5.QtWidgets import QMainWindow, QWidget, QAction, QMenu, QMessageBox, QApplication, QDesktopWidget, qApp, QPushButton
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QGridLayout
@@ -25,6 +26,7 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtCore import Qt, QEvent
 from PyQt5.QtCore import pyqtSignal, QObject
+from PyQt5.QtCore import QT_VERSION_STR, PYQT_VERSION_STR
 
 from malpi.ui.DriveFormat import DriveFormat
 # Import all formats so they can register themselves
@@ -32,6 +34,7 @@ import malpi.ui.MalpiFormat
 import malpi.ui.TubFormat
 import malpi.ui.Tubv2Format
 from malpi.ui.dagger.FilesDockWidget import FilesDockWidget
+from malpi.ui.dagger.DBDockWidget import DBDockWidget
 from malpi.ui.dagger.AuxDataDialog import AuxDataDialog
 from malpi.ui.dagger.AuxDataUI import AuxDataUI
 
@@ -51,6 +54,7 @@ class Example(QMainWindow):
         self.metaDock = None
         self.statsDock = None
         self.filesDock = None
+        self.DBDock = None
         self.path = ""
 
         self.initUI()
@@ -75,6 +79,13 @@ class Example(QMainWindow):
             self.viewMenu.addAction( self.filesDock.toggleViewAction() )
             self.filesDock.newFileSelected[str].connect(self.loadData)
             self.filesDock.setVisible(False)
+
+        if self.DBDock is None:
+            self.DBDock = DBDockWidget("DB", self)
+            self.addDockWidget(self.DBDock.preferredArea(), self.DBDock)
+            self.viewMenu.addAction( self.DBDock.toggleViewAction() )
+            self.DBDock.newFileSelected[str].connect(self.loadData)
+            self.DBDock.setVisible(False)
 
         # Set geometry to 3/4 of the screen
         screen = QDesktopWidget().screenGeometry()
@@ -313,6 +324,11 @@ class Example(QMainWindow):
             self.filesDock.setFile(filelist)
             self.filesDock.setVisible(True)
 
+    def setDatabase(self, database):
+        if self.DBDock is not None:
+            self.DBDock.setDatabase(database)
+            self.DBDock.setVisible(True)
+
     def unsavedDataAskUser(self, text, yesButtonText, noButtonText):
         msgBox = QMessageBox(QMessageBox.Warning, "Unsaved changes", text)
         #msgBox.setTitle("Unsaved changes")
@@ -328,9 +344,7 @@ class Example(QMainWindow):
         return False
 
     def loadData(self, path):
-        if not os.path.isdir(path):
-            return
-
+        print( "Loading data from {}".format(path) )
         if self.data is not None and not self.data.isClean():
             reply = self.unsavedDataAskUser("This document has unsaved changes.\nAre you sure you want to open a new document?", "Open", "Don't Open")
             if not reply:
@@ -338,6 +352,7 @@ class Example(QMainWindow):
             
         self.data = DriveFormat.handlerForFile( path )
         if self.data is not None:
+            print( "Loading data with {}".format(self.data) )
             def prog( sbar ):
                 def prog1( num, tot ):
                     dig = len(str(tot))
@@ -570,8 +585,10 @@ def getOptions():
 
     parser = argparse.ArgumentParser(description='Adjust action values for a drive.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('file', nargs='*', metavar="File", help='Recorded drive data file to open')
-    parser.add_argument('-f', '--file', dest="filelist", help='File with a list of files to open, one per line')
+    parser.add_argument('-f', '--file', dest="filelist", default=None, help='File with a list of files to open, one per line')
+    parser.add_argument('--db', dest="database", default=None, help='Path to an sqlite3 database file')
     parser.add_argument('--test_only', action="store_true", default=False, help='run tests, then exit')
+    parser.add_argument('-v', '--version', action="store_true", default=False, help='Print version info, then exit')
 
     args = parser.parse_args()
 
@@ -581,6 +598,13 @@ def main():
 
     args = getOptions()
 
+    if args.version:
+        print( "Versions:" )
+        print( "   MaLPi: {}".format( malpi.__version__ ) )
+        print( "    PyQt: Qt.{} PyQt.{}".format( QT_VERSION_STR, PYQT_VERSION_STR) )
+        print( "  Python: {}".format( platform.python_version() ) )
+        exit()
+
     if args.test_only:
         runTests(args)
         exit()
@@ -589,8 +613,10 @@ def main():
     ex = Example()
     if len(args.file) > 0:
         ex.loadData(args.file[0])
-    if args.filelist:
+    if args.filelist is not None:
         ex.setFileList(args.filelist)
+    if args.database is not None:
+        ex.setDatabase(args.database)
     sys.exit(app.exec_())
 
 if __name__ == '__main__':

@@ -133,20 +133,31 @@ def get_dataframe(inputs, verbose=False):
 
     return df_all
 
-def get_dataframe_from_db( input_file, conn ):
+def get_dataframe_from_db( input_file, conn, sources: list=None ):
     """ Load DonkeyCar training data from a database and return a dataframe.
            The database is created in malpi/dk/scripts/tub2db.py.
+           sources: a list of Tub names to be used directly in the select statement
+           otherwise get Tub names from all files listed in input_file (list or string)
     """
-    if isinstance(input_file, str):
-        input_file = [input_file]
-    filelist = preprocessFileList( input_file )
-    names = [ f'"{Path(f).name}"' for f in filelist if '"' not in f ]
 
+    if sources is None:
+        if isinstance(input_file, str):
+            input_file = [input_file]
+        filelist = preprocessFileList( input_file )
+        names = [ f'"{Path(f).name}"' for f in filelist if '"' not in f ]
+    else:
+        names = [ f'"{s}"' for s in sources ]
+
+# Edited values for angle and throttle override all others.
+# Otherwise user overrides pilot. But there's no way to know if the user overrode the pilot if the user value is zero.
     sql=f"""SELECT Sources.full_path || '/' || '{Tub.images()}' || '/' || TubRecords.image_path as "cam/image_array",
--- Add a case statement to get pilot_angle and pilot_throttle if not null
--- otherwise use user_angle and user_throttle
-case when pilot_angle is not null then pilot_angle else user_angle end as "user/angle",
-case when pilot_throttle is not null then pilot_throttle else user_throttle end as "user/throttle"
+-- edit > user > pilot
+case when edit_angle is not null then edit_angle
+     when pilot_angle is not null and user_angle == 0.0 then pilot_angle
+     else user_angle end as "user/angle",
+case when edit_throttle is not null then edit_throttle
+     when pilot_throttle is not null and user_throttle == 0.0 then pilot_throttle
+     else user_throttle end as "user/throttle"
   FROM TubRecords, Sources
  WHERE TubRecords.source_id = Sources.source_id
 AND Sources.name in ({", ".join(names)})
