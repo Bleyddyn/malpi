@@ -101,6 +101,10 @@ def simulate(env, learn, model_path, tub=None, vae_path=None, verbose=True):
     lap_times = []
     rewards = []
     steps = [0] * NUM_EPISODES
+    vae = False
+
+    if hasattr(learn, 'vae'):
+        vae = True
 
     for episode in range(NUM_EPISODES):
 
@@ -112,16 +116,16 @@ def simulate(env, learn, model_path, tub=None, vae_path=None, verbose=True):
         ep_reward = 0
         for t in range(MAX_TIME_STEPS):
 
-            # Preprocess the observation, but only for vae based models
-            #obv = cv2.resize(obv, (128, 128) )
-            #obv = np.transpose(obv,(2,0,1))
-            #obv = obv.astype(np.float32) / 255.0
-            #if len(obv.shape) > 3:
-            #    obv = torch.from_numpy(obv).float().unsqueeze(0)
-            #action = learn.predict(obv)[0].detach().numpy()
-
-            # Select an action
-            action = learn.predict(obv)[0]
+            if vae:
+                # Preprocess the observation, but only for vae based models
+                obv = cv2.resize(obv, (128, 128) )
+                obv = np.transpose(obv,(2,0,1))
+                obv = obv.astype(np.float32) / 255.0
+                obv = torch.from_numpy(obv).float().unsqueeze(0)
+                action = learn.predict(obv)[0].detach().numpy()
+            else:
+                # Select an action
+                action = learn.predict(obv)[0]
 
             # execute the action
             obv, reward, done, info = env.step(action)

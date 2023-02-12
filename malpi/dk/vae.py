@@ -51,11 +51,12 @@ class VanillaVAE(BaseVAE):
                  latent_dim: int,
                  in_channels: int = 3,
                  hidden_dims: List = None,
+                 beta = 4.0,
                  **kwargs) -> None:
         super(VanillaVAE, self).__init__()
 
         self.latent_dim = latent_dim
-        self.kld_weight = 0.00025 # TODO calculate based on: #al_img.shape[0]/ self.num_train_imgs
+        self.kld_weight = beta
         self.meta = {}
 
         modules = []
@@ -186,13 +187,13 @@ class VanillaVAE(BaseVAE):
         mu = args[0][2]
         log_var = args[0][3]
 
-        kld_weight = self.kld_weight # kwargs['M_N'] # Account for the minibatch samples from the dataset
+        kld_weight = self.kld_weight
         #recons_loss =F.mse_loss(recons, input)
         recons_loss =F.binary_cross_entropy(recons, input)
 
         kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim = 1), dim = 0)
 
-        loss = recons_loss + kld_weight * kld_loss
+        loss = recons_loss + (kld_weight * kld_loss)
         return loss
 
     def sample(self,

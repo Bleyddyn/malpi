@@ -4,6 +4,7 @@
 # Demonstrating how to get DonkeyCar Tub files into a PyTorch/fastai DataBlock
 import argparse
 import os
+import sqlite3
 
 import matplotlib.pyplot as plt
 
@@ -14,11 +15,15 @@ from fastai.data.transforms import ColReader, Normalize, RandomSplitter
 import torch
 from torchvision import transforms as T
 
-from donkeycar.parts.tub_v2 import Tub
+# Import DonkeyCar, suppressing it's annoying banner
+from contextlib import redirect_stdout
+with redirect_stdout(open(os.devnull, "w")):
+    import donkeycar as dk
+
 import pandas as pd
 from pathlib import Path
 
-from malpi.dk.train import preprocessFileList, get_data
+from malpi.dk.train import preprocessFileList, get_data, get_dataframe, get_dataframe_from_db
 from malpi.dk.vae import VanillaVAE
 
 from PIL import Image
@@ -56,23 +61,44 @@ def show_results( model_path, sample_dir ):
     reconstructed, in_tensor, mu, log_var = learner.model.forward(img_tensor)
     reconstructed = reconstructed.detach().numpy()
 
+    print( f"Shape: {mu.shape}" )
+    mu_avg = torch.mean(mu, 0, keepdim=True)
+    var_avg = torch.mean( torch.exp(0.5 * log_var), 0, keepdim=True )
+    print( f"Averages mu/log_var: {mu_avg}/{var_avg}" )
+
     n = 10
+    samples = []
+    for i in range(n):
+        z = learner.model.reparameterize(mu, log_var)
+        img = learner.model.decode(z[0,:])
+        samples.append( img.detach().numpy().squeeze() )
+   
+    samples = np.asarray(samples)
+    #samples = learner.model.sample( 10, torch.device("cpu") )
+    #samples = samples.detach().numpy()
+
     plt.figure(figsize=(20, 4))
     for i in range(n):
         # display original
-        ax = plt.subplot(2, n, i+1)
+        ax = plt.subplot(3, n, i+1)
         plt.imshow(np.transpose(images[i], (1,2,0)) )
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
 
         # display reconstruction
-        ax = plt.subplot(2, n, i + n+1)
+        ax = plt.subplot(3, n, i + n+1)
         plt.imshow(np.transpose(reconstructed[i], (1,2,0)))
+        ax.get_xaxis().set_visible(False)
+        ax.get_yaxis().set_visible(False)
+
+        # display samples
+        ax = plt.subplot(3, n, i + n + n+1)
+        plt.imshow(np.transpose(samples[i], (1,2,0)))
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
     plt.show()
 
-def train_vae( input_file, model_name, epochs=100, lr=4.7e-4, z_dim=128, notes=None ):
+def train_vae( input_file, df, model_name, epochs=100, lr=4.7e-4, z_dim=128, beta=4.0, notes=None ):
 
     random_resize = False
 
@@ -94,9 +120,10 @@ def train_vae( input_file, model_name, epochs=100, lr=4.7e-4, z_dim=128, notes=N
                   Brightness(max_lighting=0.4),
                   Contrast(max_lighting=0.4),
                   Saturation(max_lighting=0.4)]
-    callbacks = [EarlyStoppingCallback(monitor='valid_loss', min_delta=0.0, patience=5)]
+    #callbacks = [EarlyStoppingCallback(monitor='valid_loss', min_delta=0.0, patience=5)]
+    callbacks = []
 
-    vae = VanillaVAE(input_size=image_size, latent_dim=z_dim)
+    vae = VanillaVAE(input_size=image_size, latent_dim=z_dim, beta=beta)
 
     vae.meta['input'] = input_file
     vae.meta['image_size'] = (image_size,image_size)
@@ -108,7 +135,7 @@ def train_vae( input_file, model_name, epochs=100, lr=4.7e-4, z_dim=128, notes=N
     if notes is not None:
         vae.meta['notes'] = notes
 
-    dls = get_data(input_file, item_tfms=item_tfms, batch_tfms=batch_tfms, verbose=False, autoencoder=True)
+    dls = get_data(None, df_all=df, item_tfms=item_tfms, batch_tfms=batch_tfms, verbose=False, autoencoder=True)
     vae.meta['train'] = len(dls.train_ds)
     vae.meta['valid'] = len(dls.valid_ds)
 
@@ -130,12 +157,16 @@ def get_options():
                         help='Name of the VAE model. Default will be models/vae_v#.pkl (with # being the next available number)')
     parser.add_argument('--z_dim', type=int, default=128,
                         help='Latent dimension')
+    parser.add_argument('--beta', type=float, default=4.0,
+                        help='VAE beta parameter')
     parser.add_argument('--verbose', action='store_true',
                         help='Verbose output')
     parser.add_argument('--vis', action='store_true',
                         help='Visualize an existing model. Requires --name')
     parser.add_argument('--notes', type=str, default=None,
                         help='Notes to be added to the models metadata')
+    parser.add_argument('--database', type=str, default=None,
+                        help='Path to an sqlite3 database.')
     return parser.parse_args()
 
 
@@ -144,5 +175,15 @@ if __name__ == "__main__":
 
     if args.vis:
         show_results(args.name, sample_dir="vae_test_images")
+    elif args.database is not None:
+        conn = sqlite3.connect(args.database)
+        df_all = get_dataframe_from_db( input_file=None, conn=conn, sources=None )
+        #dls = get_data( input_file, df_all=df, verbose=True)
+        conn.close()
+        print( f"Training on data from file {args.database} with {len(df_all)} records" )
+        train_vae( input_file=args.database, df=df_all, model_name=args.name, epochs=args.epochs, lr=args.lr, z_dim=args.z_dim, notes=args.notes, beta=args.beta )
     else:
-        train_vae( input_file=args.input, model_name=args.name, epochs=args.epochs, lr=args.lr, z_dim=args.z_dim, notes=args.notes )
+        df_all = get_dataframe(args.input, args.verbose)
+        print( f"Training on tubs from file {args.input} with {len(df_all)} records" )
+
+        train_vae( input_file=args.input, df=df_all, model_name=args.name, epochs=args.epochs, lr=args.lr, z_dim=args.z_dim, notes=args.notes, beta=args.beta )

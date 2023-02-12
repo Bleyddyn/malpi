@@ -133,20 +133,32 @@ def get_dataframe(inputs, verbose=False):
 
     return df_all
 
-def get_dataframe_from_db( input_file, conn, sources: list=None ):
+def get_dataframe_from_db( input_file, conn, sources: list=None, image_min: int=128 ):
     """ Load DonkeyCar training data from a database and return a dataframe.
            The database is created in malpi/dk/scripts/tub2db.py.
            sources: a list of Tub names to be used directly in the select statement
-           otherwise get Tub names from all files listed in input_file (list or string)
+               otherwise get Tub names from all files listed in input_file (list or string)
+               if sources and input_file are both none then return all sources.
+           image_min: Minimum width and height for images.
     """
 
-    if sources is None:
+    if sources is None and input_file is None:
+        names = ""
+    elif input_file is not None:
         if isinstance(input_file, str):
             input_file = [input_file]
         filelist = preprocessFileList( input_file )
         names = [ f'"{Path(f).name}"' for f in filelist if '"' not in f ]
+        names = f'AND Sources.name in ({", ".join(names)})'
     else:
         names = [ f'"{s}"' for s in sources ]
+        names = f'AND Sources.name in ({", ".join(names)})'
+
+    if image_min is not None:
+        images = f"""AND Sources.image_width >= {image_min}
+    AND Sources.image_height >= {image_min}"""
+    else:
+        images = ""
 
 # Edited values for angle and throttle override all others.
 # Otherwise user overrides pilot. But there's no way to know if the user overrode the pilot if the user value is zero.
@@ -160,7 +172,8 @@ case when edit_throttle is not null then edit_throttle
      else user_throttle end as "user/throttle"
   FROM TubRecords, Sources
  WHERE TubRecords.source_id = Sources.source_id
-AND Sources.name in ({", ".join(names)})
+{names}
+{images}
 AND TubRecords.deleted = 0;"""
 
     df = pd.read_sql_query(sql, conn)
@@ -241,16 +254,16 @@ def train_autoencoder( input_file, epochs, lr, name, verbose=True ):
     #plt.savefig(name + '.png')
     return learn, dls
 
-def get_prevae_data( vae_model_file, input_file="tracks_all.txt", z_len=64, verbose=False ):
+def get_prevae_data( vae_model_file, dls=None, input_file="tracks_all.txt", z_len=64, verbose=False ):
     """ Replace DonkeyCar image data with mu/log_var from a pre-trained VAE.
             Load data from the tubs listed in input_file
             Use the VAE to generate mu/log_var
             Return those along with throttle and steering
     """
 
-    item_tfms = [Resize(128,method="squish")]
-    df_all = get_dataframe(input_file)
-    dls = get_data(input_file, df_all=df_all, item_tfms=item_tfms, verbose=False, autoencoder=False)
+    if dls is None:
+        df_all = get_dataframe(input_file)
+        dls = get_data(input_file, df_all=df_all, verbose=False, autoencoder=False)
 
     learn = load_learner(vae_model_file, cpu=False)
 
