@@ -30,6 +30,19 @@ MAX_TIME_STEPS = 2000
 MAX_LAPS = 3
 
 
+# DonkeyCar Simulator environment names
+env_list = [
+    "donkey-warehouse-v0",
+    "donkey-generated-roads-v0",
+    "donkey-avc-sparkfun-v0",
+    "donkey-generated-track-v0",
+    "donkey-roboracingleague-track-v0",
+    "donkey-waveshare-v0",
+    "donkey-minimonaco-track-v0",
+    "donkey-warren-track-v0",
+    "donkey-circuit-launch-track-v0",
+]
+
 def test_track(env_name, conf, learn, model_path, record, vae_path=None, verbose=True):
     tub = None
 
@@ -202,35 +215,18 @@ def main( env_name, model, vae_model=None, sim="sim_path", host="127.0.0.1", por
     else:
         driver = load_learner(model)
 
-    results = None
+    results = { 'driver': model }
 
     if env_name == "all":
         for env_name in env_list:
-            test_track(env_name, conf, driver, model, record)
+            results[env_name] = test_track(env_name, conf, driver, model, record)
 
     else:
-        results = test_track(env_name, conf, driver, model, record, verbose=False)
-
-    results['driver'] = model
+        results[env_name] = test_track(env_name, conf, driver, model, record, verbose=False)
 
     return results
 
 if __name__ == "__main__":
-
-    # Initialize the donkey environment
-    # where env_name one of:
-    env_list = [
-        "donkey-warehouse-v0",
-        "donkey-generated-roads-v0",
-        "donkey-avc-sparkfun-v0",
-        "donkey-generated-track-v0",
-        "donkey-roboracingleague-track-v0",
-        "donkey-waveshare-v0",
-        "donkey-minimonaco-track-v0",
-        "donkey-warren-track-v0",
-        "donkey-thunderhill-track-v0",
-        "donkey-circuit-launch-track-v0",
-    ]
 
     parser = argparse.ArgumentParser(description="Test a PyTorch trained DonkeyCar model on one or more simulated tracks.", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
