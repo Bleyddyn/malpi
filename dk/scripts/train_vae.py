@@ -23,8 +23,8 @@ with redirect_stdout(open(os.devnull, "w")):
 import pandas as pd
 from pathlib import Path
 
-from malpi.dk.train import preprocessFileList, get_data, get_dataframe, get_dataframe_from_db
-from malpi.dk.vae import VanillaVAE
+from malpi.dk.train import preprocessFileList, get_data, get_dataframe, get_dataframe_from_db, get_dataframe_from_db_with_aux
+from malpi.dk.vae import VanillaVAE, VAEWithAuxOuts
 
 from PIL import Image
 
@@ -98,7 +98,7 @@ def show_results( model_path, sample_dir ):
         ax.get_yaxis().set_visible(False)
     plt.show()
 
-def train_vae( input_file, df, model_name, epochs=100, lr=4.7e-4, z_dim=128, beta=4.0, notes=None ):
+def train_vae( input_file, df, model_name, epochs=100, lr=4.7e-4, z_dim=128, beta=4.0, notes=None, aux=False ):
 
     random_resize = False
 
@@ -123,7 +123,10 @@ def train_vae( input_file, df, model_name, epochs=100, lr=4.7e-4, z_dim=128, bet
     #callbacks = [EarlyStoppingCallback(monitor='valid_loss', min_delta=0.0, patience=5)]
     callbacks = []
 
-    vae = VanillaVAE(input_size=image_size, latent_dim=z_dim, beta=beta)
+    if aux:
+        vae = VAEWithAuxOuts(input_size=image_size, latent_dim=z_dim, beta=beta)
+    else:
+        vae = VanillaVAE(input_size=image_size, latent_dim=z_dim, beta=beta)
 
     vae.meta['input'] = input_file
     vae.meta['image_size'] = (image_size,image_size)
@@ -134,8 +137,9 @@ def train_vae( input_file, df, model_name, epochs=100, lr=4.7e-4, z_dim=128, bet
     vae.meta['transforms'] = len(batch_tfms)
     if notes is not None:
         vae.meta['notes'] = notes
-
-    dls = get_data(None, df_all=df, item_tfms=item_tfms, batch_tfms=batch_tfms, verbose=False, autoencoder=True)
+    if aux:
+        vae.meta['aux'] = True
+    dls = get_data(None, df_all=df, item_tfms=item_tfms, batch_tfms=batch_tfms, verbose=False, autoencoder=True, aux=aux)
     vae.meta['train'] = len(dls.train_ds)
     vae.meta['valid'] = len(dls.valid_ds)
 
@@ -167,6 +171,8 @@ def get_options():
                         help='Notes to be added to the models metadata')
     parser.add_argument('--database', type=str, default=None,
                         help='Path to an sqlite3 database.')
+    parser.add_argument('--aux', action='store_true',
+                        help='Train with auxiliary data (cte, steering, throttle, track #)')
     return parser.parse_args()
 
 
@@ -177,11 +183,13 @@ if __name__ == "__main__":
         show_results(args.name, sample_dir="vae_test_images")
     elif args.database is not None:
         conn = sqlite3.connect(args.database)
-        df_all = get_dataframe_from_db( input_file=None, conn=conn, sources=None )
-        #dls = get_data( input_file, df_all=df, verbose=True)
+        if args.aux:
+            df_all = get_dataframe_from_db_with_aux( input_file=None, conn=conn, sources=None )
+        else:
+            df_all = get_dataframe_from_db( input_file=None, conn=conn, sources=None )
         conn.close()
-        print( f"Training on data from file {args.database} with {len(df_all)} records" )
-        train_vae( input_file=args.database, df=df_all, model_name=args.name, epochs=args.epochs, lr=args.lr, z_dim=args.z_dim, notes=args.notes, beta=args.beta )
+        print( f"Training on data from database {args.database} with {len(df_all)} records" )
+        train_vae( input_file=args.database, df=df_all, model_name=args.name, epochs=args.epochs, lr=args.lr, z_dim=args.z_dim, notes=args.notes, beta=args.beta, aux=args.aux )
     else:
         df_all = get_dataframe(args.input, args.verbose)
         print( f"Training on tubs from file {args.input} with {len(df_all)} records" )

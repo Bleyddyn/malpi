@@ -21,6 +21,44 @@ from PIL import Image
 
 from donkeycar.parts.tub_v2 import Tub
 
+def create_track_table(con):
+    """
+track_id gym_name sim_name
+1 donkey-warehouse-v0 warehouse
+2 donkey-generated-roads-v0 generated_road
+3 donkey-avc-sparkfun-v0 sparkfun_avc
+4 donkey-generated-track-v0 generated_track
+5 donkey-roboracingleague-track-v0	roboracingleague_1
+6 donkey-waveshare-v0 waveshare
+7 donkey-minimonaco-track-v0 mini_monaco
+8 donkey-mountain-track-v0 mountain_track
+9 donkey-warren-track-v0 warren
+10 donkey-circuit-launch-track-v0 circuit_launch
+"""
+    track_string='''CREATE TABLE IF NOT EXISTS "Tracks" (
+    "track_id" INTEGER PRIMARY KEY NOT NULL,
+    "gym_name" TEXT NOT NULL,
+    "sim_name" TEXT,
+    UNIQUE(gym_name)
+    );'''
+
+    cur = con.cursor()
+    cur.execute(track_string)
+
+    cur.execute("SELECT COUNT(*) AS CNTREC FROM Tracks;")
+    row=cur.fetchone()
+    if row[0] == 0:
+        cur.execute("INSERT INTO Tracks (track_id, gym_name, sim_name) VALUES (1, 'donkey-warehouse-v0', 'warehouse');")
+        cur.execute("INSERT INTO Tracks (track_id, gym_name, sim_name) VALUES (2, 'donkey-generated-roads-v0', 'generated_road');")
+        cur.execute("INSERT INTO Tracks (track_id, gym_name, sim_name) VALUES (3, 'donkey-avc-sparkfun-v0', 'sparkfun_avc');")
+        cur.execute("INSERT INTO Tracks (track_id, gym_name, sim_name) VALUES (4, 'donkey-generated-track-v0', 'generated_track');")
+        cur.execute("INSERT INTO Tracks (track_id, gym_name, sim_name) VALUES (5, 'donkey-roboracingleague-track-v0', 'roboracingleague_1');")
+        cur.execute("INSERT INTO Tracks (track_id, gym_name, sim_name) VALUES (6, 'donkey-waveshare-v0', 'waveshare');")
+        cur.execute("INSERT INTO Tracks (track_id, gym_name, sim_name) VALUES (7, 'donkey-minimonaco-track-v0', 'mini_monaco');")
+        cur.execute("INSERT INTO Tracks (track_id, gym_name, sim_name) VALUES (8, 'donkey-mountain-track-v0', 'mountain_track');")
+        cur.execute("INSERT INTO Tracks (track_id, gym_name, sim_name) VALUES (9, 'donkey-warren-track-v0', 'warren');")
+        cur.execute("INSERT INTO Tracks (track_id, gym_name, sim_name) VALUES (10, 'donkey-circuit-launch-track-v0', 'circuit_launch');")
+
 def create_db(con):
     tub_records_string='''CREATE TABLE IF NOT EXISTS "TubRecords" (
     "source_id" INTEGER NOT NULL,
@@ -35,6 +73,11 @@ def create_db(con):
     "edit_angle" REAL, --Manually edited
     "edit_throttle" REAL, --Manually edited
     "deleted" BOOLEAN NOT NULL DEFAULT false CHECK (deleted IN (0, 1)),
+    "pos_cte" REAL DEFAULT NULL,
+    "pos_pos_x" REAL DEFAULT NULL,
+    "pos_pos_y" REAL DEFAULT NULL,
+    "pos_pos_z" REAL DEFAULT NULL,
+    "pos_speed" REAL DEFAULT NULL,
     PRIMARY KEY(source_id, tub_index),
     FOREIGN KEY(source_id) REFERENCES Sources (source_id)
        ON UPDATE CASCADE
@@ -69,15 +112,52 @@ def create_db(con):
     cur.execute(sources_string)
     cur.execute(source_meta)
     cur.execute(tub_records_string)
+    create_track_table(con)
     cur.execute("DROP TABLE IF EXISTS TubStaging;")
+
+    # See https://stackoverflow.com/questions/18920136/check-if-a-column-exists-in-sqlite
+    pos_query="SELECT COUNT(*) AS CNTREC FROM pragma_table_info('TubRecords') WHERE name='pos_cte';"
+    has_cols=cur.execute(pos_query)
+    row=has_cols.fetchone()
+    if row[0] == 0:
+        cur.execute("ALTER TABLE TubRecords ADD COLUMN pos_cte REAL DEFAULT NULL")
+        cur.execute("ALTER TABLE TubRecords ADD COLUMN pos_pos_x REAL DEFAULT NULL")
+        cur.execute("ALTER TABLE TubRecords ADD COLUMN pos_pos_y REAL DEFAULT NULL")
+        cur.execute("ALTER TABLE TubRecords ADD COLUMN pos_pos_z REAL DEFAULT NULL")
+        cur.execute("ALTER TABLE TubRecords ADD COLUMN pos_speed REAL DEFAULT NULL")
 
 def get_training(conn):
     # See: https://www.sqlitetutorial.net/sqlite-case/
     # select "cam/image_array", CASE WHEN "user/angle" != 0 THEN "user/angle" WHEN "pilot/angle" != 0 THEN "pilot/angle" ELSE 0 END angle from TubRecords limit 10;
     pass
 
-def insert_one_tub(conn, tub):
+def tub_to_staging(conn, tub):
     df = pd.DataFrame(tub)
+    # Insert the dataframe into a staging table
+    df.to_sql(name="TubStaging", con=conn, schema=None, if_exists='replace', index=False, index_label="df_index", chunksize=None, dtype=None, method=None)
+    return df
+
+def update1(conn, source_name):
+    """ NOTE: I'm not going to try this for now. Updating will require deleting the db and reloading everything.
+        Update new columns from staging table to TubRecords table.
+        pos/cte, pos/pos_x, pos/pos_y, pos/pos_z, pos/speed """
+
+    """ From: https://stackoverflow.com/questions/28668817/update-column-with-value-from-another-table-using-sqlite
+        UPDATE table1 
+           SET status = (SELECT t2.status FROM table2 t2 WHERE t2.trans_id = id)
+           WHERE id IN (SELECT trans_id FROM table2 t2 WHERE t2.trans_id= id)
+           """
+
+    cur = conn.cursor()
+    cur.execute( "UPDATE TubRecords SET pos_cte = (SELECT 't2.pos/cte' FROM TubStaging t2 WHERE t2.df_index = tub_index) WHERE tub_index IN (SELECT t2.df_index FROM TubStaging t2 WHERE t2.df_index= tub_index);" )
+    cur.execute("UPDATE TubRecords SET pos_pos_x = (SELECT pos_pos_x FROM TubStaging WHERE TubStaging.df_index = TubRecords.df_index);")
+    cur.execute("UPDATE TubRecords SET pos_pos_y = (SELECT pos_pos_y FROM TubStaging WHERE TubStaging.df_index = TubRecords.df_index);")
+    cur.execute("UPDATE TubRecords SET pos_pos_z = (SELECT pos_pos_z FROM TubStaging WHERE TubStaging.df_index = TubRecords.df_index);")
+    cur.execute("UPDATE TubRecords SET pos_speed = (SELECT pos_speed FROM TubStaging WHERE TubStaging.df_index = TubRecords.df_index);")
+
+def insert_one_tub(conn, tub):
+
+    df = tub_to_staging(conn, tub)
 
     # get image width/height
     img = Image.open( tub.images_base_path + "/0_cam_image_array_.jpg" )
@@ -95,9 +175,6 @@ def insert_one_tub(conn, tub):
     inputs = json.dumps(tub.manifest.inputs)
     types = json.dumps(tub.manifest.types)
 
-    # Insert the dataframe into a staging table
-    df.to_sql(name="TubStaging", con=conn, schema=None, if_exists='replace', index=False, index_label="df_index", chunksize=None, dtype=None, method=None)
-
 
     new_source="""insert into Sources (name, full_path, image_width, image_height, created, count, inputs, types)
                              values (?,?,?,?,?,?,?,?);"""
@@ -105,7 +182,8 @@ def insert_one_tub(conn, tub):
 # Need to handle pilot/angle and edit/angle (if present)
 # Check if the dataframe has a column named "pilot/angle"
 
-    extra_columns = [ f'"{c}"' for c in df.columns if c in ["pilot/angle", "pilot/throttle"]]
+    extra_columns = [ f'"{c}"' for c in df.columns if c in ["pilot/angle", "pilot/throttle",
+                                      "pos/cte", "pos/pos_x", "pos/pos_y", "pos/pos_z", "pos/speed"]]
     if len(extra_columns) > 0:
         extra_columns_string = ", " + ", ".join(extra_columns)
     else:
@@ -148,12 +226,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Import a DonkeyCar Tub file into an sqlite3 database', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('database', help="An sqlite3 database (will be created if it doesn't exist")
     parser.add_argument('tub_path', nargs='*', help='Path to a DonkeyCar Tub file')
+    parser.add_argument('--gen_tracks', action='store_true', default=False, help='Create the Tracks table, then exit')
 
     args = parser.parse_args()
 
     database = args.database
     conn = sqlite3.connect(database)
     create_db(conn)
+
+    if args.gen_tracks:
+        create_track_table(conn)
+        conn.commit()
+        exit(0)
 
     for fname in args.tub_path:
         try:
