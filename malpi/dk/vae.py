@@ -1,5 +1,6 @@
 """ From: https://github.com/AntixK/PyTorch-VAE/blob/master/models/vanilla_vae.py
 """
+import pickle
 
 import torch
 from torch import nn
@@ -7,7 +8,7 @@ from torch.nn import functional as F
 # import load_learner from fastai
 from fastai.vision.all import *
 
-from typing import List, Callable, Union, Any, TypeVar, Tuple
+from typing import List, Callable, Union, Any, TypeVar, Tuple, Dict
 Tensor = TypeVar('torch.tensor')
 
 from abc import abstractmethod
@@ -57,6 +58,7 @@ class VanillaVAE(BaseVAE):
 
         self.latent_dim = latent_dim
         self.kld_weight = beta
+        self.img_dim = (in_channels, input_size, input_size) # For use by the TensorboardGenerativeModelImageSampler
         self.meta = {}
 
         modules = []
@@ -73,8 +75,7 @@ class VanillaVAE(BaseVAE):
                 nn.Sequential(
                     nn.Conv2d(in_channels, out_channels=h_dim,
                               kernel_size= 3, stride= 2, padding  = 1),
-                    PrintLayer(),
-                    nn.BatchNorm2d(h_dim),
+                    #nn.BatchNorm2d(h_dim),
                     nn.LeakyReLU())
             )
             in_channels = h_dim
@@ -100,8 +101,7 @@ class VanillaVAE(BaseVAE):
                                        stride = 2,
                                        padding=1,
                                        output_padding=1),
-                    PrintLayer(),
-                    nn.BatchNorm2d(hidden_dims[i + 1]),
+                    #nn.BatchNorm2d(hidden_dims[i + 1]),
                     nn.LeakyReLU())
             )
 
@@ -131,6 +131,8 @@ class VanillaVAE(BaseVAE):
         :param input: (Tensor) Input tensor to encoder [N x C x H x W]
         :return: (Tensor) List of latent codes
         """
+        if isinstance(input, tuple) or isinstance(input, list):
+            input = input[0]
         result = self.encoder(input)
         result = torch.flatten(result, start_dim=1)
 
@@ -169,8 +171,8 @@ class VanillaVAE(BaseVAE):
 
     def forward(self, input: Tensor, **kwargs) -> List[Tensor]:
         mu, log_var = self.encode(input)
-        z = self.reparameterize(mu, log_var)
-        return  [self.decode(z), input, mu, log_var]
+        self.z = self.reparameterize(mu, log_var)
+        return  [self.decode(self.z), input, mu, log_var]
 
     def loss_function(self,
                       *args,
@@ -188,8 +190,23 @@ class VanillaVAE(BaseVAE):
         log_var = args[0][3]
 
         kld_weight = self.kld_weight
-        #recons_loss =F.mse_loss(recons, input)
-        recons_loss =F.binary_cross_entropy(recons, input)
+        recons_loss =F.mse_loss(recons, input)
+        #recons_loss =F.binary_cross_entropy(recons, input)
+
+        kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim = 1), dim = 0)
+
+        loss = recons_loss + (kld_weight * kld_loss)
+        return loss
+
+    def loss_function_exp(self, target, recons, mu, log_var ) -> dict:
+        """
+        Computes the VAE loss function.
+        KL(N(\mu, \sigma), N(0, 1)) = \log \frac{1}{\sigma} + \frac{\sigma^2 + \mu^2}{2} - \frac{1}{2}
+        """
+
+        kld_weight = self.kld_weight
+        recons_loss =F.mse_loss(recons, target)
+        #recons_loss =F.binary_cross_entropy(recons, target)
 
         kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim = 1), dim = 0)
 
@@ -222,6 +239,84 @@ class VanillaVAE(BaseVAE):
         """
 
         return self.forward(x)[0]
+
+class VAEWithAuxOuts(VanillaVAE):
+    """ A VAE with a number of auxiliary outputs.
+        Auxiliary outputs are:
+            CTE (crosstrack error): 1D float
+            Steering angle: 1D float
+            Throttle: 1D float
+            Track name: categorical, 9 categories
+        @param aux_dims: a list of the linear layer size for each of four auxiliary outputs
+    """
+
+    def __init__(self,
+                 input_size: int,
+                 latent_dim: int,
+                 in_channels: int = 3,
+                 hidden_dims: List = None,
+                 beta = 4.0,
+                 aux_dims: List = [250,250,250,250],
+                 **kwargs) -> None:
+        super(VAEWithAuxOuts, self).__init__(input_size, latent_dim, in_channels, hidden_dims, beta)
+
+        self.aux_dims = aux_dims
+        self.build_aux()
+
+    def build_aux(self):
+        # For each aux output, we need a linear layer and an activation function
+        # Steering: linear, Tanh
+        # Throttle: linear, Tanh
+        # CTE: linear, no activation
+        # Track number: linear, softmax
+
+        self.steering = nn.Sequential(
+            nn.Linear(self.latent_dim, self.aux_dims[1]),
+            nn.ReLU(),
+            nn.Linear(self.aux_dims[1], 1),
+            nn.Tanh()
+        )
+        self.throttle = nn.Sequential(
+            nn.Linear(self.latent_dim, self.aux_dims[2]),
+            nn.ReLU(),
+            nn.Linear(self.aux_dims[2], 1),
+            nn.Tanh()
+        )
+        self.cte = nn.Sequential(
+            nn.Linear(self.latent_dim, self.aux_dims[0]),
+            nn.ReLU(),
+            nn.Linear(self.aux_dims[0], 1)
+        )
+        self.track = nn.Sequential(
+            nn.Linear(self.latent_dim, self.aux_dims[3]),
+            nn.ReLU(),
+            nn.Linear(self.aux_dims[3], 9),
+            nn.Softmax(dim=0)
+        )
+
+    def forward(self, input: Tensor, **kwargs) -> List[Tensor]:
+        recons, _, mu, log_var = super(VAEWithAuxOuts, self).forward(input, **kwargs)
+        cte_out = self.cte(self.z)
+        steering_out = self.steering(self.z)
+        throttle_out = self.throttle(self.z)
+        track_out = self.track(self.z)
+        return  [recons, mu, log_var, steering_out, throttle_out, cte_out, track_out]
+
+    def loss_function(self, targets: Dict, outputs: Dict, mu, log_var) -> dict:
+        """ Combine the VAE loss with the auxiliary losses. """
+        loss = super(VAEWithAuxOuts, self).loss_function_exp(targets["images"], outputs["images"], mu, log_var )
+
+        drive_out    = torch.cat((outputs["steering"], outputs["throttle"], outputs["cte"]), dim=1)
+        drive_target = torch.cat((targets["steering"], targets["throttle"], targets["cte"]), dim=1)
+        drive_loss = F.mse_loss(drive_out, drive_target)
+
+        # Track loss
+        track_out = outputs["track"]
+        track_target = targets["track"]
+        track_target = torch.nn.functional.one_hot(track_target, num_classes=9).float()
+        track_loss = F.cross_entropy(track_out, track_target)
+
+        return (loss, drive_loss, track_loss)
 
 class SplitDriver(nn.Module):
     """ A DonkeyCar driver that takes as inputs mu/log_var from a

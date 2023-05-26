@@ -5,7 +5,7 @@ import torch
 
 # TODO Only import what we need
 #from fastai.data.all import *
-from fastai.data.block import DataBlock, RegressionBlock
+from fastai.data.block import DataBlock, RegressionBlock, CategoryBlock
 from fastai.vision.data import ImageBlock
 from fastai.vision.augment import Resize
 #from fastai.vision.all import *
@@ -180,7 +180,65 @@ AND TubRecords.deleted = 0;"""
 
     return df
 
-def get_data(inputs, df_all=None, batch_tfms=None, item_tfms=None, verbose=False, autoencoder=False):
+def get_dataframe_from_db_with_aux( input_file, conn, sources: list=None, image_min: int=128 ):
+    """ Load DonkeyCar training data from a database and return a dataframe.
+           The database is created in malpi/dk/scripts/tub2db.py.
+           sources: a list of Tub names to be used directly in the select statement
+               otherwise get Tub names from all files listed in input_file (list or string)
+               if sources and input_file are both none then return all sources.
+           image_min: Minimum width and height for images.
+    """
+
+    if sources is None and input_file is None:
+        names = ""
+    elif input_file is not None:
+        if isinstance(input_file, str):
+            input_file = [input_file]
+        filelist = preprocessFileList( input_file )
+        names = [ f'"{Path(f).name}"' for f in filelist if '"' not in f ]
+        names = f'AND Sources.name in ({", ".join(names)})'
+    else:
+        names = [ f'"{s}"' for s in sources ]
+        names = f'AND Sources.name in ({", ".join(names)})'
+
+    if image_min is not None:
+        images = f"""AND Sources.image_width >= {image_min}
+    AND Sources.image_height >= {image_min}"""
+    else:
+        images = ""
+
+# Edited values for angle and throttle override all others.
+# Otherwise user overrides pilot. But there's no way to know if the user overrode the pilot if the user value is zero.
+# select t.source_id, pos_cte, sm.value, tr.track_id from TubRecords t, Sources s, SourceMeta sm, Tracks tr where t.source_id = s.source_id and s.source_id = sm.source_id and sm.key="DONKEY_GYM_ENV_NAME" AND sm.value=tr.gym_name ORDER BY RANDOM() LIMIT 10;
+
+    sql=f"""SELECT Sources.full_path || '/' || '{Tub.images()}' || '/' || TubRecords.image_path as "cam/image_array",
+        case when edit_angle is not null then edit_angle
+             when pilot_angle is not null and user_angle == 0.0 then pilot_angle
+             else user_angle end as "user/angle",
+        case when edit_throttle is not null then edit_throttle
+             when pilot_throttle is not null and user_throttle == 0.0 then pilot_throttle
+             else user_throttle end as "user/throttle",
+           TubRecords.pos_cte,
+           Tracks.track_id
+  FROM TubRecords, Sources, SourceMeta, Tracks
+ WHERE TubRecords.source_id = Sources.source_id
+   AND Sources.source_id = SourceMeta.source_id
+   AND SourceMeta.key = "DONKEY_GYM_ENV_NAME"
+   AND SourceMeta.value = Tracks.gym_name
+   AND TubRecords.pos_cte is not null
+ {names}
+ {images}
+AND TubRecords.deleted = 0;"""
+
+    df = pd.read_sql_query(sql, conn)
+    df['user/angle'] = df['user/angle'].astype(np.float32)
+    df['user/throttle'] = df['user/throttle'].astype(np.float32)
+    df['pos_cte'] = df['pos_cte'].astype(np.float32)
+    df['track_id'] = df['track_id'].astype(np.int64)
+
+    return df
+
+def get_data(inputs, df_all=None, batch_tfms=None, item_tfms=None, verbose=False, autoencoder=False, aux=False):
 
     if df_all is None:
         df_all = get_dataframe(inputs, verbose)
@@ -191,8 +249,14 @@ def get_data(inputs, df_all=None, batch_tfms=None, item_tfms=None, verbose=False
         tfms = item_tfms
 
     if autoencoder:
-        blocks = (ImageBlock, ImageBlock)
-        y_reader = ColReader("cam/image_array")
+        if aux:
+            blocks = (ImageBlock, ImageBlock, RegressionBlock(n_out=3), CategoryBlock)
+            y_reader = [ColReader("cam/image_array"), 
+                        ColReader( ["user/angle", "user/throttle", "pos_cte"] ),
+                        ColReader("track_id")]
+        else:
+            blocks = (ImageBlock, ImageBlock)
+            y_reader = ColReader("cam/image_array")
     else:
         blocks = (ImageBlock, RegressionBlock(n_out=2))
         y_reader = ColReader(['user/angle','user/throttle'])
