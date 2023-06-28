@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import sqlite3
 
 import torch
 
@@ -237,6 +238,15 @@ AND TubRecords.deleted = 0;"""
     df['track_id'] = df['track_id'].astype(np.int64)
 
     return df
+
+def get_track_metadata( conn ):
+    # Get all track meta data and return it as a dictionary
+    sql = """SELECT track_id, gym_name, sim_name FROM Tracks;"""
+    c = conn.cursor()
+    c.execute(sql)
+    track_meta = {t: (a,b) for t,a,b in c.fetchall()}
+
+    return track_meta
 
 def get_data(inputs, df_all=None, batch_tfms=None, item_tfms=None, verbose=False, autoencoder=False, aux=False):
 

@@ -1,9 +1,10 @@
 from typing import Optional, Tuple
 
 import torch
-from lightning.pytorch import Callback, LightningModule, Trainer
+from lightning.pytorch import Callback, LightningModule, Trainer, LightningDataModule
 import torchvision
 
+from malpi.dk.vis import show_vae_results, evaluate_vae, visualize_batch
 
 class TensorboardGenerativeModelImageSampler(Callback):
     """Generates images and logs to tensorboard. Your model must implement the ``forward`` function for generation.
@@ -36,6 +37,7 @@ class TensorboardGenerativeModelImageSampler(Callback):
         norm_range: Optional[Tuple[int, int]] = None,
         scale_each: bool = False,
         pad_value: int = 0,
+        data_module: LightningDataModule = None,
     ) -> None:
         """
         Args:
@@ -61,27 +63,31 @@ class TensorboardGenerativeModelImageSampler(Callback):
         self.norm_range = norm_range
         self.scale_each = scale_each
         self.pad_value = pad_value
+        self.data_module = data_module
 
     def on_train_epoch_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
         self._generate_and_log(trainer, pl_module)
 
     def _generate_and_log(self, trainer: Trainer, pl_module: LightningModule) -> None:
-        dim = (self.num_samples, pl_module.latent_dim)
-        z = torch.normal(mean=0.0, std=1.0, size=dim, device=pl_module.device)
 
         # generate images
-        with torch.no_grad():
-            pl_module.eval()
-            images = pl_module.decode(z)
-            pl_module.train()
+#        with torch.no_grad():
+#            pl_module.eval()
+#            images = pl_module.decode(z)
+#            pl_module.train()
+
+        originals, reconstructed, samples = evaluate_vae( self.data_module.val_dataloader(),
+                    pl_module.model, self.num_samples, pl_module.device )
+
+        images = torch.cat( [originals, reconstructed, samples], dim=0 )
 
         if len(images.size()) == 2:
             img_dim = pl_module.img_dim
-            images = images.view(self.num_samples, *img_dim)
+            images = images.view(self.num_samples*3, *img_dim)
 
         grid = torchvision.utils.make_grid(
             tensor=images,
-            nrow=self.nrow,
+            nrow=self.num_samples,
             padding=self.padding,
             normalize=self.normalize,
             range=self.norm_range,
@@ -90,3 +96,6 @@ class TensorboardGenerativeModelImageSampler(Callback):
         )
         str_title = f"{pl_module.__class__.__name__}_images"
         trainer.logger.experiment.add_image(str_title, grid, global_step=trainer.global_step)
+
+if __name__ == "__main__":
+    callback = TensorboardGenerativeModelImageSampler(num_samples=3)

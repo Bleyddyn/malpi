@@ -327,6 +327,7 @@ class SplitDriver(nn.Module):
 
         self.latent_dim = latent_dim
         self.no_var = no_var
+        self.meta = {}
 
         self.driver = nn.Sequential(
             torch.nn.Linear(self.latent_dim, 250),
@@ -359,9 +360,10 @@ class SplitDriver(nn.Module):
 
 class CombinedDriver(nn.Module):
 
-    def __init__(self, vae_path, driver_path, no_var=False):
-        self.vae = load_learner(vae_path)
-        self.driver = load_learner(driver_path)
+    def __init__(self, vae_model, driver, no_var=False):
+        super().__init__()
+        self.vae = vae_model
+        self.driver = driver
         self.driver.no_var = no_var
         self.count = 0
 
