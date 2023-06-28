@@ -7,18 +7,14 @@ Optionally record data to a Tub file during the test.
 Based on gym_test.py by Tawn Kramer
 """
 
-import argparse
-import uuid
 from pathlib import Path
 import logging
 
 import gym
-
 import gym_donkeycar
-
-from fastai.vision.all import *
-
+import numpy as np
 import cv2
+import torch
 
 import donkeycar as dk
 from donkeycar.parts.tub_v2 import TubWriter
@@ -210,7 +206,7 @@ def main( env_name, model, model_path, vae_model, sim="sim_path", host="127.0.0.
 
     driver = CombinedDriver(vae_model, model, no_var=True)
 
-    results = { 'driver': model }
+    results = { 'driver': model_path }
 
     if env_name == "all":
         for env_name in env_list:
@@ -220,43 +216,3 @@ def main( env_name, model, model_path, vae_model, sim="sim_path", host="127.0.0.
         results[env_name] = test_track(env_name, conf, driver, model_path, record, verbose=False)
 
     return results
-
-if __name__ == "__main__":
-
-    parser = argparse.ArgumentParser(description="Test a PyTorch trained DonkeyCar model on one or more simulated tracks.", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument(
-        "--sim",
-        type=str,
-        default="sim_path",
-        help="Path to unity simulator. May be left at default if you would like to start the sim on your own.",
-    )
-    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to use for tcp.")
-    parser.add_argument("--port", type=int, default=9091, help="Port to use for tcp.")
-    parser.add_argument("--model", type=str, default="models/export.pkl", help="PyTorch trained model.")
-    parser.add_argument("--vae", type=str, default=None, help="A pre-trained vae model.")
-    parser.add_argument("--record", action='store_true', default=False, help="Record data to a tub file?")
-    parser.add_argument(
-        "--env_name", type=str, default="all", help="Name of donkey sim environment.", choices=env_list + ["all"]
-    )
-
-    args = parser.parse_args()
-
-    conf = get_conf(args.sim, args.host, args.port)
-
-    # TODO load both models
-    driver = CombinedDriver(vae_model, driver_model, no_var=True)
-
-    results = None
-
-    if args.env_name == "all":
-        for env_name in env_list:
-            test_track(env_name, conf, driver, args.model, args.record)
-
-    else:
-        results = test_track(args.env_name, conf, driver, args.model, args.record)
-
-    if results is not None:
-        for idx in range(len(results["lap_times"])):
-            print( f"Ep {idx+1}: {results['lap_times'][idx]} {results['rewards'][idx]}" )
-
-    print("test finished")
