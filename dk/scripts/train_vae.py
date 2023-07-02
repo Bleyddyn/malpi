@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from malpi.dk.train import preprocessFileList, get_data, get_dataframe, get_dataframe_from_db, get_dataframe_from_db_with_aux
+from malpi.dk.train import preprocessFileList, get_dataframe, get_dataframe_from_db, get_dataframe_from_db_with_aux
 from malpi.dk.vae import VanillaVAE, VAEWithAuxOuts
 from malpi.dk.vae_callbacks import TensorboardGenerativeModelImageSampler
 from malpi.dk.vis import show_vae_results, evaluate_vae, visualize_batch

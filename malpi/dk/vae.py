@@ -5,8 +5,6 @@ import pickle
 import torch
 from torch import nn
 from torch.nn import functional as F
-# import load_learner from fastai
-from fastai.vision.all import *
 
 from typing import List, Callable, Union, Any, TypeVar, Tuple, Dict
 Tensor = TypeVar('torch.tensor')

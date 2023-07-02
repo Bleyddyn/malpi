@@ -1,13 +1,16 @@
 import torch
+from torch.nn import functional
 import lightning.pytorch as pl
 
-from malpi.dk.vae import VanillaVAE, VAEWithAuxOuts
+from malpi.dk.vae import VanillaVAE, VAEWithAuxOuts, SplitDriver
+
 
 class LitVAE(pl.LightningModule):
     """ A LightningModule that creates and trains a VanillaVAE model."""
 
     def __init__(self, lr:float=1e-3, image_size: int=128, latent_dim: int=128, beta:float =4.0, notes: str = None):
         super().__init__()
+        self.save_hyperparameters()
         self.model = VanillaVAE(input_size=image_size, latent_dim=latent_dim, beta=beta)
         #print(self.model)
         self.lr = lr
@@ -68,6 +71,7 @@ class LitVAE(pl.LightningModule):
 class LitVAEWithAux(pl.LightningModule):
     def __init__(self, lr:float=1e-3, image_size: int=128, latent_dim: int=128, beta:float =4.0, notes: str = None):
         super().__init__()
+        self.save_hyperparameters()
         self.model = VAEWithAuxOuts(input_size=image_size, latent_dim=latent_dim, beta=beta)
         self.lr = lr
         self.latent_dim = latent_dim
@@ -138,5 +142,57 @@ class LitVAEWithAux(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         outputs, val_loss = self._run_one_batch(batch, batch_idx)
+        self.log("test_loss", test_loss, prog_bar=True)
+
+class DKDriverModule(pl.LightningModule):
+    def __init__(self, lr:float=1e-3, latent_dim: int=128, notes: str=None):
+        super().__init__()
+        self.save_hyperparameters()
+        self.model = SplitDriver(latent_dim=latent_dim)
+        #print(self.model)
+        self.lr = lr
+        self.latent_dim = latent_dim
+
+        if notes is not None:
+            self.model.meta['notes'] = notes
+        self.model.meta['lr'] = lr
+        self.model.meta['latent_dim'] = latent_dim
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        #optimizer = torch.optim.SGD(self.parameters(), lr=self.lr)
+        return optimizer
+
+    def forward(self, mu, log_var):
+        return self.model(mu, log_var)
+
+    def _run_one_batch(self, batch, batch_idx):
+        mu = batch[0]
+        log_var = batch[1]
+        steering = torch.unsqueeze(batch[2], dim=1)
+        throttle = torch.unsqueeze(batch[3], dim=1)
+        outputs = self.model.forward(mu, log_var)
+        targets = torch.cat((steering, throttle), dim=1)
+
+        drive_loss = functional.mse_loss(outputs, targets)
+
+        return outputs, drive_loss
+
+    def on_train_start(self):
+        if self.logger is not None and 'notes' in self.model.meta:
+            self.logger.experiment.add_text("Notes", self.model.meta['notes'])
+
+    def training_step(self, batch, batch_idx):
+        outputs, train_loss = self._run_one_batch(batch, batch_idx)
+        self.log('train_loss', train_loss, prog_bar=True)
+        return train_loss
+
+    def validation_step(self, batch, batch_idx):
+        outputs, val_loss = self._run_one_batch(batch, batch_idx)
+        self.log("val_loss", val_loss, prog_bar=True)
+        return val_loss
+
+    def test_step(self, batch, batch_idx):
+        outputs, test_loss = self._run_one_batch(batch, batch_idx)
         self.log("test_loss", test_loss, prog_bar=True)
 

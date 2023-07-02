@@ -4,24 +4,10 @@ import sqlite3
 
 import torch
 
-# TODO Only import what we need
-#from fastai.data.all import *
-from fastai.data.block import DataBlock, RegressionBlock, CategoryBlock
-from fastai.vision.data import ImageBlock
-from fastai.vision.augment import Resize
-#from fastai.vision.all import *
-from fastai.data.transforms import ColReader, RandomSplitter
-from fastai.layers import ConvLayer, Flatten
-from fastai.learner import Learner, load_learner
-from fastai.callback.hook import ActivationStats
-from fastai.losses import MSELossFlat
-from fastai.metrics import rmse
-
 from donkeycar.parts.tub_v2 import Tub
 import pandas as pd
 import numpy as np
 
-from malpi.dk.autoencoder import Autoencoder
 
 def removeComments( dir_list ):
     for i in reversed(range(len(dir_list))):
@@ -248,46 +234,8 @@ def get_track_metadata( conn ):
 
     return track_meta
 
-def get_data(inputs, df_all=None, batch_tfms=None, item_tfms=None, verbose=False, autoencoder=False, aux=False):
-
-    if df_all is None:
-        df_all = get_dataframe(inputs, verbose)
-
-    if item_tfms is None:
-        tfms = [Resize(128,method="squish")]
-    else:
-        tfms = item_tfms
-
-    if autoencoder:
-        if aux:
-            blocks = (ImageBlock, ImageBlock, RegressionBlock(n_out=3), CategoryBlock)
-            y_reader = [ColReader("cam/image_array"), 
-                        ColReader( ["user/angle", "user/throttle", "pos_cte"] ),
-                        ColReader("track_id")]
-        else:
-            blocks = (ImageBlock, ImageBlock)
-            y_reader = ColReader("cam/image_array")
-    else:
-        blocks = (ImageBlock, RegressionBlock(n_out=2))
-        y_reader = ColReader(['user/angle','user/throttle'])
-
-    pascal = DataBlock(blocks=blocks,
-                       splitter=RandomSplitter(),
-                       get_x=ColReader("cam/image_array"),
-                       get_y=y_reader,
-                       item_tfms=tfms,
-                       batch_tfms=batch_tfms,
-                       n_inp=1)
-
-    dls = pascal.dataloaders(df_all)
-
-    if verbose:
-        dls.show_batch()
-        dls.one_batch()[0].shape
-
-    return dls
-
-def get_learner(dls):
+""" Not being used. Includes Fastai layers.
+def get_base_dk_model(dls):
     model = torch.nn.Sequential(
         ConvLayer(3, 24, stride=2),
         ConvLayer(24, 32, stride=2),
@@ -301,111 +249,5 @@ def get_learner(dls):
         torch.nn.Linear(50, dls.c),
         torch.nn.Tanh()
         )
-#print(model)
-    callbacks=ActivationStats(with_hist=True)
-    learn = Learner(dls, model,  loss_func = MSELossFlat(), metrics=[rmse], cbs=callbacks)
-    #valley = learn.lr_find()
-    return learn
-
-def get_autoencoder(dls, verbose=True):
-    ae = Autoencoder( z_size=64, input_dimension=(128,128,3) )
-    model = torch.nn.Sequential( ae )
-    if verbose:
-        print(model)
-    callbacks=ActivationStats(with_hist=True)
-    #learn = Learner(dls, model,  loss_func = nn.BCELoss(), metrics=[rmse], cbs=callbacks)
-    learn = Learner(dls, model,  loss_func = torch.nn.MSELoss(), metrics=[rmse], cbs=callbacks)
-    return learn
-
-def train_autoencoder( input_file, epochs, lr, name, verbose=True ):
-    item_tfms = [Resize(128,method="squish")]
-    dls = get_data(input_file, item_tfms=item_tfms, verbose=verbose, autoencoder=True)
-    learn = get_autoencoder(dls, verbose=verbose)
-    learn.fit_one_cycle(epochs, lr)
-    learn.export( name + ".pkl" )
-    #learn.recorder.plot_loss()
-    #learn.show_results(figsize=(20,10))
-    #plt.savefig(name + '.png')
-    return learn, dls
-
-def get_prevae_data( vae_model_file, dls=None, input_file="tracks_all.txt", z_len=64, verbose=False ):
-    """ Replace DonkeyCar image data with mu/log_var from a pre-trained VAE.
-            Load data from the tubs listed in input_file
-            Use the VAE to generate mu/log_var
-            Return those along with throttle and steering
-    """
-
-    if dls is None:
-        df_all = get_dataframe(input_file)
-        dls = get_data(input_file, df_all=df_all, verbose=False, autoencoder=False)
-
-    learn = load_learner(vae_model_file, cpu=False)
-
-    mus = None
-    var = None
-    outputs = None
-    total = 0
-    learn.model.eval()
-    with torch.no_grad():
-        for images, controls in dls.train:
-            total += images.shape[0]
-            _, _, mu, log_var = learn.forward( images)
-            if mus is None:
-                mus = mu
-            else:
-                mus = torch.cat( (mus, mu), 0)
-            if var is None:
-                var = log_var
-            else:
-                var = torch.cat( (var, log_var), 0)
-            if outputs is None:
-                outputs = controls
-            else:
-                outputs = torch.cat( (outputs, controls), 0)
-        for images, controls in dls.valid:
-            total += images.shape[0]
-            _, _, mu, log_var = learn.forward( images)
-            if mus is None:
-                mus = mu
-            else:
-                mus = torch.cat( (mus, mu), 0)
-            if var is None:
-                var = log_var
-            else:
-                var = torch.cat( (var, log_var), 0)
-            if outputs is None:
-                outputs = controls
-            else:
-                outputs = torch.cat( (outputs, controls), 0)
-
-    if verbose:
-        print( f"Mus: {type(mus)} {mus.shape}" )
-        print( f"var: {type(var)} {var.shape}" )
-        print( f"outputs: {type(outputs)} {outputs.shape}" )
-
-#Create a new dataframe from mu/log_var from the vae and steering/throttle
-    df_new = pd.DataFrame()
-    df_new['mu'] = np.array(mus.cpu()).tolist()
-    df_new['var_log'] = np.array(var.cpu()).tolist()
-    df_new['user/angle'] = np.array(outputs[:,0].cpu())
-    df_new['user/throttle'] = np.array(outputs[:,1].cpu())
-
-# Save to sqlite? https://kontext.tech/article/633/pandas-save-dataframe-to-sqlite
-
-#    df_256 = df_all[['user/angle','user/throttle']][0:mus.shape[0]].copy()
-#    df_256['mu'] = np.array(mus.cpu()).tolist()
-#    df_256['var_log'] = np.array(var.cpu()).tolist()
-
-    blocks = (RegressionBlock(n_out=z_len), RegressionBlock(n_out=z_len), RegressionBlock(n_out=2))
-    y_reader = ColReader(['user/angle','user/throttle'])
-    pascal = DataBlock(blocks=blocks,
-                       splitter=RandomSplitter(),
-                       get_x=[ColReader("mu"),ColReader("var_log")],
-                       get_y=y_reader,
-                       item_tfms=None,
-                       batch_tfms=None,
-                       n_inp=2)
-
-    dls = pascal.dataloaders(df_new)
-
-    return dls
+    return model
+"""

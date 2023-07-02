@@ -38,7 +38,6 @@ import json
 
 import torch
 from torch import nn
-from torch.nn import functional as F
 from torchvision import transforms as T
 import lightning.pytorch as pl
 from lightning.pytorch.callbacks import EarlyStopping
@@ -57,8 +56,8 @@ from PIL import Image
 
 from malpi.dk.vae import SplitDriver
 from malpi.dk.train import get_dataframe_from_db_with_aux, get_track_metadata
-from malpi.dk.test import main as gym_test
-from malpi.dk.lit import LitVAE, LitVAEWithAux
+from malpi.dk.test import main as gym_test, print_results
+from malpi.dk.lit import LitVAE, LitVAEWithAux, DKDriverModule
 
 class ImageZDataset(torch.utils.data.Dataset):
     def __init__(self, dataframe, aux=True):
@@ -170,65 +169,6 @@ class DKImageZDataModule(pl.LightningDataModule):
     def teardown(self, stage=None):
         super().teardown(stage)
 
-class DKDriverModule(pl.LightningModule):
-    def __init__(self, lr:float=1e-3, latent_dim: int=128, notes: str=None):
-        super().__init__()
-        self.model = SplitDriver(latent_dim=latent_dim)
-        #print(self.model)
-        self.lr = lr
-        self.latent_dim = latent_dim
-
-        if notes is not None:
-            self.model.meta['notes'] = notes
-        self.model.meta['lr'] = lr
-        self.model.meta['latent_dim'] = latent_dim
-
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
-        #optimizer = torch.optim.SGD(self.parameters(), lr=self.lr)
-        return optimizer
-
-    def forward(self, mu, log_var):
-        return self.model(mu, log_var)
-
-    def _run_one_batch(self, batch, batch_idx):
-        mu = batch[0]
-        log_var = batch[1]
-        steering = torch.unsqueeze(batch[2], dim=1)
-        throttle = torch.unsqueeze(batch[3], dim=1)
-        outputs = self.model.forward(mu, log_var)
-        targets = torch.cat((steering, throttle), dim=1)
-
-        drive_loss = F.mse_loss(outputs, targets)
-
-        return outputs, drive_loss
-
-    def on_train_start(self):
-        if self.logger is not None and 'notes' in self.model.meta:
-            self.logger.experiment.add_text("Notes", self.model.meta['notes'])
-
-    def training_step(self, batch, batch_idx):
-        outputs, train_loss = self._run_one_batch(batch, batch_idx)
-        self.log('train_loss', train_loss, prog_bar=True)
-        return train_loss
-
-    def validation_step(self, batch, batch_idx):
-        outputs, val_loss = self._run_one_batch(batch, batch_idx)
-        self.log("val_loss", val_loss, prog_bar=True)
-        return val_loss
-
-    def test_step(self, batch, batch_idx):
-        outputs, test_loss = self._run_one_batch(batch, batch_idx)
-        self.log("test_loss", test_loss, prog_bar=True)
-
-def get_pilot_learner( dls, z_len, verbose=False ):
-    pmodel = SplitDriver(z_len)
-    if verbose:
-        print(pmodel)
-    callbacks=ActivationStats(with_hist=True)
-    learn = Learner(dls, pmodel,  loss_func=torch.nn.MSELoss(), metrics=[rmse], cbs=callbacks)
-    return learn
-
 def get_track_name( filename ):
     """ Open the file and check each line that starts with a '#',
         possibly followed by whitespace,
@@ -240,27 +180,6 @@ def get_track_name( filename ):
             if line.startswith('#') and 'Track: ' in line:
                 return line.split(':')[1].strip()
     return None
-
-def print_results(results):
-    # Outer loop is a list of drivers, inner loop is a dictionary of tracks
-    # See malpi/dk/scripts/gym_test.py
-    driver_name = None
-    for driver in results:
-        one_driver = driver['driver']
-        if driver_name is None:
-            print( f"Driver {one_driver}" )
-            driver_name = one_driver
-        elif driver != one_driver:
-            print( f"Driver {one_driver}" )
-        for track_name in driver.keys():
-            if track_name == 'driver':
-                continue
-            track = driver[track_name]
-            print( f"     track: {track_name}" )
-            print( f"      laps: {track['lap_times']}" )
-            print( f"     steps: {track['steps']}" )
-            print( f"   rewards: {track['rewards']}" )
-            print()
 
 if __name__ == '__main__':
     torch.set_float32_matmul_precision("high")
@@ -282,7 +201,7 @@ if __name__ == '__main__':
     early_stopping = EarlyStopping('val_loss', patience=5, mode='min', min_delta=0.0)
     callbacks = [early_stopping]
 
-    results = []
+    results = None
 
     vae_model = LitVAE.load_from_checkpoint(vae_model_path)
     vae_model.eval()
@@ -294,20 +213,24 @@ if __name__ == '__main__':
         trainer.fit(lit, data_model)
 
         # Test the model on all tracks
-        model_path = trainer.checkpoint_callback.best_model_path
-        lit.to('cpu')
-        vae_model.to('cpu')
-        res = gym_test('all', lit, model_path, vae_model)
-        results.append( res )
+        # This may fail if the simulator isn't running
+        try:
+            model_path = trainer.checkpoint_callback.best_model_path
+            lit.to('cpu')
+            vae_model.to('cpu')
+            results = gym_test('all', lit, model_path, vae_model)
+        except Exception as e:
+            print( f"Exception {e} while testing model {model_path}" )
 
     else:
         with sqlite3.connect(args.database) as conn:
-            track_meta = get_track_meta(conn)
+            track_meta = get_track_metadata(conn)
         data_model.setup()
         df_all = data_model.df_all
         track_ids = df_all["track_id"].unique()
+        results = []
         for track in track_ids:
-            track_name = track_meta[track][1]
+            track_name = track_meta[track][0]
             data_model = DKImageZDataModule("tubs.sqlite", vae_model, dataframe=df_all, track_id=track, batch_size=256)
             data_model.setup()
 
@@ -317,10 +240,22 @@ if __name__ == '__main__':
             trainer.fit(lit, data_model)
 
             # Test the model
-            #res = gym_test(track_name, output_name, vae_model=vae_model)
-            #results.append( res )
+            try:
+                model_path = trainer.checkpoint_callback.best_model_path
+                lit.to('cpu')
+                vae_model.to('cpu')
+                res = gym_test(track_name, lit, model_path, vae_model=vae_model)
+                results.append( res )
+                vae_model.to('gpu')
+            except Exception as e:
+                print( f"Exception {e} while testing model {model_path}" )
 
-    # Export the results to json
-    with open(args.output_dir + '/results.json', 'w') as f:
-        json.dump(results, f)
-    print_results(results)
+    if results is not None:
+        # Export the results to json
+        with open(args.output_dir + '/results.json', 'w') as f:
+            json.dump(results, f)
+        if isinstance(results, dict):
+            print_results(results)
+        elif isinstance(results, list):
+            for r in results:
+                print_results(r)

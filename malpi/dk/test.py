@@ -169,9 +169,6 @@ def simulate(env, learn, model_path, tub=None, vae_path=None, verbose=True):
         if verbose:
             print( f"Lap times: {laps}" )
 
-        if verbose and not done:
-            print("Episode finished")
-
         lap_times.append( laps )
         rewards.append( ep_reward )
 
@@ -199,6 +196,57 @@ def get_conf(sim, host, port):
         "cam_resolution": (256, 256, 3),
         "log_level": logging.WARNING
         }
+
+"""
+  {"track": "name",
+    "laps": [[16.27978515625, 14.14013671875, 14.19970703125], [], [16.75, 14.39013671875, 14.36962890625]],
+   "steps": [905, 97, 924],
+ "rewards": [2153.973355292229, 167.68827394847173, 2480.692061715336]},
+"""
+
+def max_laps( results ):
+    max_lap = 0
+    for track in results.values():
+        if not isinstance(track, dict):
+            continue
+        for test in track.get("laps",[]):
+            for lap in test:
+                max_lap = max(max_lap, lap)
+    return max_lap
+
+def by_laps( track, cutoff=30.0 ):
+    track_sum = 0
+    for test in track["lap_times"]:
+        for i in test:
+            track_sum += (cutoff - i)
+        if len(test) < 3:
+            track_sum -= (cutoff * (len(test) - 3))
+    return track_sum
+
+def print_results(results):
+    # Outer loop is a list of drivers, inner loop is a dictionary of tracks
+    # See malpi/dk/scripts/gym_test.py
+    driver_name = None
+    max_lap_time = max(max_laps( results ), 30.0)
+
+    for key, value in results.items():
+        if driver_name is None and 'driver' == key:
+            driver_name = value
+            print( f"Driver {driver_name}" )
+        
+        if key == 'driver':
+            continue
+
+        track_name = key
+        lap_summary = by_laps( value, max_lap_time )
+        rew_summary = sum(value.get('rewards',0))       
+
+        print( f"     track: {track_name}" )
+        print( f"      laps: {value['lap_times']}" )
+        print( f"     steps: {value['steps']}" )
+        print( f"   rewards: {value['rewards']}" )
+        print( f"   summary: {lap_summary:.2f} {int(rew_summary)}" )
+        print()
 
 def main( env_name, model, model_path, vae_model, sim="sim_path", host="127.0.0.1", port=9091, record=False):
 
