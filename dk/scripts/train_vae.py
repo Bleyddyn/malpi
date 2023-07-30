@@ -13,6 +13,7 @@ import lightning.pytorch as pl
 from lightning.pytorch.callbacks import EarlyStopping
 from lightning.pytorch.cli import LightningCLI
 from lightning.pytorch.callbacks import LearningRateMonitor, TQDMProgressBar
+from lightning.pytorch.tuner import Tuner
 from torch.utils.data import random_split, DataLoader
 
 # Import DonkeyCar, suppressing it's annoying banner
@@ -30,82 +31,9 @@ from malpi.dk.vae import VanillaVAE, VAEWithAuxOuts
 from malpi.dk.vae_callbacks import TensorboardGenerativeModelImageSampler
 from malpi.dk.vis import show_vae_results, evaluate_vae, visualize_batch
 from malpi.dk.lit import LitVAE, LitVAEWithAux
+from malpi.dk.data import ImageAuxDataset, DKImageDataModule
 
-# https://pytorch.org/tutorials/beginner/data_loading_tutorial.html
-class ImageAuxDataset(torch.utils.data.Dataset):
-    def __init__(self, dataframe, aux=True):
-        self.dataframe = dataframe
-        self.aux = aux
-        self.preprocess = T.Compose([
-            T.ToTensor(),
-            T.Resize(128, antialias=True) # TODO Get this from the loaded model
-            #T.Normalize( mean=0.5, std=0.2 )
-        ])
-
-    def __len__(self):
-        return len(self.dataframe)
-
-    def __getitem__(self, index):
-        if torch.is_tensor(index):
-            index = index.tolist()
-
-        row = self.dataframe.iloc[index]
-        img_path = row['cam/image_array']
-        img = Image.open(img_path)
-        img = self.preprocess(img)
-
-        if self.aux:
-            return (
-                img,
-                row['user/angle'],
-                row['user/throttle'],
-                row['pos_cte'],
-                row['track_id'].astype(np.int64)
-            )
-        else:
-            return img
-
-class DKImageDataModule(pl.LightningDataModule):
-    def __init__(self, input_file: str, batch_size=128, num_workers=8, aux=True, test_batch_size=20):
-        super().__init__()
-        self.input_file = input_file
-        self.batch_size = batch_size
-        self.test_batch_size = test_batch_size
-        self.num_workers = num_workers
-        self.aux = aux
-        self.df_all = None
-        self.train_dataset = None
-        self.val_dataset = None
-
-    def setup(self, stage=None):
-        # Assign train/val datasets for use in dataloaders
-        with sqlite3.connect(self.input_file) as conn:
-            self.df_all = get_dataframe_from_db_with_aux( input_file=None, conn=conn, sources=None )
-        dataset = ImageAuxDataset(self.df_all, self.aux)
-# See: https://pytorch.org/docs/stable/data.html#torch.utils.data.random_split
-        self.train_dataset, self.val_dataset = torch.utils.data.random_split(dataset,[0.8,0.2])
-        #print(f"Train: {len(train_dataset)} Val: {len(val_dataset)}")
-
-    def train_dataloader(self):
-        return torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size,
-                    shuffle=True, num_workers=self.num_workers)
-
-    def val_dataloader(self):
-        return torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size,
-                    shuffle=False, num_workers=self.num_workers)
-
-    def test_dataloader(self):
-        # Select a random subset of the validation dataset
-        subset_indices = torch.randint(0, len(self.val_dataset), (self.test_batch_size,) )
-        subset = torch.utils.data.Subset(self.val_dataset, subset_indices)
-        return torch.utils.data.DataLoader(subset, batch_size=self.test_batch_size,
-                    shuffle=False, num_workers=self.num_workers)
-
-    def predict_dataloader(self):
-        super().predict_dataloader()
-
-    def teardown(self, stage=None):
-        super().teardown(stage)
+import matplotlib.pyplot as plt
 
 #setup(stage) (str) – either 'fit', 'validate', 'test', or 'predict'
 #teardown(stage) (str) – either 'fit', 'validate', 'test', or 'predict'
@@ -155,8 +83,8 @@ if __name__ == "__main__":
     input_file = "tubs.sqlite"
     image_size = 128
     epochs=100
-    lr=4.7e-4
-    batch_size=128
+    lr=0.0033
+    batch_size=128 # Max size according to Tuner is 741
     z_dim=128
     beta=4.0
     notes=None
@@ -186,7 +114,27 @@ if __name__ == "__main__":
     early_stopping = EarlyStopping('val_loss', patience=5, mode='min', min_delta=0.0)
     # TODO Figure out how to get test images into the Sampler
     img_gen = TensorboardGenerativeModelImageSampler(num_samples=6, nrow=3, data_module=data_model )
-    trainer = pl.Trainer(callbacks=[early_stopping, img_gen], max_epochs=epochs)
+    callbacks = None # [early_stopping, img_gen]
+    trainer = pl.Trainer(callbacks=callbacks, max_epochs=epochs, logger=False)
+    tuner = Tuner(trainer)
+
+    if False:
+        tuner.scale_batch_size(lit, datamodule=data_model, mode="binsearch", init_val=128 )
+
+    print( f"lit.hparams: {lit.hparams}" )
+
+    if False:
+        lr_finder = tuner.lr_find(lit, datamodule=data_model, min_lr=1e-6, max_lr=1e-2)
+        # Results can be found in
+        #print(lr_finder.results)
+
+        lr_finder.plot(show=True, suggest=True)
+
+# Pick point based on plot, or get suggestion
+        #print( f"suggestion: {lr_finder.suggestion()}" )
+
+        lit.hparams.lr = tuner.suggestion()
+
     trainer.fit(lit, data_model)
 
     device = torch.device("cpu")
