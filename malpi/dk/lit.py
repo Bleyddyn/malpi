@@ -2,7 +2,7 @@ import torch
 from torch.nn import functional
 import lightning.pytorch as pl
 
-from malpi.dk.vae import VanillaVAE, VAEWithAuxOuts, SplitDriver
+from malpi.dk.vae import VanillaVAE, VAEWithAuxOuts, SplitDriver, RNNDriver
 
 
 class LitVAE(pl.LightningModule):
@@ -172,6 +172,60 @@ class DKDriverModule(pl.LightningModule):
         steering = torch.unsqueeze(batch[2], dim=1)
         throttle = torch.unsqueeze(batch[3], dim=1)
         outputs = self.model.forward(mu, log_var)
+        #outputs, (hidden, cell) = self.model.forward(mu, log_var)
+        targets = torch.cat((steering, throttle), dim=1)
+
+        drive_loss = functional.mse_loss(outputs, targets)
+
+        return outputs, drive_loss
+
+    def on_train_start(self):
+        if self.logger is not None and 'notes' in self.model.meta:
+            self.logger.experiment.add_text("Notes", self.model.meta['notes'])
+
+    def training_step(self, batch, batch_idx):
+        outputs, train_loss = self._run_one_batch(batch, batch_idx)
+        self.log('train_loss', train_loss, prog_bar=True)
+        return train_loss
+
+    def validation_step(self, batch, batch_idx):
+        outputs, val_loss = self._run_one_batch(batch, batch_idx)
+        self.log("val_loss", val_loss, prog_bar=True)
+        return val_loss
+
+    def test_step(self, batch, batch_idx):
+        outputs, test_loss = self._run_one_batch(batch, batch_idx)
+        self.log("test_loss", test_loss, prog_bar=True)
+
+class DKRNNDriverModule(pl.LightningModule):
+    def __init__(self, lr:float=1e-3, latent_dim: int=128, hidden_size=100, notes: str=None):
+        super().__init__()
+        self.save_hyperparameters()
+        self.model = RNNDriver(latent_dim, hidden_size=hidden_size, outputs=2, no_var=False)
+        #print(self.model)
+        self.lr = lr
+        self.latent_dim = latent_dim
+
+        if notes is not None:
+            self.model.meta['notes'] = notes
+        self.model.meta['lr'] = lr
+        self.model.meta['latent_dim'] = latent_dim
+        self.model.meta['hidden_size'] = hidden_size
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        #optimizer = torch.optim.SGD(self.parameters(), lr=self.lr)
+        return optimizer
+
+    def forward(self, mu, log_var, hidden, cell):
+        return self.model(mu, log_var, hidden, cell)
+
+    def _run_one_batch(self, batch, batch_idx, hidden=None, cell=None):
+        mu = batch[0]
+        log_var = batch[1]
+        steering = torch.unsqueeze(batch[2], dim=1)
+        throttle = torch.unsqueeze(batch[3], dim=1)
+        outputs, (hidden, cell) = self.model.forward(mu, log_var, hidden, cell)
         targets = torch.cat((steering, throttle), dim=1)
 
         drive_loss = functional.mse_loss(outputs, targets)

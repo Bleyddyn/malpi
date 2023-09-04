@@ -206,7 +206,8 @@ def get_dataframe_from_db_with_aux( input_file, conn, sources: list=None, image_
              when pilot_throttle is not null and user_throttle == 0.0 then pilot_throttle
              else user_throttle end as "user/throttle",
            TubRecords.pos_cte,
-           Tracks.track_id
+           Tracks.track_id,
+           TubRecords.timestamp_ms
   FROM TubRecords, Sources, SourceMeta, Tracks
  WHERE TubRecords.source_id = Sources.source_id
    AND Sources.source_id = SourceMeta.source_id
@@ -215,13 +216,15 @@ def get_dataframe_from_db_with_aux( input_file, conn, sources: list=None, image_
    AND TubRecords.pos_cte is not null
  {names}
  {images}
-AND TubRecords.deleted = 0;"""
+AND TubRecords.deleted = 0
+ORDER BY TubRecords.timestamp_ms ASC;"""
 
     df = pd.read_sql_query(sql, conn)
     df['user/angle'] = df['user/angle'].astype(np.float32)
     df['user/throttle'] = df['user/throttle'].astype(np.float32)
     df['pos_cte'] = df['pos_cte'].astype(np.float32)
     df['track_id'] = df['track_id'].astype(np.int64)
+    df['timestamp_ms'] = df['timestamp_ms'].astype(np.int64)
 
     return df
 

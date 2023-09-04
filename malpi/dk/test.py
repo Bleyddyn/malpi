@@ -19,7 +19,7 @@ import torch
 import donkeycar as dk
 from donkeycar.parts.tub_v2 import TubWriter
 from malpi.dk.drive import TubNamer
-from malpi.dk.vae import VanillaVAE, SplitDriver, CombinedDriver
+from malpi.dk.vae import VanillaVAE, SplitDriver, CombinedDriver, CombinedRNNDriver
 
 #from scripts.train_tracks import DKDriverModule
 
@@ -121,6 +121,7 @@ def simulate(env, learn, model_path, tub=None, vae_path=None, verbose=True):
 
         # Reset the environment
         obv = env.reset()
+        learn.reset()
 
         laps = []
         lap_count = 0
@@ -248,11 +249,14 @@ def print_results(results):
         print( f"   summary: {lap_summary:.2f} {int(rew_summary)}" )
         print()
 
-def main( env_name, model, model_path, vae_model, sim="sim_path", host="127.0.0.1", port=9091, record=False):
+def main( env_name, model, model_path, vae_model, sim="sim_path", host="127.0.0.1", port=9091, record=False ):
 
     conf = get_conf(sim, host, port)
 
-    driver = CombinedDriver(vae_model, model, no_var=True)
+    if model.model.is_rnn:
+        driver = CombinedRNNDriver(vae_model, model, no_var=True)
+    else:
+        driver = CombinedDriver(vae_model, model, no_var=True)
 
     results = { 'driver': model_path }
 

@@ -53,13 +53,14 @@ class ImageAuxDataset(torch.utils.data.Dataset):
             return img
 
 class DKImageDataModule(pl.LightningDataModule):
-    def __init__(self, input_file: str, batch_size=128, num_workers=8, aux=True, test_batch_size=20):
+    def __init__(self, input_file: str, batch_size=128, num_workers=8, aux=True, test_batch_size=20, shuffle=True):
         super().__init__()
         self.input_file = input_file
         self.batch_size = batch_size
         self.test_batch_size = test_batch_size
         self.num_workers = num_workers
         self.aux = aux
+        self.shuffle = shuffle
         self.df_all = None
         self.train_dataset = None
         self.val_dataset = None
@@ -75,7 +76,7 @@ class DKImageDataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         return torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size,
-                    shuffle=True, num_workers=self.num_workers)
+                    shuffle=self.shuffle, num_workers=self.num_workers)
 
     def val_dataloader(self):
         return torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size,
@@ -119,7 +120,7 @@ class ImageZDataset(torch.utils.data.Dataset):
 
 class DKImageZDataModule(pl.LightningDataModule):
     def __init__(self, vae_model, dataframe, batch_size=128, num_workers=8, aux=False,
-            track_id: int = None, test_batch_size=20, sampler=None):
+            track_id: int = None, test_batch_size=20, sampler=None, shuffle=True):
         super().__init__()
         self.vae_model = vae_model
         self.df_all = dataframe
@@ -129,6 +130,7 @@ class DKImageZDataModule(pl.LightningDataModule):
         self.aux = aux
         self.track_id = track_id
         self.sampler = sampler
+        self.shuffle = True if sampler is not None else shuffle
         self.train_dataset = None
         self.val_dataset = None
         self.verbose = False
@@ -186,7 +188,7 @@ class DKImageZDataModule(pl.LightningDataModule):
         else:
             sampler = None
         return torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size,
-                    shuffle=(sampler is None), num_workers=self.num_workers, sampler=sampler)
+                    shuffle=self.shuffle, num_workers=self.num_workers, sampler=sampler)
 
     def val_dataloader(self):
         return torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size,

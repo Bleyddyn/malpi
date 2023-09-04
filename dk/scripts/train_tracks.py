@@ -54,10 +54,9 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from malpi.dk.vae import SplitDriver
 from malpi.dk.train import get_dataframe_from_db_with_aux, get_track_metadata
 from malpi.dk.test import main as gym_test, print_results
-from malpi.dk.lit import LitVAE, LitVAEWithAux, DKDriverModule
+from malpi.dk.lit import LitVAE, LitVAEWithAux, DKDriverModule, DKRNNDriverModule
 from malpi.dk.data import ImageZDataset, DKImageZDataModule
 
 if __name__ == '__main__':
@@ -69,6 +68,7 @@ if __name__ == '__main__':
     parser.add_argument('--vae_model', type=str, default=None,help='File with a pre-trained VAE model. If not specified, train a non VAE model.')
     parser.add_argument('--database', type=str, default=None,help='Path to an sqlite3 database.')
     parser.add_argument('--one_model', action='store_true', default=False, help='Train a single model on all the input files.')
+    parser.add_argument('--rnn', action='store_true', default=False, help='Train an RNN model.')
     parser.add_argument('--no_logging', action='store_true', default=False, help='Disable logging.')
     parser.add_argument('--notes', type=str, default=None, help='Notes to be added to the models metadata')
     parser.add_argument('output_dir', help='Output directory')
@@ -90,8 +90,11 @@ if __name__ == '__main__':
         df_all = get_dataframe_from_db_with_aux( input_file=None, conn=conn, sources=None )
 
     if args.one_model:
-        data_model = DKImageZDataModule(vae_model, df_all, batch_size=256)
-        lit = DKDriverModule(notes=args.notes)
+        data_model = DKImageZDataModule(vae_model, df_all, batch_size=256, shuffle=False)
+        if args.rnn:
+            lit = DKRNNDriverModule(latent_dim=vae_model.latent_dim, hidden_size=100, notes=args.notes )
+        else:
+            lit = DKDriverModule(notes=args.notes)
         trainer = pl.Trainer(callbacks=callbacks, max_epochs=epochs, logger=(not args.no_logging))
         trainer.fit(lit, data_model)
 
@@ -113,7 +116,10 @@ if __name__ == '__main__':
         for track in track_ids:
             track_name = track_meta[track][0]
             data_model = DKImageZDataModule(vae_model, df_all, track_id=track, batch_size=256)
-            lit = DKDriverModule(notes=args.notes)
+            if args.rnn:
+                lit = DKRNNDriverModule(latent_dim=vae_model.latent_dim, hidden_size=100, notes=args.notes )
+            else:
+                lit = DKDriverModule(notes=args.notes)
             trainer = pl.Trainer(callbacks=callbacks, max_epochs=epochs, logger=(not args.no_logging))
             trainer.fit(lit, data_model)
 

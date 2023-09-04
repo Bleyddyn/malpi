@@ -326,6 +326,7 @@ class SplitDriver(nn.Module):
         self.latent_dim = latent_dim
         self.no_var = no_var
         self.meta = {}
+        self.is_rnn = False
 
         self.driver = nn.Sequential(
             torch.nn.Linear(self.latent_dim, 250),
@@ -356,6 +357,88 @@ class SplitDriver(nn.Module):
             z = self.reparameterize(mu, log_var)
         return self.driver.forward(z)
 
+class RNNDriver(nn.Module):
+    """ A DonkeyCar driver that takes as inputs mu/log_var from a
+        pre-trained VAE, samples a z-space, then drives based on that. """
+
+    def __init__(self, latent_dim, hidden_size=100, outputs=2, no_var=False):
+        super(RNNDriver, self).__init__()
+
+        self.latent_dim = latent_dim
+        self.hidden_size = hidden_size
+        self.no_var = no_var
+        self.meta = {}
+        self.is_rnn = True
+
+        #self.input_embed = nn.Sequential(
+        #    torch.nn.Linear(self.latent_dim, 250),
+        #    torch.nn.ReLU(),
+        #)
+
+        self.rnn = torch.nn.LSTM(input_size=self.latent_dim, hidden_size=self.hidden_size)
+
+        self.output_embed = nn.Sequential(
+            torch.nn.Linear(self.hidden_size, outputs),
+            torch.nn.Tanh() # -1 to +1
+        )
+
+    def reparameterize(self, mu: Tensor, logvar: Tensor) -> Tensor:
+        """
+        Reparameterization trick to sample from N(mu, var) from
+        N(0,1).
+        :param mu: (Tensor) Mean of the latent Gaussian [B x D]
+        :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
+        :return: (Tensor) [B x D]
+        """
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return (eps * std) + mu
+
+    def init_hc(self, device):
+        #h = torch.zeros(1,self.hidden_size)
+        #c = torch.zeros(1,self.hidden_size)
+        rnn_state = torch.zeros(2,1,self.hidden_size, device=device)
+        return rnn_state
+
+    def forward(self, mu: Tensor, log_var: Tensor, hidden, cell, **kwargs) -> List[Tensor]:
+        # Input should be mu and log_var, both of length latent_dim
+        if self.no_var:
+            z = mu
+        else:
+            z = self.reparameterize(mu, log_var)
+        if hidden is None or cell is None:
+            rnn_state = self.init_hc(z.device)
+        else:
+            rnn_state = (hidden, cell)
+        out, (hidden, cell) = self.rnn.forward(z, rnn_state)
+        outputs = self.output_embed.forward(out)
+        return outputs, (hidden, cell)
+
+
+class CombinedRNNDriver(nn.Module):
+
+    def __init__(self, vae_model, driver, no_var=False):
+        super().__init__()
+        self.vae = vae_model
+        self.driver = driver
+        self.driver.no_var = no_var
+        self.count = 0
+        self.hidden = None
+        self.cell = None
+
+    def reset(self):
+        self.hidden = None
+        self.cell = None
+
+    def forward(self, image: Tensor, **kwargs) -> List[Tensor]:
+        mu, log_var = self.vae.encode(image)
+        outputs, rnn_state = self.driver.forward(mu, log_var, self.hidden, self.cell)
+        self.hidden, self.cell = rnn_state
+        return outputs
+
+    def predict(self, image: Tensor, **kwargs) -> List[Tensor]:
+        return self.forward(image)
+
 class CombinedDriver(nn.Module):
 
     def __init__(self, vae_model, driver, no_var=False):
@@ -364,6 +447,9 @@ class CombinedDriver(nn.Module):
         self.driver = driver
         self.driver.no_var = no_var
         self.count = 0
+
+    def reset(self):
+        pass
 
     def forward(self, image: Tensor, **kwargs) -> List[Tensor]:
         mu, log_var = self.vae.encode(image)

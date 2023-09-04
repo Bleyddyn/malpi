@@ -20,7 +20,7 @@ with redirect_stdout(open(os.devnull, "w")):
     import donkeycar as dk
 
 from malpi.dk.test import get_conf, main, env_list, print_results
-from malpi.dk.lit import LitVAE, LitVAEWithAux, DKDriverModule
+from malpi.dk.lit import LitVAE, LitVAEWithAux, DKDriverModule, DKRNNDriverModule
 
 if __name__ == "__main__":
 
@@ -35,6 +35,7 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=9091, help="Port to use for tcp.")
     parser.add_argument("--model", type=str, default="models/export.pkl", help="PyTorch trained model.")
     parser.add_argument("--vae", type=str, default=None, help="A pre-trained vae model.")
+    parser.add_argument("--rnn", action='store_true', default=False, help="Model is an RNN.")
     parser.add_argument("--record", action='store_true', default=False, help="Record data to a tub file?")
     parser.add_argument(
         "--env_name", type=str, default="all", help="Name of donkey sim environment.", choices=env_list + ["all"]
@@ -45,7 +46,10 @@ if __name__ == "__main__":
     conf = get_conf(args.sim, args.host, args.port)
 
     vae_model = LitVAE.load_from_checkpoint(args.vae)
-    driver_model = DKDriverModule.load_from_checkpoint(args.model)
+    if args.rnn:
+        driver_model = DKRNNDriverModule.load_from_checkpoint(args.model)
+    else:
+        driver_model = DKDriverModule.load_from_checkpoint(args.model)
     vae_model.to("cpu")
     driver_model.to("cpu")
     #vae_model.eval()
