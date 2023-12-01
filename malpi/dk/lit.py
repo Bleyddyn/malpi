@@ -198,10 +198,10 @@ class DKDriverModule(pl.LightningModule):
         self.log("test_loss", test_loss, prog_bar=True)
 
 class DKRNNDriverModule(pl.LightningModule):
-    def __init__(self, lr:float=1e-3, latent_dim: int=128, hidden_size=100, notes: str=None):
+    def __init__(self, batch_size: int, lr:float=1e-3, latent_dim: int=128, hidden_size=100, notes: str=None):
         super().__init__()
         self.save_hyperparameters()
-        self.model = RNNDriver(latent_dim, hidden_size=hidden_size, outputs=2, no_var=False)
+        self.model = RNNDriver(latent_dim, batch_size=batch_size, hidden_size=hidden_size, outputs=2, no_var=False)
         #print(self.model)
         self.lr = lr
         self.latent_dim = latent_dim
@@ -223,6 +223,7 @@ class DKRNNDriverModule(pl.LightningModule):
     def _run_one_batch(self, batch, batch_idx, hidden=None, cell=None):
         mu = batch[0]
         log_var = batch[1]
+        print( f"steering: {batch[2].shape}" )
         steering = torch.unsqueeze(batch[2], dim=1)
         throttle = torch.unsqueeze(batch[3], dim=1)
         outputs, (hidden, cell) = self.model.forward(mu, log_var, hidden, cell)

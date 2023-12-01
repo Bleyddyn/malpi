@@ -57,7 +57,7 @@ from PIL import Image
 from malpi.dk.train import get_dataframe_from_db_with_aux, get_track_metadata
 from malpi.dk.test import main as gym_test, print_results
 from malpi.dk.lit import LitVAE, LitVAEWithAux, DKDriverModule, DKRNNDriverModule
-from malpi.dk.data import ImageZDataset, DKImageZDataModule
+from malpi.dk.data import ImageZDataset, DKImageZDataModule, DKImageZSequenceDataModule
 
 if __name__ == '__main__':
     torch.set_float32_matmul_precision("high")
@@ -77,6 +77,7 @@ if __name__ == '__main__':
     vae_model_path = args.vae_model
     epochs = args.epochs
     lr = args.lr
+    batch_size = 5
     early_stopping = EarlyStopping('val_loss', patience=5, mode='min', min_delta=0.0)
     callbacks = [early_stopping]
 
@@ -90,10 +91,11 @@ if __name__ == '__main__':
         df_all = get_dataframe_from_db_with_aux( input_file=None, conn=conn, sources=None )
 
     if args.one_model:
-        data_model = DKImageZDataModule(vae_model, df_all, batch_size=256, shuffle=False)
         if args.rnn:
-            lit = DKRNNDriverModule(latent_dim=vae_model.latent_dim, hidden_size=100, notes=args.notes )
+            data_model = DKImageZSequenceDataModule(vae_model, df_all, batch_size=batch_size, sequence_length=100, shuffle=False)
+            lit = DKRNNDriverModule(batch_size=batch_size, latent_dim=vae_model.latent_dim, hidden_size=100, notes=args.notes )
         else:
+            data_model = DKImageZDataModule(vae_model, df_all, batch_size=256, shuffle=True)
             lit = DKDriverModule(notes=args.notes)
         trainer = pl.Trainer(callbacks=callbacks, max_epochs=epochs, logger=(not args.no_logging))
         trainer.fit(lit, data_model)

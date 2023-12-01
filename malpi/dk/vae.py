@@ -361,21 +361,23 @@ class RNNDriver(nn.Module):
     """ A DonkeyCar driver that takes as inputs mu/log_var from a
         pre-trained VAE, samples a z-space, then drives based on that. """
 
-    def __init__(self, latent_dim, hidden_size=100, outputs=2, no_var=False):
+    def __init__(self, latent_dim, batch_size, hidden_size=100, outputs=2, no_var=False):
         super(RNNDriver, self).__init__()
 
         self.latent_dim = latent_dim
+        self.batch_size = batch_size
         self.hidden_size = hidden_size
         self.no_var = no_var
         self.meta = {}
         self.is_rnn = True
+        self.first = True
 
         #self.input_embed = nn.Sequential(
         #    torch.nn.Linear(self.latent_dim, 250),
         #    torch.nn.ReLU(),
         #)
 
-        self.rnn = torch.nn.LSTM(input_size=self.latent_dim, hidden_size=self.hidden_size)
+        self.rnn = torch.nn.LSTM(input_size=self.latent_dim, hidden_size=self.hidden_size, batch_first=True)
 
         self.output_embed = nn.Sequential(
             torch.nn.Linear(self.hidden_size, outputs),
@@ -397,10 +399,16 @@ class RNNDriver(nn.Module):
     def init_hc(self, device):
         #h = torch.zeros(1,self.hidden_size)
         #c = torch.zeros(1,self.hidden_size)
-        rnn_state = torch.zeros(2,1,self.hidden_size, device=device)
+        #rnn_state = torch.zeros(2,1,self.batch_size, self.hidden_size, device=device)
+        h = torch.zeros(1,self.batch_size, self.hidden_size, device=device)
+        c = torch.zeros(1,self.batch_size, self.hidden_size, device=device)
+        rnn_state = (h, c)
         return rnn_state
 
     def forward(self, mu: Tensor, log_var: Tensor, hidden, cell, **kwargs) -> List[Tensor]:
+        if self.first:
+            print( f"RNNDriver.forward mu: {mu.shape}" )
+            self.first = False
         # Input should be mu and log_var, both of length latent_dim
         if self.no_var:
             z = mu

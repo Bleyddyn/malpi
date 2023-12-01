@@ -228,6 +228,61 @@ ORDER BY TubRecords.timestamp_ms ASC;"""
 
     return df
 
+def get_dataframe_all( conn, image_min: int=128, vae_id: int=None ):
+    """ Load DonkeyCar training data from a database and return a dataframe.
+           The database is created in malpi/dk/scripts/tub2db.py and vae2db.py.
+           image_min: Minimum width and height for images.
+    """
+
+    if image_min is not None:
+        images = f"""AND Sources.image_width >= {image_min}
+    AND Sources.image_height >= {image_min}"""
+    else:
+        images = ""
+
+    if vae_id is None:
+        vae_sql = f"""AND VAEOutputs.vae_id = (SELECT max(vae_id) FROM VAE)"""
+    else:
+        vae_sql = f"""AND VAEOutputs.vae_id = {vae_id}"""
+
+# Edited values for angle and throttle override all others.
+# Otherwise user overrides pilot. But there's no way to know if the user overrode the pilot if the user value is zero.
+# select t.source_id, pos_cte, sm.value, tr.track_id from TubRecords t, Sources s, SourceMeta sm, Tracks tr where t.source_id = s.source_id and s.source_id = sm.source_id and sm.key="DONKEY_GYM_ENV_NAME" AND sm.value=tr.gym_name ORDER BY RANDOM() LIMIT 10;
+
+    sql=f"""SELECT Sources.full_path || '/' || '{Tub.images()}' || '/' || TubRecords.image_path as "cam/image_array",
+        case when edit_angle is not null then edit_angle
+             when pilot_angle is not null and user_angle == 0.0 then pilot_angle
+             else user_angle end as "user/angle",
+        case when edit_throttle is not null then edit_throttle
+             when pilot_throttle is not null and user_throttle == 0.0 then pilot_throttle
+             else user_throttle end as "user/throttle",
+           TubRecords.pos_cte,
+           Tracks.track_id,
+           TubRecords.timestamp_ms,
+           VAEOutputs.mu,
+           VAEOutputs.log_var
+  FROM TubRecords, Sources, SourceMeta, Tracks, VAEOutputs
+ WHERE TubRecords.source_id = Sources.source_id
+   AND Sources.source_id = SourceMeta.source_id
+   AND SourceMeta.key = "DONKEY_GYM_ENV_NAME"
+   AND SourceMeta.value = Tracks.gym_name
+   AND TubRecords.pos_cte is not null
+   AND TubRecords.source_id = VAEOutputs.source_id
+   AND TubRecords.tub_index = VAEOutputs.tub_index
+ {vae_sql}
+ {images}
+AND TubRecords.deleted = 0
+ORDER BY TubRecords.timestamp_ms ASC;"""
+
+    df = pd.read_sql_query(sql, conn)
+    df['user/angle'] = df['user/angle'].astype(np.float32)
+    df['user/throttle'] = df['user/throttle'].astype(np.float32)
+    df['pos_cte'] = df['pos_cte'].astype(np.float32)
+    df['track_id'] = df['track_id'].astype(np.int64)
+    df['timestamp_ms'] = df['timestamp_ms'].astype(np.int64)
+
+    return df
+
 def get_track_metadata( conn ):
     # Get all track meta data and return it as a dictionary
     sql = """SELECT track_id, gym_name, sim_name FROM Tracks;"""
